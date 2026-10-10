@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -63,8 +64,8 @@ export function MovementTrackingPage() {
         <p>{g.fecha} · {g.origen} → {g.destino ?? g.proveedor} · <strong>{estados[g.estado]}</strong></p>
         <p>Registrado por {g.registrado_por}. {g.observacion}</p>
         <table><thead><tr><th>Código</th><th>Producto</th><th>Unidad</th><th>Enviado</th><th>Recibido</th><th>Pendiente</th></tr></thead>
-          <tbody>{g.detalles.map(d => <tr key={d.id_producto}><td>{d.codigo}</td><td>{d.nombre}</td><td>{d.unidad}</td><td>{d.cantidad}</td><td>{d.recibido}</td><td>{Number((d.cantidad-d.recibido).toFixed(3))}</td></tr>)}</tbody></table>
-        {g.recepciones.length>0 && <details><summary>Recepciones registradas</summary>{g.recepciones.map((r,i) => <p key={i}>{r.fecha} · {r.codigo} · {r.guia_proveedor ?? 'Aceptación del local'} · {r.nombre}: {r.cantidad} {r.unidad}</p>)}</details>}
+          <tbody>{g.detalles.map(d => <tr key={d.id_producto}><td>{d.codigo}</td><td>{d.nombre}</td><td>{formatearUnidad(d.unidad)}</td><td>{d.cantidad}</td><td>{d.recibido}</td><td>{Number((d.cantidad-d.recibido).toFixed(3))}</td></tr>)}</tbody></table>
+        {g.recepciones.length>0 && <details><summary>Recepciones registradas</summary>{g.recepciones.map((r,i) => <p key={i}>{r.fecha} · {r.codigo} · {r.guia_proveedor ?? 'Aceptación del local'} · {r.nombre}: {r.cantidad} {formatearUnidad(r.unidad)}</p>)}</details>}
         <button onClick={e => {const article=e.currentTarget.closest("article"); article?.classList.add("printing"); document.body.dataset.guiaImprimir=String(g.id); window.print(); delete document.body.dataset.guiaImprimir; article?.classList.remove("printing")}} className="print-guide">Imprimir guía</button>
         <span className="print-id" data-id={g.id} />
         {permisosDe(menu,20).crear && !['ACEPTADO','REINTEGRADO'].includes(g.estado) && (g.id_local_destino ?? g.id_local)===localActivo?.id_local &&
@@ -75,7 +76,7 @@ export function MovementTrackingPage() {
       <p>{seleccion.id_local_destino ? 'Confirma que recibiste todos los productos indicados. Se sumarán al stock de este local.' : 'Registra únicamente lo recibido. El resto quedará pendiente.'}</p>
       {error && <p role="alert">{error}</p>}
       {!seleccion.id_local_destino && <label>Guía del proveedor<input maxLength={100} value={documento} onChange={e => setDocumento(e.target.value)} /></label>}
-      {seleccion.detalles.map(d => <label key={d.id_producto}>{d.nombre} · pendiente {Number((d.cantidad-d.recibido).toFixed(3))} {d.unidad}
+      {seleccion.detalles.map(d => <label key={d.id_producto}>{d.nombre} · pendiente {Number((d.cantidad-d.recibido).toFixed(3))} {formatearUnidad(d.unidad)}
         {!seleccion.id_local_destino && <input type="number" min="0" step="0.001" max={d.cantidad-d.recibido} value={cantidades[d.id_producto]??''} onChange={e => setCantidades({...cantidades,[d.id_producto]:e.target.value})} />}</label>)}
       <button disabled={ocupado} onClick={() => setSeleccion(null)}>Cancelar</button><button disabled={ocupado} onClick={recibir}>{ocupado ? 'Guardando…' : 'Confirmar recepción'}</button>
     </section></div>}

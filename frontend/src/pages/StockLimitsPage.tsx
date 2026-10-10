@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -89,7 +90,7 @@ function StockLimitsContent() {
       {cargando ? <p role="status">Cargando límites…</p> : <div className="stock-limits__table">
         <table><thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Mínimo</th><th>Máximo</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>{filtrados.map((p) => <tr key={p.id_producto}>
-            <td>{p.codigo}</td><td><strong>{p.nombre}</strong></td><td>{p.categoria}</td><td>{p.unidad}</td>
+            <td>{p.codigo}</td><td><strong>{p.nombre}</strong></td><td>{p.categoria}</td><td>{formatearUnidad(p.unidad)}</td>
             <td>{p.stock_minimo}</td><td>{p.stock_maximo ?? 'Sin definir'}</td><td>{p.activo ? 'Activo' : 'Inactivo'}</td>
             <td>{permiso?.configurar && <button type="button" onClick={() => abrir(p)}>Configurar</button>}</td>
           </tr>)}{!filtrados.length && <tr><td colSpan={8}>No se encontraron productos.</td></tr>}</tbody>
@@ -99,7 +100,7 @@ function StockLimitsContent() {
     {editando && <div className="stock-limits__backdrop">
       <form className="stock-limits__dialog" role="dialog" aria-modal="true" aria-labelledby="limits-title" onSubmit={(e) => void guardar(e)}>
         <h2 id="limits-title">Configurar límites</h2>
-        <p>{editando.codigo} · {editando.nombre} ({editando.unidad})</p>
+        <p>{editando.codigo} · {editando.nombre} ({formatearUnidad(editando.unidad)})</p>
         {error && <p className="stock-limits__error" role="alert">{error}</p>}
         <fieldset disabled={guardando}>
           <label>Stock mínimo<input autoFocus type="number" min="0" max="999999999.999" step="0.001" required value={minimo} onChange={(e) => setMinimo(e.target.value)} /></label>

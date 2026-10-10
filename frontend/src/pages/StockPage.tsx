@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import {
   Fragment,
   useEffect,
@@ -365,7 +366,7 @@ function StockPage() {
                         <td>
                           <div className="stock-product">
                             <strong>{producto.nombre}</strong>
-                            <span>{producto.unidad}</span>
+                            <span>{formatearUnidad(producto.unidad)}</span>
                           </div>
                         </td>
 
@@ -384,14 +385,14 @@ function StockPage() {
                             )}
                           </strong>{' '}
                           {producto.stock_actual !== null &&
-                            producto.unidad}
+                            formatearUnidad(producto.unidad)}
                         </td>
 
                         <td>
                           {formatearCantidad(
                             producto.stock_minimo
                           )}{' '}
-                          {producto.unidad}
+                          {formatearUnidad(producto.unidad)}
                         </td>
 
                         <td>{producto.stock_maximo == null ? 'Sin definir' : formatearCantidad(producto.stock_maximo)}</td>
@@ -496,7 +497,7 @@ function StockPage() {
                                     producto.stock_actual
                                   )}{' '}
                                   {producto.stock_actual !==
-                                    null && producto.unidad}
+                                    null && formatearUnidad(producto.unidad)}
                                 </strong>
                               </div>
                             </div>

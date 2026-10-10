@@ -11,6 +11,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from app.core.config import Config
 from app.core.extensions import db
+from app.core.units import registrar_medidas_api
 from app.modules.auditoria.routes import auditoria_bp
 from app.modules.auth.routes import auth_bp
 from app.modules.carta.routes import carta_bp
@@ -32,6 +33,7 @@ from app.modules.usuarios.routes import usuarios_bp
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    registrar_medidas_api(app)
 
     app.register_blueprint(asistente_ia_bp, url_prefix="/api/asistente-ia")
     db.init_app(app)

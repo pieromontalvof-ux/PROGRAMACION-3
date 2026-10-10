@@ -31,6 +31,7 @@ import type {
   UnidadProducto,
 } from '../types/catalog'
 import { permisosDe } from '../utils/permissionHelpers'
+import { formatearUnidad } from '../utils/unitHelpers'
 
 import './ProductsPage.css'
 
@@ -46,7 +47,7 @@ export function ProductsPage() {
   const { token, menu, perfilActivo } = useAuth()
   const permisos = permisosDe(menu, 4)
   const administrador = perfilActivo?.id_perfil === 1
-  const mostrarAcciones = administrador && (
+  const mostrarAcciones = administrador || (
     permisos.editar || permisos.desactivar || permisos.reactivar || permisos.eliminar
   )
 
@@ -58,7 +59,7 @@ export function ProductsPage() {
     nombre: '',
     id_categoria: '',
     id_proveedor: '',
-    unidad: 'Kg' as UnidadProducto,
+    unidad: 'KGM' as UnidadProducto,
     presentacion: '1',
   })
 
@@ -197,7 +198,7 @@ export function ProductsPage() {
             nombre: '',
             id_categoria: '',
             id_proveedor: '',
-            unidad: 'Kg',
+            unidad: 'KGM',
             presentacion: '1',
           },
     )
@@ -365,7 +366,7 @@ export function ProductsPage() {
         </div>
 
         <div className="catalog-admin-actions">
-          {administrador && permisos.crear && (
+          {(administrador || permisos.crear) && (
             <button
               className="catalog-admin-new"
               type="button"
@@ -463,6 +464,13 @@ export function ProductsPage() {
           </div>
         </article>
       </div>
+
+      {!datos.categorias_proveedor_configurables && (
+        <div className="products-warning" role="status">
+          El catálogo está disponible. Las categorías se muestran según los productos
+          existentes hasta completar la actualización de proveedores en la base de datos.
+        </div>
+      )}
 
       {error && (
         <div className="products-warning" role="alert">
@@ -610,13 +618,13 @@ export function ProductsPage() {
                     </span>
                   </td>
 
-                  <td>{producto.unidad}</td>
+                  <td>{formatearUnidad(producto.unidad)}</td>
 
                   <td>
                     {formatearNumero(
                       producto.presentacion,
                     )}{' '}
-                    {producto.unidad}
+                    {formatearUnidad(producto.unidad)}
                   </td>
 
                   <td>
@@ -635,12 +643,12 @@ export function ProductsPage() {
 
                   {mostrarAcciones && <td>
                     <div className="catalog-admin-actions">
-                      {permisos.editar && <button
+                      {(administrador || permisos.editar) && <button
                         type="button"
                         onClick={() => abrirProducto(producto)}
                       >Editar</button>}
-                      {permisos.eliminar && <DeleteRecordButton token={token} entidad="productos" id={producto.id_producto} nombre={producto.nombre} eliminado={() => void cargarProductos(true)} />}
-                      {(producto.activo ? permisos.desactivar : permisos.reactivar) && <button
+                      {(administrador || permisos.eliminar) && <DeleteRecordButton token={token} entidad="productos" id={producto.id_producto} nombre={producto.nombre} eliminado={() => void cargarProductos(true)} />}
+                      {(producto.activo ? (administrador || permisos.desactivar) : (administrador || permisos.reactivar)) && <button
                         className={producto.activo ? 'danger' : ''}
                         type="button"
                         onClick={() => void alternarProducto(producto)}
@@ -693,42 +701,32 @@ export function ProductsPage() {
           />
         </label>
 
-        <label>
-          Categoría
-          <select
-            value={formulario.id_categoria}
-            onChange={(evento) =>
-              setFormulario({
-                ...formulario,
-                id_categoria: evento.target.value,
-              })
-            }
-          >
-            <option value="">Selecciona</option>
-
-            {datos.categorias
-              .filter((item) => item.activo)
-              .map((item) => (
-                <option
-                  key={item.id_categoria}
-                  value={item.id_categoria}
-                >
-                  {item.nombre}
-                </option>
-              ))}
-          </select>
-        </label>
+        <div className="products-form-note">
+          <strong>Asignación del producto</strong>
+          <span>
+            Selecciona primero el proveedor y luego una de sus categorías.
+            Si tiene una sola categoría activa, se selecciona automáticamente.
+            La categoría define el prefijo y el código.
+          </span>
+        </div>
 
         <label>
           Proveedor
           <select
             value={formulario.id_proveedor}
-            onChange={(evento) =>
+            onChange={(evento) => {
+              const id = evento.target.value
+              const proveedorSeleccionado = datos.proveedores.find((p) => p.id_proveedor === Number(id))
+              const categoriasDisponibles = datos.categorias.filter((c) =>
+                c.activo && proveedorSeleccionado?.ids_categorias.includes(c.id_categoria),
+              )
               setFormulario({
                 ...formulario,
-                id_proveedor: evento.target.value,
+                id_proveedor: id,
+                id_categoria: categoriasDisponibles.length === 1
+                  ? String(categoriasDisponibles[0].id_categoria) : '',
               })
-            }
+            }}
           >
             <option value="">Selecciona</option>
 
@@ -746,8 +744,43 @@ export function ProductsPage() {
         </label>
 
         <label>
-          Unidad
+          Categoría
           <select
+            disabled={!formulario.id_proveedor}
+            value={formulario.id_categoria}
+            onChange={(evento) =>
+              setFormulario({
+                ...formulario,
+                id_categoria: evento.target.value,
+              })
+            }
+          >
+            <option value="">Selecciona</option>
+
+            {datos.categorias
+              .filter((item) => item.activo &&
+                datos.proveedores.find((p) => p.id_proveedor === Number(formulario.id_proveedor))
+                  ?.ids_categorias.includes(item.id_categoria))
+              .map((item) => (
+                <option
+                  key={item.id_categoria}
+                  value={item.id_categoria}
+                >
+                  {item.nombre}
+                </option>
+              ))}
+          </select>
+        </label>
+
+        {formulario.id_proveedor && !datos.categorias.some((c) => c.activo &&
+          datos.proveedores.find((p) => p.id_proveedor === Number(formulario.id_proveedor))?.ids_categorias.includes(c.id_categoria)) && (
+          <p>Asigna categorías activas a este proveedor desde Proveedores.</p>
+        )}
+
+        <label>
+          Unidad de medida
+          <select
+            disabled={!!editando}
             value={formulario.unidad}
             onChange={(evento) =>
               setFormulario({
@@ -756,14 +789,16 @@ export function ProductsPage() {
               })
             }
           >
-            <option value="Kg">Kg</option>
-            <option value="L">L</option>
-            <option value="UNI">UNI</option>
+            {datos.unidades_medida.filter((u) => u.codigo === u.codigo_base).map((u) => (
+              <option key={u.codigo} value={u.valor}>
+                {u.nombre.toLocaleLowerCase('es') === u.simbolo ? u.nombre : `${u.nombre} (${u.simbolo})`}
+              </option>
+            ))}
           </select>
         </label>
 
         <label>
-          Presentación
+          Contenido por envase o paquete ({formatearUnidad(formulario.unidad)})
           <input
             type="number"
             min="0.001"
@@ -777,6 +812,12 @@ export function ProductsPage() {
             }
           />
         </label>
+        <p className="products-form-note">
+          El contenido de compra se expresa en {formatearUnidad(formulario.unidad)}.
+          Por ejemplo, un barril de 30 L contiene 30; una botella de 750 mL contiene
+          0,750 si la unidad del producto es L.
+          {editando && ' La unidad se conserva para mantener correctas las cantidades registradas.'}
+        </p>
       </CatalogDialog>
     </section>
   )

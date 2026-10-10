@@ -510,6 +510,11 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
+  max-width: 100%;
+}
+
+.suppliers-categories-button span {
+  white-space: nowrap;
 }
 
 .suppliers-categories-button:hover {
@@ -604,6 +609,30 @@
   font-size: 11px;
 }
 
+.suppliers-modal-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.suppliers-modal-categories__label {
+  margin-top: 6px;
+  color: #2f4039;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.suppliers-modal-help {
+  margin: 8px 0 0;
+  color: #6d7d76;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.suppliers-modal-category-list {
+  justify-content: flex-start;
+}
+
 @media (max-width: 700px) {
   .suppliers-detail {
     align-items: flex-start;
@@ -614,3 +643,7 @@
     justify-content: flex-start;
   }
 }
+.suppliers-category-picker { border: 1px solid #dce3ec; border-radius: 12px; padding: 16px; }
+.suppliers-category-picker p { margin: 0 0 12px; }
+.suppliers-category-picker label { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.suppliers-category-picker input[type="checkbox"] { width: 18px; height: 18px; }

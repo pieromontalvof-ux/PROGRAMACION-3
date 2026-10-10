@@ -214,6 +214,28 @@
   height: 19px;
 }
 
+.products-form-note {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid rgba(18, 122, 74, 0.18);
+  border-radius: 10px;
+  background: #eefaf3;
+}
+
+.products-form-note strong {
+  color: #0b5d3d;
+  font-size: 12px;
+}
+
+.products-form-note span {
+  color: #4d5d54;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .products-content {
   min-width: 0;
   padding: 24px;

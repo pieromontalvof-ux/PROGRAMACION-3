@@ -21,15 +21,15 @@ RESOURCES = {
 }
 RESOURCES.update(inventory.RESOURCES)
 FIELDS = {
-    'productos': 'nombre id_categoria id_proveedor unidad presentacion motivo',
-    'categorias_productos': 'nombre prefijo', 'proveedores': 'nombre',
+    'productos': 'nombre id_categoria id_proveedor unidad presentacion unidad_presentacion motivo',
+    'categorias_productos': 'nombre prefijo', 'proveedores': 'nombre ids_categorias',
     'categorias_carta': 'nombre prefijo', 'menajes': 'nombre',
     'presentaciones': 'id_item_carta nombre_item tipo_item id_categoria_carta contenido unidad id_menaje precio activo',
     'recetas': 'id_presentacion_venta instrucciones componentes grupo_salsa',
     'subproductos': 'nombre unidad rendimiento instruccion activo ingredientes',
     'promociones': 'nombre precio activo hora_inicio hora_fin grupos',
 }
-REQUIRED = {k: set(v.split()) - {'motivo', 'id_item_carta', 'grupo_salsa'} for k, v in FIELDS.items()}
+REQUIRED = {k: set(v.split()) - {'motivo', 'id_item_carta', 'grupo_salsa', 'unidad_presentacion'} for k, v in FIELDS.items()}
 
 
 def allowed(session, resource, action='consultar'):

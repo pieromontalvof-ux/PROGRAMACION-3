@@ -11,7 +11,7 @@ deletion_bp = Blueprint('catalog_deletion', __name__)
 ENTIDADES = {
     'productos': ('producto', 'id_producto', 4, [('producto_stock_local', 'id_producto')]),
     'categorias-productos': ('categoria_producto', 'id_categoria', 5, []),
-    'proveedores': ('proveedor', 'id_proveedor', 6, []),
+    'proveedores': ('proveedor', 'id_proveedor', 6, [('proveedor_categoria', 'id_proveedor')]),
     'categorias-carta': ('categoria_carta', 'id_categoria_carta', 8, []),
     'presentaciones': ('presentacion_venta', 'id_presentacion_venta', 9, []),
     'subproductos': ('subproducto', 'id_subproducto', 12, [('subproducto_detalle', 'id_subproducto')]),
@@ -58,9 +58,9 @@ def eliminar_registro(entidad, identidad, usuario):
                     detalles['promocion_opcion'] = [dict(r) for r in db.session.execute(text('SELECT * FROM promocion_opcion WHERE id_promocion_grupo=ANY(:ids) FOR UPDATE'), {'ids': ids}).mappings()]
                     referencias('promocion_opcion', [r['id_promocion_opcion'] for r in detalles['promocion_opcion']], [])
                     db.session.execute(text('DELETE FROM promocion_opcion WHERE id_promocion_grupo=ANY(:ids)'), {'ids': ids})
-            elif hija != 'producto_stock_local':
+            elif hija not in ('producto_stock_local', 'proveedor_categoria'):
                 referencias(hija, [r['id_' + hija] for r in detalles[hija]], [])
-            else:
+            elif hija == 'producto_stock_local':
                 # La configuracion por tienda no tiene dependientes en el esquema actual.
                 if db.session.execute(text("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE contype='f' AND confrelid='producto_stock_local'::regclass)")).scalar():
                     raise ValueError('La configuracion de stock tiene dependencias; no se puede eliminar')

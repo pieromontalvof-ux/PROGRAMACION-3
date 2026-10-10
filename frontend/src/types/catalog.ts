@@ -1,6 +1,8 @@
-export type UnidadProducto = 'Kg' | 'L' | 'UNI'
+import type { UnidadMedida, MedidaConUnidad } from './units'
 
-export interface ProductoCatalogo {
+export type UnidadProducto = 'KGM' | 'LTR' | 'C62'
+
+export interface ProductoCatalogo extends MedidaConUnidad {
   id_producto: number
   codigo: string
   nombre: string
@@ -22,6 +24,7 @@ export interface CategoriaProducto {
 }
 
 export interface ProveedorCatalogo {
+  ids_categorias: number[]
   id_proveedor: number
   nombre: string
   activo: boolean
@@ -36,6 +39,8 @@ export interface ResumenCatalogoProductos {
 }
 
 export interface RespuestaCatalogoProductos {
+  categorias_proveedor_configurables: boolean
+  unidades_medida: UnidadMedida[]
   productos: ProductoCatalogo[]
   categorias: CategoriaProducto[]
   proveedores: ProveedorCatalogo[]
@@ -69,6 +74,8 @@ export interface ProveedorDetalle
 }
 
 export interface RespuestaProveedores {
+  categorias_proveedor_configurables: boolean
+  categorias: CategoriaProducto[]
   proveedores: ProveedorDetalle[]
   resumen: {
     total_proveedores: number
@@ -115,6 +122,7 @@ export interface DependenciasProducto {
 }
 
 export interface ProductoEntrada {
+  unidad_presentacion?: string
   nombre: string
   id_categoria: number
   id_proveedor: number
@@ -129,6 +137,7 @@ export interface CategoriaEntrada {
 }
 
 export interface ProveedorEntrada {
+  ids_categorias: number[]
   nombre: string
 }
 

@@ -3,6 +3,7 @@ import re
 from sqlalchemy import text
 
 from app.core.extensions import db
+from app.core.units import catalogo_unidades, valores_unidades
 
 
 def filas(sql, parametros=None):
@@ -24,7 +25,8 @@ def opciones_check(nombre):
 def formulario():
     return {
         "tipos": opciones_check("ck_item_carta_tipo"),
-        "unidades_presentacion": opciones_check("ck_presentacion_venta_unidad"),
+        "unidades_presentacion": valores_unidades("presentacion"),
+        "unidades_medida": catalogo_unidades(),
         "categorias": filas("SELECT id_categoria_carta, nombre, activo FROM categoria_carta ORDER BY nombre"),
         "menajes": filas("SELECT id_menaje, nombre, activo FROM menaje ORDER BY nombre"),
         "items": filas("SELECT id_item_carta, codigo, nombre, id_categoria_carta, tipo, activo FROM item_carta ORDER BY nombre"),

@@ -11,6 +11,7 @@ from app.modules.catalogos.repository import (
 from decimal import Decimal, InvalidOperation
 
 from app.core.extensions import db
+from app.core.units import catalogo_unidades, obtener_unidad, convertir_cantidad
 from app.modules.auditoria.service import (
     registrar_actividad,
     registrar_cambio,
@@ -62,6 +63,8 @@ def obtener_catalogo_productos():
         "productos": productos,
         "categorias": categorias,
         "proveedores": proveedores,
+        "unidades_medida": catalogo_unidades("producto"),
+        "categorias_proveedor_configurables": repo.categorias_proveedor_disponibles(),
         "resumen": {
             "total_productos": len(productos),
             "productos_activos": total_activos,
@@ -122,6 +125,8 @@ def obtener_proveedores():
 
     respuesta = {
         "proveedores": proveedores,
+        "categorias": listar_categorias_producto(),
+        "categorias_proveedor_configurables": repo.categorias_proveedor_disponibles(),
         "resumen": {
             "total_proveedores": len(proveedores),
             "proveedores_activos": proveedores_activos,
@@ -133,9 +138,6 @@ def obtener_proveedores():
     }
 
     return respuesta, 200
-
-
-UNIDADES = {"Kg", "L", "UNI"}
 
 
 def _texto(datos, campo, maximo):
@@ -257,6 +259,10 @@ def reasignar_categoria(id_categoria, id_usuario, datos):
         destino = repo.obtener_categoria(nueva, True)
         if origen is None or destino is None or not destino["activo"]:
             db.session.rollback(); return {"mensaje": "Categoría de origen o destino inválida"}, 409
+        seleccionados = [p for p in repo.listar_productos() if p["id_categoria"] == id_categoria and p["id_producto"] in ids]
+        if any(nueva not in repo.categorias_proveedor(p["id_proveedor"]) for p in seleccionados):
+            db.session.rollback()
+            return {"mensaje": "Asigna primero la categoría destino a los proveedores de los productos"}, 409
         movidos = repo.reasignar_categoria_productos(
             id_categoria, nueva, list({int(x) for x in ids}), id_usuario, motivo)
         if not movidos:
@@ -271,15 +277,39 @@ def reasignar_categoria(id_categoria, id_usuario, datos):
         db.session.rollback(); raise
 
 
+def _categorias_proveedor_validas(datos):
+    ids = datos.get("ids_categorias")
+    if (not isinstance(ids, list) or not ids or
+            any(type(x) is not int or x <= 0 for x in ids)):
+        return None
+    return sorted(set(ids))
+
+
+def _validar_categorias_proveedor(ids, anteriores=()):
+    for identidad in ids:
+        categoria = repo.obtener_categoria(identidad, True)
+        if categoria is None or (not categoria["activo"] and identidad not in anteriores):
+            return False
+    return True
+
+
 def crear_proveedor_catalogo(id_usuario, datos):
     nombre = _texto(datos, "nombre", 200)
+    ids = _categorias_proveedor_validas(datos)
+    if ids is None:
+        return {"mensaje": "Selecciona una o varias categorías para el proveedor"}, 400
     if not nombre:
         return {"mensaje": "Ingresa un nombre válido"}, 400
     if repo.proveedor_repetido(nombre):
         return {"mensaje": "El proveedor ya está registrado"}, 409
     try:
+        if not _validar_categorias_proveedor(ids):
+            db.session.rollback()
+            return {"mensaje": "Selecciona categorías activas válidas"}, 409
         identidad = repo.crear_proveedor(nombre)
+        repo.asignar_categorias_proveedor(identidad, ids)
         nuevo = dict(repo.obtener_proveedor(identidad))
+        nuevo["ids_categorias"] = ids
         registrar_cambio(id_usuario, "CATALOGOS", "CREAR",
                          "proveedor", identidad, None, nuevo)
         registrar_actividad(id_usuario, "CATALOGOS", "CREAR",
@@ -293,6 +323,9 @@ def crear_proveedor_catalogo(id_usuario, datos):
 
 def editar_proveedor_catalogo(id_proveedor, id_usuario, datos):
     nombre = _texto(datos, "nombre", 200)
+    ids = _categorias_proveedor_validas(datos)
+    if ids is None:
+        return {"mensaje": "Selecciona una o varias categorías para el proveedor"}, 400
     if not nombre:
         return {"mensaje": "Ingresa un nombre válido"}, 400
     try:
@@ -301,9 +334,19 @@ def editar_proveedor_catalogo(id_proveedor, id_usuario, datos):
             db.session.rollback(); return {"mensaje": "El proveedor no existe"}, 404
         if repo.proveedor_repetido(nombre, id_proveedor):
             db.session.rollback(); return {"mensaje": "El proveedor ya existe"}, 409
+        anteriores = repo.categorias_proveedor(id_proveedor)
+        if not _validar_categorias_proveedor(ids, anteriores):
+            db.session.rollback()
+            return {"mensaje": "Selecciona categorías activas válidas"}, 409
+        if any(p["id_categoria"] not in ids for p in repo.productos_proveedor(id_proveedor)):
+            db.session.rollback()
+            return {"mensaje": "No puedes retirar categorías utilizadas por sus productos"}, 409
         anterior = dict(actual)
+        anterior["ids_categorias"] = anteriores
+        repo.asignar_categorias_proveedor(id_proveedor, ids)
         repo.actualizar_proveedor(id_proveedor, nombre)
         nuevo = dict(repo.obtener_proveedor(id_proveedor))
+        nuevo["ids_categorias"] = ids
         registrar_cambio(id_usuario, "CATALOGOS", "EDITAR",
                          "proveedor", id_proveedor, anterior, nuevo)
         registrar_actividad(id_usuario, "CATALOGOS", "EDITAR",
@@ -362,6 +405,11 @@ def reasignar_proveedor(id_proveedor, id_usuario, datos):
         destino = repo.obtener_proveedor(nuevo, True)
         if origen is None or destino is None or not destino["activo"]:
             db.session.rollback(); return {"mensaje": "Proveedor de origen o destino inválido"}, 409
+        seleccionados = [p for p in repo.productos_proveedor(id_proveedor) if p["id_producto"] in ids]
+        permitidas = repo.categorias_proveedor(nuevo)
+        if any(p["id_categoria"] not in permitidas for p in seleccionados):
+            db.session.rollback()
+            return {"mensaje": "El proveedor destino no tiene todas las categorías de los productos"}, 409
         movidos = repo.reasignar_proveedor_productos(
             id_proveedor, nuevo, list({int(x) for x in ids}), id_usuario, motivo)
         if not movidos:
@@ -380,10 +428,19 @@ def _datos_producto(datos):
     nombre = _texto(datos, "nombre", 200)
     categoria = _entero(datos, "id_categoria")
     proveedor = _entero(datos, "id_proveedor")
-    unidad = str(datos.get("unidad", "")).strip()
+    medida = obtener_unidad(datos.get("unidad"))
+    unidad = medida.codigo if medida and medida.codigo in {"KGM", "LTR", "C62"} else None
     presentacion = _decimal(datos, "presentacion")
+    if unidad and presentacion is not None:
+        try:
+            presentacion = convertir_cantidad(
+                presentacion, datos.get("unidad_presentacion", unidad), unidad)
+        except ValueError:
+            return None
     if (not nombre or not categoria or not proveedor or
-            unidad not in UNIDADES or presentacion is None):
+            unidad is None or presentacion is None or presentacion <= 0 or
+            presentacion > Decimal("999999999.999") or
+            presentacion != presentacion.quantize(Decimal("0.001"))):
         return None
     return nombre, categoria, proveedor, unidad, presentacion
 
@@ -400,6 +457,10 @@ def crear_producto_catalogo(id_usuario, datos):
     try:
         if repo.obtener_proveedor(proveedor) is None or not repo.obtener_proveedor(proveedor)["activo"]:
             db.session.rollback(); return {"mensaje": "El proveedor no está activo"}, 409
+        repo.obtener_proveedor(proveedor, True)
+        if categoria not in repo.categorias_proveedor(proveedor):
+            db.session.rollback()
+            return {"mensaje": "La categoría no está asignada al proveedor seleccionado"}, 409
         codigo = repo.generar_codigo_producto(categoria)
         if codigo is None:
             db.session.rollback(); return {"mensaje": "La categoría no está activa"}, 409
@@ -428,6 +489,9 @@ def editar_producto_catalogo(id_producto, id_usuario, datos):
         actual = repo.obtener_producto(id_producto, True)
         if actual is None:
             db.session.rollback(); return {"mensaje": "El producto no existe"}, 404
+        if obtener_unidad(actual["unidad"]).codigo != unidad:
+            db.session.rollback()
+            return {"mensaje": "La unidad base no se puede cambiar: crea otro producto para conservar sus cantidades históricas"}, 409
         if repo.producto_repetido(nombre, id_producto):
             db.session.rollback(); return {"mensaje": "Ya existe un producto con ese nombre"}, 409
         destino_categoria = repo.obtener_categoria(categoria)
@@ -435,6 +499,10 @@ def editar_producto_catalogo(id_producto, id_usuario, datos):
         if (destino_categoria is None or not destino_categoria["activo"] or
                 destino_proveedor is None or not destino_proveedor["activo"]):
             db.session.rollback(); return {"mensaje": "Categoría o proveedor inactivo"}, 409
+        repo.obtener_proveedor(proveedor, True)
+        if categoria not in repo.categorias_proveedor(proveedor):
+            db.session.rollback()
+            return {"mensaje": "La categoría no está asignada al proveedor seleccionado"}, 409
         anterior = dict(actual)
         repo.actualizar_producto_registro(
             id_producto, nombre, categoria, proveedor, unidad, presentacion)

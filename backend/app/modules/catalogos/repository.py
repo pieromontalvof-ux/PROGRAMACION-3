@@ -1,6 +1,24 @@
 from sqlalchemy import text
 
 from app.core.extensions import db
+from app.core.units import unidad_almacenamiento
+
+
+class CategoriasProveedorNoDisponibles(RuntimeError):
+    pass
+
+
+def categorias_proveedor_disponibles():
+    return db.session.execute(
+        text("SELECT to_regclass('public.proveedor_categoria') IS NOT NULL")
+    ).scalar_one()
+
+
+def _origen_categorias_proveedor():
+    if categorias_proveedor_disponibles():
+        return "proveedor_categoria"
+    # Compatibilidad con instalaciones que todavía no aplicaron la migración.
+    return "(SELECT DISTINCT id_proveedor, id_categoria FROM producto)"
 
 
 def listar_productos():
@@ -91,11 +109,15 @@ def listar_categorias_producto_detalladas():
 
 
 def listar_proveedores():
-    consulta = text("""
+    origen = _origen_categorias_proveedor()
+    consulta = text(f"""
         SELECT
             id_proveedor,
             nombre,
-            activo
+            activo,
+            ARRAY(SELECT pc.id_categoria FROM {origen} pc
+                  WHERE pc.id_proveedor = proveedor.id_proveedor
+                  ORDER BY pc.id_categoria) AS ids_categorias
         FROM proveedor
         ORDER BY nombre ASC
     """)
@@ -108,56 +130,46 @@ def listar_proveedores():
     ]
 
 def listar_proveedores_detallados():
-    consulta = text("""
-        SELECT
-            pr.id_proveedor,
-            pr.nombre,
-            pr.activo,
+    proveedores = listar_proveedores()
+    origen = _origen_categorias_proveedor()
+    for proveedor in proveedores:
+        productos = productos_proveedor(proveedor["id_proveedor"])
+        categorias = db.session.execute(text(f"""
+            SELECT cp.nombre FROM {origen} pc
+            JOIN categoria_producto cp USING(id_categoria)
+            WHERE pc.id_proveedor = :id ORDER BY cp.nombre
+        """), {"id": proveedor["id_proveedor"]}).scalars().all()
+        proveedor.update(
+            total_productos=len(productos),
+            productos_activos=sum(1 for p in productos if p["activo"]),
+            productos_inactivos=sum(1 for p in productos if not p["activo"]),
+            total_categorias=len(categorias), categorias=list(categorias),
+        )
+    return proveedores
 
-            COUNT(p.id_producto)
-                AS total_productos,
 
-            COUNT(p.id_producto)
-                FILTER (WHERE p.activo = TRUE)
-                AS productos_activos,
+def categorias_proveedor(id_proveedor):
+    origen = _origen_categorias_proveedor()
+    return list(db.session.execute(text(f"""
+        SELECT id_categoria FROM {origen} pc
+        WHERE id_proveedor = :id ORDER BY id_categoria
+    """), {"id": id_proveedor}).scalars().all())
 
-            COUNT(p.id_producto)
-                FILTER (WHERE p.activo = FALSE)
-                AS productos_inactivos,
 
-            COUNT(DISTINCT cp.id_categoria)
-                AS total_categorias,
-
-            COALESCE(
-                JSONB_AGG(DISTINCT cp.nombre)
-                    FILTER (
-                        WHERE cp.id_categoria IS NOT NULL
-                    ),
-                '[]'::JSONB
-            ) AS categorias
-
-        FROM proveedor AS pr
-
-        LEFT JOIN producto AS p
-            ON p.id_proveedor = pr.id_proveedor
-
-        LEFT JOIN categoria_producto AS cp
-            ON cp.id_categoria = p.id_categoria
-
-        GROUP BY
-            pr.id_proveedor,
-            pr.nombre,
-            pr.activo
-
-        ORDER BY pr.nombre ASC
-    """)
-
-    resultado = db.session.execute(consulta)
-
-    return [
-        dict(fila)
-        for fila in resultado.mappings().all()
-    ]
+def asignar_categorias_proveedor(id_proveedor, ids):
+    if not categorias_proveedor_disponibles():
+        raise CategoriasProveedorNoDisponibles(
+            "La asignación de categorías requiere ejecutar la migración "
+            "20261010_proveedor_categorias.sql con el propietario de las tablas "
+            "o un administrador de PostgreSQL. No se guardó ningún cambio."
+        )
+    db.session.execute(text("DELETE FROM proveedor_categoria WHERE id_proveedor = :id"),
+                       {"id": id_proveedor})
+    for categoria in ids:
+        db.session.execute(text("""
+            INSERT INTO proveedor_categoria (id_proveedor, id_categoria)
+            VALUES (:id, :categoria)
+        """), {"id": id_proveedor, "categoria": categoria})
 
 
 def obtener_categoria(id_categoria, bloquear=False):
@@ -437,7 +449,7 @@ def crear_producto_registro(
         """),
         {"codigo": codigo, "nombre": nombre,
          "categoria": id_categoria, "proveedor": id_proveedor,
-         "unidad": unidad,
+         "unidad": unidad_almacenamiento(unidad),
          "presentacion": presentacion},
     ).scalar_one()
 
@@ -458,7 +470,7 @@ def actualizar_producto_registro(
         """),
         {"id_producto": id_producto, "nombre": nombre,
          "categoria": id_categoria, "proveedor": id_proveedor,
-         "unidad": unidad,
+         "unidad": unidad_almacenamiento(unidad),
          "presentacion": presentacion},
     )
 

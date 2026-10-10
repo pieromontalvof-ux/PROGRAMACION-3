@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import {
   AlertCircle,
   CheckCircle2,
@@ -630,12 +631,12 @@ export function InventoryReviewPage() {
                                                 }))
                                               }
                                             />
-                                            <span>{producto.unidad}</span>
+                                            <span>{formatearUnidad(producto.unidad)}</span>
                                           </label>
                                         ) : producto.fue_contado ? (
                                           `${formatearNumero(
                                             producto.stock_contado ?? 0,
-                                          )} ${producto.unidad}`
+                                          )} ${formatearUnidad(producto.unidad)}`
                                         ) : (
                                           'Sin dato'
                                         )}
@@ -644,7 +645,7 @@ export function InventoryReviewPage() {
                                         {formatearNumero(
                                           producto.stock_minimo,
                                         )}{' '}
-                                        {producto.unidad}
+                                        {formatearUnidad(producto.unidad)}
                                       </td>
                                       <td>
                                         <span

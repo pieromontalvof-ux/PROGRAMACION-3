@@ -43,7 +43,7 @@ export function SuppliersPage() {
   const { token, menu, perfilActivo } = useAuth()
   const permisos = permisosDe(menu, 6)
   const administrador = perfilActivo?.id_perfil === 1
-  const mostrarAcciones = administrador && (
+  const mostrarAcciones = administrador || (
     permisos.editar || permisos.configurar || permisos.desactivar || permisos.reactivar || permisos.eliminar
   )
 
@@ -51,6 +51,7 @@ export function SuppliersPage() {
   const [proveedorEditado, setProveedorEditado] =
     useState<ProveedorDetalle | null>(null)
   const [nombre, setNombre] = useState('')
+  const [idsCategorias, setIdsCategorias] = useState<number[]>([])
   const [procesando, setProcesando] = useState(false)
 
   const [datos, setDatos] =
@@ -141,16 +142,25 @@ export function SuppliersPage() {
     setError('')
     setProveedorEditado(proveedor ?? null)
     setNombre(proveedor?.nombre ?? '')
+    setIdsCategorias(proveedor?.ids_categorias ?? [])
     setModal(true)
   }
 
   async function guardarProveedor() {
+    if (!datos?.categorias_proveedor_configurables) {
+      setError('Falta completar la actualización de proveedores en PostgreSQL para guardar sus categorías.')
+      return
+    }
     if (!token) {
       setError('No existe una sesión válida.')
       return
     }
 
     const nombreLimpio = nombre.trim()
+    if (!idsCategorias.length) {
+      setError('Selecciona una o varias categorías.')
+      return
+    }
     if (!nombreLimpio) {
       setError('Ingresa el nombre del proveedor.')
       return
@@ -164,10 +174,10 @@ export function SuppliersPage() {
         await editarProveedor(
           token,
           proveedorEditado.id_proveedor,
-          { nombre: nombreLimpio },
+          { nombre: nombreLimpio, ids_categorias: idsCategorias },
         )
       } else {
-        await crearProveedor(token, { nombre: nombreLimpio })
+        await crearProveedor(token, { nombre: nombreLimpio, ids_categorias: idsCategorias })
       }
 
       setModal(false)
@@ -392,7 +402,7 @@ export function SuppliersPage() {
         </div>
 
         <div className="catalog-admin-actions">
-          {administrador && permisos.crear && (
+          {(administrador || permisos.crear) && (
             <button
               className="catalog-admin-new"
               type="button"
@@ -478,6 +488,13 @@ export function SuppliersPage() {
           </div>
         </article>
       </div>
+
+      {!datos.categorias_proveedor_configurables && (
+        <div className="suppliers-warning" role="status">
+          Los proveedores están disponibles para consulta. Para asignar sus categorías,
+          falta completar la actualización de la base de datos.
+        </div>
+      )}
 
       {error && (
         <div className="suppliers-warning" role="alert">
@@ -646,16 +663,16 @@ export function SuppliersPage() {
 
                         {mostrarAcciones && <td>
                           <div className="catalog-admin-actions">
-                            {permisos.editar && <button
+                            {(administrador || permisos.editar) && <button
                               type="button"
                               onClick={() => abrirProveedor(proveedor)}
                             >Editar</button>}
-                            {permisos.eliminar && <DeleteRecordButton token={token} entidad="proveedores" id={proveedor.id_proveedor} nombre={proveedor.nombre} eliminado={() => void cargarProveedores(true)} />}
-                            {proveedor.activo && permisos.configurar && <button
+                            {(administrador || permisos.eliminar) && <DeleteRecordButton token={token} entidad="proveedores" id={proveedor.id_proveedor} nombre={proveedor.nombre} eliminado={() => void cargarProveedores(true)} />}
+                            {proveedor.activo && (administrador || permisos.configurar) && <button
                               type="button"
                               onClick={() => void reasignarProductos(proveedor)}
                             >Reasignar</button>}
-                            {(proveedor.activo ? permisos.desactivar : permisos.reactivar) && <button
+                            {(proveedor.activo ? (administrador || permisos.desactivar) : (administrador || permisos.reactivar)) && <button
                               className={proveedor.activo ? 'danger' : ''}
                               type="button"
                               onClick={() => void cambiarEstado(proveedor)}
@@ -677,8 +694,7 @@ export function SuppliersPage() {
                                     </strong>
 
                                     <span>
-                                    Se calculan según los productos
-                                    asociados al proveedor.
+                                    Categorías asignadas al proveedor.
                                     </span>
                                 </div>
                                 </div>
@@ -747,6 +763,28 @@ export function SuppliersPage() {
             onChange={(evento) => setNombre(evento.target.value)}
           />
         </label>
+
+        <fieldset className="suppliers-category-picker">
+          <legend>Categorías que atiende</legend>
+          <p>Selecciona una o varias categorías para este proveedor.</p>
+          {datos.categorias.filter((item) => item.activo || idsCategorias.includes(item.id_categoria)).map((item) => (
+            <label key={item.id_categoria}>
+              <input
+                type="checkbox"
+                checked={idsCategorias.includes(item.id_categoria)}
+                onChange={(evento) => setIdsCategorias((actuales) =>
+                  evento.target.checked
+                    ? [...actuales, item.id_categoria]
+                    : actuales.filter((id) => id !== item.id_categoria),
+                )}
+              />
+              {item.nombre}{!item.activo && ' (inactiva)'}
+            </label>
+          ))}
+          {!datos.categorias.some((item) => item.activo) && (
+            <p>Crea o activa una categoría antes de registrar un proveedor.</p>
+          )}
+        </fieldset>
       </CatalogDialog>
     </section>
   )

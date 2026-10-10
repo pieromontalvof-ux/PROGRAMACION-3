@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
@@ -469,7 +470,7 @@ export function PromotionsPage() {
                                           </span>
                                           <small>
                                             {opcion.contenido}{' '}
-                                            {opcion.unidad}
+                                            {formatearUnidad(opcion.unidad)}
                                             {' · '}
                                             {formatearPrecio(
                                               opcion

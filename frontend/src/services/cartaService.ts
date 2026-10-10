@@ -5,7 +5,7 @@ import type {
 } from '../types/carta'
 import type { FormularioReceta } from '../types/recipe'
 
-export type FormularioPresentacion = Pick<FormularioReceta, 'items' | 'categorias' | 'menajes' | 'tipos'> & { unidades: string[] }
+export type FormularioPresentacion = Pick<FormularioReceta, 'items' | 'categorias' | 'menajes' | 'tipos' | 'unidades_medida'> & { unidades: string[] }
 export interface EntradaPresentacion {
   id_item_carta: number | null; nombre_item: string; id_categoria_carta: number;
   tipo_item: string; contenido: string; unidad: string; id_menaje: number; precio: string; activo: boolean;

@@ -3,11 +3,13 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { guardarReceta, obtenerFormularioReceta } from '../../services/recipeService'
 import type { FormularioReceta, IngredienteDisponible, IngredienteEntrada, Receta, RecetaEntrada } from '../../types/recipe'
 import './RecipeEditor.css'
+import type { UnidadMedida } from '../../types/units'
+import { unidadesCompatibles, etiquetaUnidad, formatearUnidad, convertirCantidadVisible } from '../../utils/unitHelpers'
 
 export type Fila = IngredienteEntrada & { codigo: string; nombre: string; unidad: string }
 
-export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = false, disabled, tipo = 'PRODUCTO', bloquearAgregar = false }: {
-  titulo: string; filas: Fila[]; productos: IngredienteDisponible[]; cambiar: (filas: Fila[]) => void; unico?: boolean; disabled: boolean; tipo?: IngredienteEntrada['tipo_componente']; bloquearAgregar?: boolean
+export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = false, disabled, tipo = 'PRODUCTO', bloquearAgregar = false, unidades = [] }: {
+  titulo: string; filas: Fila[]; productos: IngredienteDisponible[]; cambiar: (filas: Fila[]) => void; unico?: boolean; disabled: boolean; tipo?: IngredienteEntrada['tipo_componente']; bloquearAgregar?: boolean; unidades?: UnidadMedida[]
 }) {
   const [busqueda, setBusqueda] = useState('')
   const esSubproducto = tipo === 'SUBPRODUCTO'
@@ -25,7 +27,7 @@ export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = f
     </label>
     {texto && !limiteAlcanzado && <div className="recipe-editor__results">
       {coincidencias.map((p) => <button key={p.id} type="button" disabled={disabled || filas.some((f) => f.tipo_componente === tipo && f.id === p.id)} onClick={() => agregar(p)}>
-        <span><b>{p.codigo}</b> · {p.nombre}</span><span>{p.unidad} <Plus size={16} /></span>
+        <span><b>{p.codigo}</b> · {p.nombre}</span><span>{formatearUnidad(p.unidad)} <Plus size={16} /></span>
       </button>)}
       {!coincidencias.length && <p>No se encontraron {esSubproducto ? 'subproductos' : 'productos'} activos.</p>}
     </div>}
@@ -33,7 +35,20 @@ export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = f
       {filas.map((fila, index) => <div className="recipe-editor__ingredient" key={`${fila.tipo_componente}-${fila.id}`}>
         <div><small>{fila.codigo}{fila.tipo_componente === 'SUBPRODUCTO' ? ' · Subproducto' : ''}</small><strong>{fila.nombre}</strong></div>
         <label>Cantidad<input type="number" min="0.001" max="999999999.999" step="0.001" required disabled={disabled} value={fila.cantidad} onChange={(e) => cambiar(filas.map((f, i) => i === index ? { ...f, cantidad: e.target.value } : f))} /></label>
-        <span className="recipe-editor__unit">{fila.unidad}</span>
+        <label>Unidad
+          <select disabled={disabled} value={fila.unidad_cantidad ?? fila.unidad}
+            onChange={(e) => cambiar(filas.map((f, i) => i === index ? {
+              ...f, unidad_cantidad: e.target.value,
+              cantidad: convertirCantidadVisible(f.cantidad, f.unidad_cantidad ?? f.unidad, e.target.value, unidades),
+            } : f))}>
+            {unidadesCompatibles(unidades, fila.unidad).map((u) => (
+              <option key={u.codigo} value={u.valor}>{etiquetaUnidad(unidades, u.valor)}</option>
+            ))}
+            {!unidadesCompatibles(unidades, fila.unidad).length && (
+              <option value={fila.unidad}>{formatearUnidad(fila.unidad)}</option>
+            )}
+          </select>
+        </label>
         <button className="recipe-editor__remove" type="button" disabled={disabled} aria-label={`Quitar ${fila.nombre}`} onClick={() => cambiar(filas.filter((_, i) => i !== index))}><Trash2 size={18} /></button>
       </div>)}
     </div> : <p className="recipe-editor__hint">Busca y agrega {unico ? 'el ingrediente base' : esSubproducto ? 'los subproductos que necesitas' : 'los productos que necesitas'}.</p>}
@@ -120,9 +135,9 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
     const entrada: RecetaEntrada = {
       id_presentacion_venta: form.id_presentacion_venta,
       instrucciones: form.instrucciones,
-      componentes: componentesActivos.map(({ tipo_componente, id, cantidad }) => ({ tipo_componente, id, cantidad })),
+      componentes: componentesActivos.map(({ tipo_componente, id, cantidad, unidad_cantidad }) => ({ tipo_componente, id, cantidad, unidad_cantidad })),
       grupo_salsa: usaOpciones ? { cantidad_maxima: Number(maximo), permite_repetir: repetir,
-        opciones: opciones.map(({ tipo_componente, id, cantidad }) => ({ tipo_componente, id, cantidad })) } : null,
+        opciones: opciones.map(({ tipo_componente, id, cantidad, unidad_cantidad }) => ({ tipo_componente, id, cantidad, unidad_cantidad })) } : null,
     }
     setGuardando(true)
     setError('')
@@ -135,7 +150,7 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
 
   return <div className="recipe-editor-backdrop">
     <form className="recipe-editor" role="dialog" aria-modal="true" aria-labelledby="recipe-editor-title" onSubmit={(e) => void guardar(e)}>
-      <header><div><h2 id="recipe-editor-title" tabIndex={-1}>{receta ? 'Editar receta' : 'Nueva receta'}</h2><p>{receta ? `${receta.codigo_item} · ${receta.item_carta} · ${receta.contenido} ${receta.unidad_presentacion}` : 'Selecciona una presentación de Carta que aún no tenga receta.'}</p></div><button type="button" aria-label="Cerrar editor" disabled={guardando} onClick={cerrar}><X /></button></header>
+      <header><div><h2 id="recipe-editor-title" tabIndex={-1}>{receta ? 'Editar receta' : 'Nueva receta'}</h2><p>{receta ? `${receta.codigo_item} · ${receta.item_carta} · ${receta.contenido} ${formatearUnidad(receta.unidad_presentacion)}` : 'Selecciona una presentación de Carta que aún no tenga receta.'}</p></div><button type="button" aria-label="Cerrar editor" disabled={guardando} onClick={cerrar}><X /></button></header>
       {error && <p className="recipe-editor__error" role="alert">{error}</p>}
       {!catalogo ? <p>Cargando opciones de la receta…</p> : <fieldset disabled={guardando}>
         {!receta && <>
@@ -147,13 +162,14 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
             </select></label>
             <label>Presentación sin receta<select required value={form.id_presentacion_venta || ''} onChange={e => elegirPresentacion(Number(e.target.value))}>
               <option value="">Seleccionar presentación</option>
-              {catalogo.presentaciones.filter(p => p.id_item_carta === form.id_item_carta && p.id_receta === null).map(p => <option key={p.id_presentacion_venta} value={p.id_presentacion_venta}>{p.contenido} {p.unidad} · {catalogo.menajes.find(m => m.id_menaje === p.id_menaje)?.nombre}{p.activo ? '' : ' (fuera de venta)'}</option>)}
+              {catalogo.presentaciones.filter(p => p.id_item_carta === form.id_item_carta && p.id_receta === null).map(p => <option key={p.id_presentacion_venta} value={p.id_presentacion_venta}>{p.contenido} {formatearUnidad(p.unidad)} · {catalogo.menajes.find(m => m.id_menaje === p.id_menaje)?.nombre}{p.activo ? '' : ' (fuera de venta)'}</option>)}
             </select></label>
           </div>
           {!catalogo.presentaciones.length && <p role="status">No hay presentaciones pendientes. Crea una en Carta → Presentaciones de venta. Las presentaciones que ya tienen receta se configuran desde Editar.</p>}
         </>}
         <p className="recipe-editor__hint">Los datos del artículo se editan en Carta → Presentaciones de venta.</p>
         <ListaIngredientes titulo="Productos de inventario" filas={productosSeleccionados} productos={catalogo.productos}
+          unidades={catalogo.unidades_medida}
           cambiar={cambiarProductos} bloquearAgregar={form.tipo_item === 'DIRECTO' && componentesActivos.length >= 1} disabled={guardando} />
         <section className="recipe-editor__subproducts">
           <label className="recipe-editor__check"><input type="checkbox" checked={usaSubproductos}
@@ -162,6 +178,7 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
             <p className="recipe-editor__hint">Agrega preparaciones internas ya registradas, con la cantidad que utiliza esta receta.
               Al desmarcar esta casilla, los subproductos no se incluirán al guardar.</p>
             <ListaIngredientes titulo="Subproductos de la preparación" tipo="SUBPRODUCTO" filas={subproductosSeleccionados}
+              unidades={catalogo.unidades_medida}
               productos={catalogo.subproductos} cambiar={cambiarSubproductos}
               bloquearAgregar={form.tipo_item === 'DIRECTO' && componentesActivos.length >= 1} disabled={guardando} />
           </>}
@@ -175,7 +192,7 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
           <label className="recipe-editor__check"><input type="checkbox" checked={usaOpciones} onChange={(e) => setUsaOpciones(e.target.checked)} />Agregar productos elegibles / opciones de salsa</label>
           {usaOpciones && <>
             <div className="recipe-editor__grid"><label>Cuántas opciones puede escoger<input type="number" required min="1" max="32767" step="1" value={maximo} onChange={(e) => setMaximo(e.target.value)} /></label><label className="recipe-editor__check"><input type="checkbox" checked={repetir} onChange={(e) => setRepetir(e.target.checked)} />Permitir repetir opciones</label></div>
-            <ListaIngredientes titulo="Opciones disponibles" filas={opciones} productos={catalogo.productos} cambiar={setOpciones} disabled={guardando} />
+            <ListaIngredientes titulo="Opciones disponibles" filas={opciones} productos={catalogo.productos} cambiar={setOpciones} disabled={guardando} unidades={catalogo.unidades_medida} />
           </>}
         </section>
       </fieldset>}

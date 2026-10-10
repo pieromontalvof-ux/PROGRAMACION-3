@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CatalogDialog } from './CatalogDialog'
 import { formularioPresentacion, guardarPresentacion, type FormularioPresentacion } from '../../services/cartaService'
 import type { PresentacionVenta } from '../../types/carta'
+import { etiquetaUnidad, convertirCantidadVisible } from '../../utils/unitHelpers'
 
 export function PresentationEditor({ token, presentacion: p, cerrar, guardado }: {
   token: string; presentacion: PresentacionVenta | null; cerrar: () => void; guardado: (mensaje: string) => void
@@ -48,7 +49,10 @@ export function PresentationEditor({ token, presentacion: p, cerrar, guardado }:
       <label>Tipo<select disabled={!p && !nuevo} value={form.tipo_item} onChange={e => setForm({ ...form, tipo_item: e.target.value })}>{catalogo.tipos.map(t => <option key={t}>{t}</option>)}</select></label>
       {p && <p>El nombre, la categoría y el tipo se comparten entre todas las presentaciones de este artículo. Cambiar la categoría conserva su código.</p>}
       <label>Contenido<input required type="number" min="0.001" max="999999999.999" step="0.001" value={form.contenido} onChange={e => setForm({ ...form, contenido: e.target.value })} /></label>
-      <label>Unidad<select required value={form.unidad} onChange={e => setForm({ ...form, unidad: e.target.value })}><option value="">Seleccionar</option>{catalogo.unidades.map(u => <option key={u}>{u}</option>)}</select></label>
+      <label>Unidad<select required value={form.unidad} onChange={e => setForm({ ...form, unidad: e.target.value,
+        contenido: convertirCantidadVisible(form.contenido, form.unidad, e.target.value, catalogo.unidades_medida),
+      })}><option value="">Seleccionar</option>{catalogo.unidades.map(u => <option key={u} value={u}>{etiquetaUnidad(catalogo.unidades_medida, u)}</option>)}</select></label>
+      <p>Los gramos y mililitros se convierten a kg y L al guardar. El tamaño de una porción lo define esta presentación.</p>
       <label>Menaje<select required value={form.id_menaje || ''} onChange={e => setForm({ ...form, id_menaje: Number(e.target.value) })}><option value="">Seleccionar</option>{catalogo.menajes.filter(m => m.activo || m.id_menaje === p?.id_menaje).map(m => <option key={m.id_menaje} value={m.id_menaje}>{m.nombre}</option>)}</select></label>
       <label>Precio (S/)<input required type="number" min="0" max="99999999.99" step="0.01" value={form.precio} onChange={e => setForm({ ...form, precio: e.target.value })} /></label>
       <label>Estado de venta<select value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm({ ...form, activo: e.target.value === 'activo' })}><option value="inactivo">Inactiva</option><option value="activo">Activa</option></select></label>

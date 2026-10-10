@@ -73,6 +73,7 @@ export interface IngredienteDisponible {
 }
 
 export interface FormularioReceta {
+  unidades_medida: import('./units').UnidadMedida[]
   tipos: string[]
   unidades_presentacion: string[]
   categorias: { id_categoria_carta: number; nombre: string; activo: boolean }[]
@@ -84,6 +85,7 @@ export interface FormularioReceta {
 }
 
 export interface IngredienteEntrada {
+  unidad_cantidad?: string
   tipo_componente: 'PRODUCTO' | 'SUBPRODUCTO'
   id: number
   cantidad: string

@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { Link } from 'react-router-dom'
 import {
   AlertCircle,
@@ -427,7 +428,7 @@ export function RegisterMovementPage() {
                 <b>{producto.codigo}</b>
                 <strong>{producto.nombre}</strong>
                 <small>
-                  {producto.categoria} · {producto.unidad}
+                  {producto.categoria} · {formatearUnidad(producto.unidad)}
                 </small>
               </div>
               <Plus />
@@ -469,7 +470,7 @@ export function RegisterMovementPage() {
                       )
                     }
                   />
-                  <b>{producto.unidad}</b>
+                  <b>{formatearUnidad(producto.unidad)}</b>
                 </span>
               </label>
               <button

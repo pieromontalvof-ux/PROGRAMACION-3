@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad, registrar_cambio
-from app.modules.recetas.editor_repository import opciones_check
+from app.core.units import catalogo_unidades, valores_unidades, normalizar_medida, unidad_almacenamiento, obtener_unidad
 from app.modules.recetas.editor_service import DatosInvalidos, cantidad, validar_componentes
 
 
@@ -14,7 +14,8 @@ def ejecutar(sql, params=None):
 
 def formulario_subproducto():
     productos = ejecutar('SELECT id_producto AS id,codigo,nombre,unidad,activo FROM producto ORDER BY nombre').mappings().all()
-    return {'unidades': opciones_check('ck_subproducto_unidad'),
+    return {'unidades': valores_unidades('subproducto'),
+            'unidades_medida': catalogo_unidades(),
             'productos': [dict(p) for p in productos]}, 200
 
 
@@ -41,12 +42,14 @@ def guardar_subproducto(id_usuario, datos, id_subproducto=None):
         if not isinstance(nombre, str) or not 1 <= len(nombre.strip()) <= 150:
             raise DatosInvalidos('Escribe un nombre de hasta 150 caracteres')
         nombre = nombre.strip()
-        unidad = datos.get('unidad')
-        if unidad not in opciones_check('ck_subproducto_unidad'):
-            raise DatosInvalidos('Selecciona una unidad de rendimiento valida')
-        if anterior and unidad != anterior['unidad']:
+        try:
+            rendimiento, unidad = normalizar_medida(datos.get('rendimiento'), datos.get('unidad'), 'subproducto')
+        except ValueError as error:
+            raise DatosInvalidos(str(error)) from None
+        rendimiento = cantidad(rendimiento)
+        unidad = unidad_almacenamiento(unidad)
+        if anterior and obtener_unidad(unidad).codigo != obtener_unidad(anterior['unidad']).codigo:
             raise DatosInvalidos('La unidad base no se puede cambiar: las recetas usan esa unidad. Crea otro subproducto para una unidad diferente')
-        rendimiento = cantidad(datos.get('rendimiento'))
         instrucciones = datos.get('instruccion', '')
         if not isinstance(instrucciones, str):
             raise DatosInvalidos('Las instrucciones deben ser texto')

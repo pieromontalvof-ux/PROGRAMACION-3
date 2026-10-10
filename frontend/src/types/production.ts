@@ -32,6 +32,7 @@ export interface RespuestaSubproductos {
 }
 
 export interface FormularioSubproducto {
+  unidades_medida: import('./units').UnidadMedida[]
   unidades: string[]
   productos: import('./recipe').IngredienteDisponible[]
 }

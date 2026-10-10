@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
@@ -276,7 +277,7 @@ export function RecipesPage() {
                       </td>
                       <td>{receta.categoria_carta}</td>
                       <td>
-                        {receta.contenido} {receta.unidad_presentacion}
+                        {receta.contenido} {formatearUnidad(receta.unidad_presentacion)}
                       </td>
                       <td>
                         {receta.tipo_item}
@@ -336,7 +337,7 @@ export function RecipesPage() {
                                   </header>
                                   <strong>{comp.nombre_componente}</strong>
                                   <span>
-                                    {comp.cantidad} {comp.unidad}
+                                    {comp.cantidad} {formatearUnidad(comp.unidad)}
                                   </span>
                                 </article>
                               ))}
@@ -386,7 +387,7 @@ export function RecipesPage() {
                                           <small>{opcion.codigo}</small>
                                           <strong>{opcion.nombre}</strong>
                                           <span>
-                                            {opcion.cantidad} {opcion.unidad}
+                                            {opcion.cantidad} {formatearUnidad(opcion.unidad)}
                                           </span>
                                         </div>
                                       </article>

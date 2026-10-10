@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -146,7 +147,7 @@ export function SauceGroupsPage() {
                     <tr>
                       <td><b className="production-code">{item.codigo_item}</b></td>
                       <td><strong>{item.item_carta}</strong><small className="production-subtext">{item.categoria_carta}</small></td>
-                      <td>{numero(item.contenido)} {item.unidad_presentacion}</td>
+                      <td>{numero(item.contenido)} {formatearUnidad(item.unidad_presentacion)}</td>
                       <td>{item.cantidad_maxima} {item.cantidad_maxima === 1 ? 'salsa' : 'salsas'}</td>
                       <td>{item.total_opciones}</td>
                       <td><span className={item.activo ? 'production-status active' : 'production-status inactive'}>{item.activo ? 'Activo' : 'Inactivo'}</span></td>
@@ -162,7 +163,7 @@ export function SauceGroupsPage() {
                                 <span className={opcion.es_sin_salsa ? 'special' : ''} key={opcion.id_producto ?? `sin-salsa-${indice}`}>
                                   <b>{opcion.producto}</b>
                                   {!opcion.es_sin_salsa && opcion.cantidad !== null
-                                    ? `${numero(opcion.cantidad)} ${opcion.unidad ?? ''}`
+                                    ? `${numero(opcion.cantidad)} ${formatearUnidad(opcion.unidad)}`
                                     : 'Sin consumo de producto'}
                                 </span>
                               ))}

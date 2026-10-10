@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../../utils/unitHelpers'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { formularioPromocion, guardarPromocion, type PresentacionPromocion } from '../../services/promotionService'
 import type { PromocionDetalle } from '../../types/promotion'
@@ -78,12 +79,12 @@ export function PromotionEditor({ token, promocion: p, cerrar, guardado }: {
             </div>
             <label>Buscar artículo de carta<input type="search" placeholder="Nombre o código del artículo" value={g.busqueda} onChange={e => cambiar(g.clave, { busqueda: e.target.value })} /></label>
             {texto && <div className="recipe-editor__results">{resultados.map(o => <button type="button" key={o.id_presentacion_venta} onClick={() => cambiar(g.clave, { opciones: [...g.opciones, o.id_presentacion_venta], busqueda: '' })}>
-              <span>{o.codigo} · {o.nombre} · {o.contenido} {o.unidad} · {o.menaje}</span><span>Agregar</span>
+              <span>{o.codigo} · {o.nombre} · {o.contenido} {formatearUnidad(o.unidad)} · {o.menaje}</span><span>Agregar</span>
             </button>)}{!resultados.length && <p>No hay coincidencias activas disponibles.</p>}</div>}
             {g.opciones.map(id => {
               const o = catalogo.find(x => x.id_presentacion_venta === id)
               return <div key={id} className="recipe-editor__ingredient" style={{ gridTemplateColumns: '1fr auto' }}>
-                <div><strong>{o ? `${o.codigo} · ${o.nombre}` : `Presentación ${id} no disponible`}</strong><small>{o && `${o.contenido} ${o.unidad} · ${o.menaje}${o.activo ? '' : ' · Inactiva'}`}</small></div>
+                <div><strong>{o ? `${o.codigo} · ${o.nombre}` : `Presentación ${id} no disponible`}</strong><small>{o && `${o.contenido} ${formatearUnidad(o.unidad)} · ${o.menaje}${o.activo ? '' : ' · Inactiva'}`}</small></div>
                 <button type="button" aria-label={`Quitar ${o?.nombre ?? id}`} onClick={() => cambiar(g.clave, { opciones: g.opciones.filter(x => x !== id) })}>Quitar</button>
               </div>
             })}

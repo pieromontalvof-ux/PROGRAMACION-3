@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import {
   useCallback,
   useEffect,
@@ -688,7 +689,7 @@ export default function InventoryPage() {
                     </td>
 
                     <td>{producto.categoria}</td>
-                    <td>{producto.unidad}</td>
+                    <td>{formatearUnidad(producto.unidad)}</td>
 
                     <td>
                       <div className="inventory-count">
@@ -710,7 +711,7 @@ export default function InventoryPage() {
                           }
                         />
 
-                        <span>{producto.unidad}</span>
+                        <span>{formatearUnidad(producto.unidad)}</span>
                       </div>
                     </td>
 

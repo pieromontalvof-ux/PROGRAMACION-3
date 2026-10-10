@@ -2,6 +2,8 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity
 
 from app.core.permissions import requiere_permiso
+from app.core.units import catalogo_unidades
+from app.modules.catalogos.repository import CategoriasProveedorNoDisponibles
 from app.modules.catalogos.service import (
     crear_categoria_producto,
     crear_producto_catalogo,
@@ -26,8 +28,26 @@ from app.modules.catalogos.service import (
 catalogos_bp = Blueprint("catalogos", __name__)
 
 
+@catalogos_bp.errorhandler(CategoriasProveedorNoDisponibles)
+def categorias_proveedor_sin_migracion(error):
+    return jsonify({"mensaje": str(error)}), 503
+
+
 def _usuario():
     return int(get_jwt_identity())
+
+
+@catalogos_bp.get("/unidades")
+@requiere_permiso(4, "consultar")
+def consultar_unidades():
+    contexto = request.args.get("contexto")
+    try:
+        unidades = catalogo_unidades(contexto)
+    except ValueError as error:
+        return jsonify({"mensaje": str(error)}), 400
+    return jsonify({"estandar": "UNECE Recommendation 20",
+                    "simbolos": "SI / BIPM",
+                    "unidades": unidades}), 200
 
 
 @catalogos_bp.get("/productos")

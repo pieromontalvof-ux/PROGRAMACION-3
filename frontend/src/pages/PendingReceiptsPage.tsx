@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { ChevronDown, ChevronUp, LoaderCircle, PackageCheck } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 
@@ -136,7 +137,7 @@ export function PendingReceiptsPage() {
                     {item.productos.map((producto) => (
                       <div key={producto.id_producto}>
                         <span><b>{producto.codigo}</b> {producto.nombre}</span>
-                        <small>Solicitado: {producto.cantidad_solicitada} · Recibido: {producto.cantidad_recibida} · Pendiente: {producto.cantidad_pendiente} {producto.unidad}</small>
+                        <small>Solicitado: {producto.cantidad_solicitada} · Recibido: {producto.cantidad_recibida} · Pendiente: {producto.cantidad_pendiente} {formatearUnidad(producto.unidad)}</small>
                         <input
                           type="number"
                           min="0"

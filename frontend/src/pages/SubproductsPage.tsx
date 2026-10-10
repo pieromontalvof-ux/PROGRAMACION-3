@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
@@ -200,7 +201,7 @@ export function SubproductsPage() {
                     <tr>
                       <td><b className="production-code">{item.codigo}</b></td>
                       <td><strong>{item.nombre}</strong></td>
-                      <td>{numero(item.rendimiento)} {item.unidad}</td>
+                      <td>{numero(item.rendimiento)} {formatearUnidad(item.unidad)}</td>
                       <td>{item.total_ingredientes}</td>
                       <td><span className={item.activo ? 'production-status active' : 'production-status inactive'}>{item.activo ? 'Activo' : 'Inactivo'}</span></td>
                       <td><button className="production-detail-button" type="button" onClick={() => setAbierto(estaAbierto ? null : item.id_subproducto)}><ChevronDown className={estaAbierto ? 'open' : ''} /></button></td>
@@ -216,7 +217,7 @@ export function SubproductsPage() {
                               {item.ingredientes.length ? item.ingredientes.map((ingrediente) => (
                                 <span key={ingrediente.id_producto}>
                                   <b>{ingrediente.producto}</b>
-                                  {numero(ingrediente.cantidad)} {ingrediente.unidad}
+                                  {numero(ingrediente.cantidad)} {formatearUnidad(ingrediente.unidad)}
                                 </span>
                               )) : <p>No tiene ingredientes asociados.</p>}
                             </div>

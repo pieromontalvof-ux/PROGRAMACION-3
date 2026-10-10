@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
@@ -324,7 +325,7 @@ export function SalesPresentationsPage() {
                   <td><strong>{item.item}</strong></td>
                   <td><span className="carta-inline"><Layers3 />{item.categoria}</span></td>
                   <td>{item.tipo}</td>
-                  <td>{formatearNumero(item.contenido)} {item.unidad}</td>
+                  <td>{formatearNumero(item.contenido)} {formatearUnidad(item.unidad)}</td>
                   <td><span className="carta-inline"><Utensils />{item.menaje}</span></td>
                   <td><strong>{formatearPrecio(item.precio)}</strong></td>
                   <td>

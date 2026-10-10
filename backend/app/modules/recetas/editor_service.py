@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import IntegrityError
 
 from app.core.extensions import db
+from app.core.units import convertir_cantidad
 from app.modules.auditoria.service import registrar_actividad, registrar_cambio
 from app.modules.recetas import editor_repository as repo
 
@@ -49,8 +50,14 @@ def validar_componentes(componentes, existentes=(), solo_productos=False):
         if registro is None or (not registro["activo"] and clave not in existentes):
             raise DatosInvalidos("El ingrediente no existe o está inactivo")
         # La unidad viene de inventario, nunca de un valor enviado por el cliente.
+        valor = componente.get("cantidad")
+        if "unidad_cantidad" in componente:
+            try:
+                valor = convertir_cantidad(valor, componente["unidad_cantidad"], registro["unidad"])
+            except ValueError as error:
+                raise DatosInvalidos(str(error)) from None
         resultado.append({"tipo_componente": tipo, "id": id_componente,
-                          "cantidad": cantidad(componente.get("cantidad")), "unidad": registro["unidad"]})
+                          "cantidad": cantidad(valor), "unidad": registro["unidad"]})
     return resultado
 
 

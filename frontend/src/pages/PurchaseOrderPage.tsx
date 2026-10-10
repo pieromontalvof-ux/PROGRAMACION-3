@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import { LoaderCircle, Plus, Save, Send, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -164,8 +165,8 @@ export function PurchaseOrderPage() {
                 <tr key={p.id_producto}>
                   <td><b>{p.codigo}</b><br />{p.nombre}</td>
                   <td>{p.proveedor}</td>
-                  <td>{p.stock_actual ?? 'Sin conteo'} {p.unidad}</td>
-                  <td>{p.presentacion} {p.unidad}</td>
+                  <td>{p.stock_actual ?? 'Sin conteo'} {formatearUnidad(p.unidad)}</td>
+                  <td>{p.presentacion} {formatearUnidad(p.unidad)}</td>
                   <td><input type="number" min="0.001" step="any" value={p.cantidad_solicitada} onChange={(e) => setDetalles((actuales) => actuales.map((item) => item.id_producto === p.id_producto ? { ...item, cantidad_solicitada: e.target.value } : item))} /></td>
                   <td>{p.origen === 'SUGERIDO' ? 'Sugerido' : 'Manual'}</td>
                   <td><button className="remove" onClick={() => setDetalles((actuales) => actuales.filter((item) => item.id_producto !== p.id_producto))}><Trash2 /></button></td>

@@ -1,6 +1,7 @@
 """PostgreSQL aislado: exporta SOLO esquema y usa exclusivamente datos ficticios.
 
 Desde backend: .venv/Scripts/python.exe tests/run_local_scope_integration.py
+Para una suite concreta, añade patrones: test_units.py test_subproduct_editor.py.
 No aplica migraciones ni escribe en la conexion habitual del proyecto.
 """
 import os
@@ -125,12 +126,23 @@ try:
             c.execute(text(pagos.replace("current_database()<>'barbarito'", "current_database()<>'barbarito_test'")))
     engine.dispose()
     env = {**local_env, 'DATABASE_URL': test_url, 'LOCAL_SCOPE_TEST_DB': '1'}
-    result = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
+    patterns = sys.argv[1:]
+    test_command = [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v']
+    if patterns:
+        test_command = [sys.executable, '-c',
+            "import sys,unittest; suite=unittest.TestSuite(); "
+            "[suite.addTests(unittest.TestLoader().discover('tests',pattern=p)) for p in sys.argv[1:]]; "
+            "result=unittest.TextTestRunner(verbosity=2).run(suite); sys.exit(not result.wasSuccessful())",
+            *patterns]
+    result = subprocess.run(test_command,
         cwd=ROOT / 'backend', env=env, creationflags=flags, capture_output=True, text=True)
     print(result.stdout + result.stderr, flush=True)
     (run_dir / 'tests.log').write_text(result.stdout + result.stderr, encoding='utf-8')
     if result.returncode:
         raise RuntimeError('Fallo la suite de pruebas en PostgreSQL temporal')
+    if patterns:
+        print('Pruebas seleccionadas completadas en PostgreSQL temporal. Ningun dato real fue modificado.')
+        sys.exit(0)
     with engine.begin() as c:
         assert c.execute(text('SELECT current_database()')).scalar_one() == 'barbarito_test'
         c.execute(text("INSERT INTO perfiles(id_perfil,nombre,descripcion) VALUES(3,'Supervisor','Prueba'),(4,'Miembro','Prueba') ON CONFLICT DO NOTHING"))

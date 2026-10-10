@@ -1,3 +1,4 @@
+import { formatearUnidad } from '../utils/unitHelpers'
 import {
   ChevronDown,
   ChevronUp,
@@ -179,9 +180,9 @@ export function PurchaseOrderHistoryPage() {
                       <div className="history-products">
                         {detalle.orden.detalles.map((item) => <article key={item.id_orden_compra_detalle}>
                           <div><b>{item.codigo} · {item.nombre}</b><small>{item.proveedor}</small></div>
-                          <span>Pedido: {numero(item.cantidad_solicitada)} {item.unidad}</span>
-                          <span>Recibido: {numero(item.cantidad_recibida)} {item.unidad}</span>
-                          <span>Pendiente: {numero(item.cantidad_pendiente)} {item.unidad}</span>
+                          <span>Pedido: {numero(item.cantidad_solicitada)} {formatearUnidad(item.unidad)}</span>
+                          <span>Recibido: {numero(item.cantidad_recibida)} {formatearUnidad(item.unidad)}</span>
+                          <span>Pendiente: {numero(item.cantidad_pendiente)} {formatearUnidad(item.unidad)}</span>
                         </article>)}
                       </div>
                       {orden.motivo_cierre && <p className="history-reason"><b>Motivo:</b> {orden.motivo_cierre}</p>}

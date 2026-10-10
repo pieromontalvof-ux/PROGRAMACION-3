@@ -4,6 +4,7 @@ import { ListaIngredientes, type Fila } from './RecipeEditor'
 import { guardarSubproducto, obtenerFormularioSubproducto } from '../../services/productionService'
 import type { FormularioSubproducto, SubproductoDetalle } from '../../types/production'
 import './SubproductEditor.css'
+import { etiquetaUnidad, convertirCantidadVisible } from '../../utils/unitHelpers'
 
 export function SubproductEditor({ token, subproducto, cerrar, guardado }: {
   token: string
@@ -48,7 +49,7 @@ export function SubproductEditor({ token, subproducto, cerrar, guardado }: {
     setError('')
     try {
       const respuesta = await guardarSubproducto(token, {
-        ...form, ingredientes: ingredientes.map(({ id, cantidad }) => ({ id, cantidad, tipo_componente: 'PRODUCTO' })),
+        ...form, ingredientes: ingredientes.map(({ id, cantidad, unidad_cantidad }) => ({ id, cantidad, unidad_cantidad, tipo_componente: 'PRODUCTO' })),
       }, subproducto?.id_subproducto)
       guardado(respuesta.mensaje)
     } catch (e) {
@@ -75,9 +76,11 @@ export function SubproductEditor({ token, subproducto, cerrar, guardado }: {
         </label>
         <div className="recipe-editor__grid">
           <label>Unidad del rendimiento
-            <select required disabled={!!subproducto} value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value })}>
+            <select required disabled={!!subproducto} value={form.unidad} onChange={(e) => setForm({ ...form, unidad: e.target.value,
+              rendimiento: convertirCantidadVisible(form.rendimiento, form.unidad, e.target.value, catalogo?.unidades_medida ?? []),
+            })}>
               <option value="">Selecciona una unidad</option>
-              {(catalogo?.unidades ?? (subproducto ? [subproducto.unidad] : [])).map((u) => <option key={u} value={u}>{u}</option>)}
+              {(catalogo?.unidades ?? (subproducto ? [subproducto.unidad] : [])).map((u) => <option key={u} value={u}>{etiquetaUnidad(catalogo?.unidades_medida ?? [], u)}</option>)}
             </select>
           </label>
           <label>Cantidad obtenida
@@ -91,6 +94,7 @@ export function SubproductEditor({ token, subproducto, cerrar, guardado }: {
         <p className="recipe-editor__hint">Indica cuánto se obtiene usando todas las cantidades de ingredientes de abajo.
           {subproducto && ' La unidad se conserva para no alterar las recetas que usan este subproducto.'}</p>
         <ListaIngredientes titulo="Ingredientes del subproducto" filas={ingredientes} productos={catalogo?.productos ?? []}
+          unidades={catalogo?.unidades_medida}
           cambiar={setIngredientes} disabled={guardando || !catalogo} />
         <label>Instrucciones de preparación
           <textarea rows={4} value={form.instruccion} onChange={(e) => setForm({ ...form, instruccion: e.target.value })} />

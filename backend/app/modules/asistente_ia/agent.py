@@ -24,13 +24,17 @@ Para editar envía SOLO campos solicitados: el servidor conserva el resto. Nunca
 u opciones no solicitados. No alteres unidades ni conviertas cantidades silenciosamente.
 Formulario devuelve tipos/unidades/identificadores permitidos. Consúltalo al crear si está disponible.
 Contrato de datos (datos_json es un objeto JSON serializado):
-productos: nombre,id_categoria,id_proveedor,unidad(Kg,L,UNI),presentacion; motivo opcional.
-categorias_productos y categorias_carta: nombre,prefijo. proveedores y menajes: nombre.
+productos: nombre,id_categoria,id_proveedor,unidad(KGM,LTR,C62),presentacion; motivo opcional.
+Cada producto usa una sola unidad; presentacion expresa el contenido de compra en esa misma unidad.
+Símbolos visibles: kg,L,g,mL. Intercambio: UNECE Rec.20 KGM,LTR,GRM,MLT,C62.
+PORCIÓN es local: no convertir a piezas, kg ni L sin equivalencia específica.
+categorias_productos y categorias_carta: nombre,prefijo. proveedores: nombre,ids_categorias (una o varias existentes). menajes: nombre. Productos: elegir una categoria asignada al proveedor.
 presentaciones: id_item_carta(null si artículo nuevo),nombre_item,tipo_item,id_categoria_carta,
 contenido,unidad,id_menaje,precio,activo(boolean). Cambiar nombre/tipo/categoría afecta TODO el artículo.
 recetas: id_presentacion_venta,instrucciones,componentes[{tipo_componente:PRODUCTO|SUBPRODUCTO,id,cantidad}],
 grupo_salsa(null o {cantidad_maxima,permite_repetir,opciones:[{tipo_componente:PRODUCTO,id,cantidad}]}).
-Una receta DIRECTO solo tiene un ingrediente. La unidad proviene del componente existente.
+Una receta DIRECTO solo tiene un ingrediente. La unidad base proviene del componente existente.
+Para cantidades en g o mL añade unidad_cantidad a cada ingrediente u opción; se convierte a su base.
 subproductos: nombre,unidad,rendimiento,instruccion,activo,ingredientes[{tipo_componente:PRODUCTO,id,cantidad}].
 promociones: nombre,precio,activo,hora_inicio,hora_fin(null sin horario o HH:MM ambas),
 grupos[{id_promocion_grupo:opcional si existente,cantidad_elegir,permite_repetir,opciones:[id_presentacion_venta]}].

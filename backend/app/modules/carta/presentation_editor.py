@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import IntegrityError
 
 from app.core.extensions import db
+from app.core.units import catalogo_unidades, valores_unidades, normalizar_medida, unidad_almacenamiento, obtener_unidad
 from app.modules.auditoria.service import registrar_actividad, registrar_cambio
 from app.modules.recetas import editor_repository as repo
 from app.modules.recetas.editor_service import DatosInvalidos, cantidad, identidad
@@ -10,7 +11,8 @@ from app.modules.recetas.editor_service import DatosInvalidos, cantidad, identid
 
 def formulario_presentacion():
     return {"tipos": repo.opciones_check('ck_item_carta_tipo'),
-            "unidades": repo.opciones_check('ck_presentacion_venta_unidad'),
+            "unidades": valores_unidades('presentacion'),
+            "unidades_medida": catalogo_unidades('presentacion'),
             "categorias": repo.filas('SELECT id_categoria_carta, nombre, activo FROM categoria_carta ORDER BY nombre'),
             "menajes": repo.filas('SELECT id_menaje, nombre, activo FROM menaje ORDER BY nombre'),
             "items": repo.filas('SELECT id_item_carta, codigo, nombre, tipo, id_categoria_carta, activo FROM item_carta ORDER BY nombre')}, 200
@@ -55,10 +57,12 @@ def guardar_presentacion(id_usuario, datos, id_presentacion=None):
             raise DatosInvalidos('Para cambiar el articulo utiliza Editar una presentacion existente')
         if repo.ejecutar('SELECT EXISTS(SELECT 1 FROM item_carta WHERE lower(trim(nombre))=lower(:nombre) AND id_item_carta<>:id)', {'nombre': nombre, 'id': id_item or 0}).scalar():
             raise DatosInvalidos('Ya existe ese articulo; seleccionalo en Articulo existente')
-        unidad = datos.get('unidad')
-        if unidad not in repo.opciones_check('ck_presentacion_venta_unidad'):
-            raise DatosInvalidos('Selecciona una unidad valida')
-        contenido = cantidad(datos.get('contenido'))
+        try:
+            contenido, unidad = normalizar_medida(datos.get('contenido'), datos.get('unidad'), 'presentacion')
+        except ValueError as error:
+            raise DatosInvalidos(str(error)) from None
+        contenido = cantidad(contenido)
+        unidad = unidad_almacenamiento(unidad)
         menaje = identidad(datos.get('id_menaje'))
         if not repo.filas('SELECT id_menaje FROM menaje WHERE id_menaje=:id AND activo FOR SHARE', {'id': menaje}):
             if not anterior or anterior['id_menaje'] != menaje:
