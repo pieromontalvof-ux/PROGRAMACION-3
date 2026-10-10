@@ -19,6 +19,7 @@ frontend/dist/
 
 # Local databases, exports, and logs
 *.backup
+!/database/barbarito_completa_20261010.backup
 *.dump
 *.sqlite
 *.sqlite3
