@@ -81,7 +81,7 @@ def validar(datos):
 
 
 def consumos(lineas):
-    """Las recetas están expresadas por presentación; subproductos, por rendimiento."""
+    """Las promociones cobran una vez, pero consumen cada presentación elegida y repuesta."""
     totales = defaultdict(Decimal)
 
     def producto(identidad, cantidad, unidad):
@@ -91,15 +91,18 @@ def consumos(lineas):
             raise Conflict('Revisa las unidades y cantidades de los ingredientes antes de cobrar')
         totales[identidad] += cantidad
 
-    for linea in lineas:
+    def consumir_presentacion(identidad_presentacion, cantidad_unidades, opciones):
         receta = db.session.execute(text('''SELECT id_receta FROM receta
-            WHERE id_presentacion_venta=:id AND activo'''), {'id': linea['id_presentacion']}).scalar()
+            WHERE id_presentacion_venta=:id AND activo'''), {'id': identidad_presentacion}).scalar()
         detalles = [] if receta is None else db.session.execute(text(
             'SELECT * FROM receta_detalle WHERE id_receta=:id'), {'id': receta}).mappings().all()
-        if not detalles:
-            raise Conflict(f"Falta configurar la receta de {nombre_presentacion(linea['nombre'])}. No se registró el cobro.")
+        fila = db.session.execute(text('''SELECT ic.nombre FROM presentacion_venta pv
+            JOIN item_carta ic USING(id_item_carta) WHERE pv.id_presentacion_venta=:id'''),
+            {'id': identidad_presentacion}).mappings().first()
+        if not detalles or not fila:
+            raise Conflict('Falta configurar la receta de la presentación. No se registró el cobro.')
         for detalle in detalles:
-            cantidad = detalle['cantidad'] * linea['cantidad']
+            cantidad = detalle['cantidad'] * cantidad_unidades
             if detalle['tipo_componente'] == 'PRODUCTO':
                 producto(detalle['id_producto'], cantidad, detalle['unidad'])
             else:
@@ -111,17 +114,24 @@ def consumos(lineas):
                     raise Conflict(f"Revisa el rendimiento y los ingredientes de {sub['nombre']}")
                 for ingrediente in ingredientes:
                     producto(ingrediente['id_producto'], cantidad * ingrediente['cantidad'] / sub['rendimiento'], ingrediente['unidad'])
-        for opcion in linea['opciones']:
+        for opcion in opciones:
             # Los pedidos nuevos guardan la identidad; los anteriores conservan el ID de opción.
             identidad = opcion.get('id_producto')
             if identidad is None:
                 identidad = db.session.execute(text('''SELECT o.id_producto FROM grupo_salsa_opcion o
                     JOIN grupo_salsa g USING(id_grupo_salsa)
                     WHERE o.id_grupo_salsa_opcion=:id AND g.id_presentacion_venta=:presentacion'''),
-                    {'id': opcion['id'], 'presentacion': linea['id_presentacion']}).scalar()
+                    {'id': opcion['id'], 'presentacion': identidad_presentacion}).scalar()
             if identidad is None:
                 raise Conflict('No se puede identificar una opción enviada. Revisa la receta antes de cobrar.')
-            producto(identidad, Decimal(str(opcion['cantidad'])) * linea['cantidad'], opcion['unidad'])
+            producto(identidad, Decimal(str(opcion['cantidad'])) * cantidad_unidades, opcion['unidad'])
+
+    for linea in lineas:
+        if linea['id_promocion'] is not None:
+            for seleccion in linea['selecciones_promocion']:
+                consumir_presentacion(seleccion['id_presentacion'], linea['cantidad'], seleccion['opciones'])
+        else:
+            consumir_presentacion(linea['id_presentacion'], linea['cantidad'], linea['opciones'])
     redondeados = {identidad: valor.quantize(Decimal('.001'), rounding=ROUND_HALF_UP)
                   for identidad, valor in totales.items()}
     if any(v <= 0 or v >= Decimal('1000000000') for v in redondeados.values()):

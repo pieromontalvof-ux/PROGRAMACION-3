@@ -92,8 +92,12 @@ def operar(mesa,accion):
     WHERE p.id_local=:local AND p.mesa=:mesa AND p.estado='ENVIADO' AND l.id_linea=ANY(:ids)
     AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea)"""),{'local':s['id_local'],'mesa':mesa,'ids':ids}).mappings().all()
    if len(validas)!=len(ids):raise Conflict('El producto cambio o ya fue eliminado. Recarga la mesa.')
-   for linea in validas:db.session.execute(text('INSERT INTO salon_linea_anulada(id_linea,id_responsable) VALUES(:id,:usuario)'),{'id':linea['id_linea'],'usuario':s['id_usuario']})
-   descripcion=f"Elimino de {mesa}: "+', '.join(f"{l['cantidad']} x {l['nombre']}" for l in validas)
+   reposiciones=db.session.execute(text('''SELECT id_linea,nombre,cantidad FROM salon_pedido_linea
+    WHERE id_barra_libre=ANY(:ids) AND NOT EXISTS(
+     SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=salon_pedido_linea.id_linea)'''),{'ids':ids}).mappings().all()
+   anulables=[*validas,*reposiciones]
+   for linea in anulables:db.session.execute(text('INSERT INTO salon_linea_anulada(id_linea,id_responsable) VALUES(:id,:usuario)'),{'id':linea['id_linea'],'usuario':s['id_usuario']})
+   descripcion=f"Elimino de {mesa}: "+', '.join(f"{l['cantidad']} x {l['nombre']}" for l in anulables)
   else:
    if any(p['estado']=='BORRADOR' for p in filas):raise Conflict('Envia o cancela el borrador guardado antes de mover o reasignar')
    usuario=filas[0]['id_usuario']

@@ -166,7 +166,7 @@ export function Topbar({ abrirMenu }: TopbarProps) {
         </div>
       )}
 
-      {[2, 3, 4].includes(perfilActivo?.id_perfil ?? 0) && <label className="topbar-local-selector">
+      {[1, 2, 3, 4].includes(perfilActivo?.id_perfil ?? 0) && <label className="topbar-local-selector">
         <Building2 aria-hidden="true" />
         <span className="topbar-local-selector__label">Local</span>
         <select

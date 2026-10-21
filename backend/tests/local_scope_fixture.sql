@@ -14,7 +14,7 @@ VALUES(1,1,true,true),(1,2,true,true),(2,2,true,true);
 INSERT INTO categoria_producto(id_categoria,nombre,prefijo) VALUES(1,'Prueba','P');
 INSERT INTO proveedor(id_proveedor,nombre) VALUES(1,'Proveedor original'),(2,'Proveedor nuevo');
 INSERT INTO producto(id_producto,codigo,nombre,id_categoria,id_proveedor,unidad,presentacion,stock_minimo)
-VALUES(1,'P-001','Producto compartido',1,1,'UNI',1,5);
+VALUES(1,'P-001','Producto compartido',1,1,'C62',1,5);
 INSERT INTO producto_stock_local(id_producto,id_local,stock_minimo) VALUES(1,1,5),(1,2,20);
 INSERT INTO inventario_cierre(id_inventario_cierre,fecha_inventario,estado_inventario,usuario_registro,fecha_registro)
 SELECT n,DATE '2020-01-01'+n,'CERRADO',1,CURRENT_TIMESTAMP FROM generate_series(1,9) n;

@@ -7,8 +7,9 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app.core.extensions import db
 from app.modules.auth.service import obtener_sesion_actual
-from . import agent, drafts, provider, tools
+from . import agent, drafts, provider, tools, forms
 from .provider import AssistantError
+from app.agents.orchestrator import communication
 
 asistente_ia_bp = Blueprint('asistente_ia', __name__)
 MODULOS = {r[0] for r in tools.RESOURCES.values()}
@@ -65,10 +66,19 @@ def estado(sesion):
                for m in sesion['menu'] if m['id_opcion_menu'] in MODULOS
                and m['permisos']['consultar'] and m['url_menu']]
     return jsonify(estado='disponible' if configured else 'sin_configurar', ia_disponible=configured,
-                   dictado_disponible=configured, ejecucion_disponible=configured and storage,
+                   dictado_disponible=configured, ejecucion_disponible=storage,
                    capacidades={r:[a for a in ('consultar','crear','editar') if tools.allowed(sesion,r,a)]
                                 for r in tools.RESOURCES if tools.allowed(sesion,r)},
                    modulos_consultables=modulos)
+
+
+@asistente_ia_bp.get('/agentes')
+@secured
+def agentes(sesion):
+    if int(get_jwt().get('id_perfil', 0)) != 1:
+        raise AssistantError('Solo el Administrador del sistema puede ver los agentes.', 403)
+    from app.agents.manifest import catalog
+    return jsonify(catalog())
 
 
 @asistente_ia_bp.post('/preparar')
@@ -85,7 +95,37 @@ def preparar(session):
     if data.get('reemplaza'):
         drafts.cancel(identity(data['reemplaza']))
     db.session.rollback()
+    if data.get('continuacion'):
+        state = communication.load(data['continuacion'])
+        result = communication.invoke(session, state['actual'], instruction, previous, context)
+        result = communication.coordinate(session, result, instruction, previous, context, state)
+        return finish_result(session, result)
+    resource = forms.detect(instruction) or forms.category_choice(instruction, previous)
+    # Missing prerequisites require specialist reasoning, rather than bypassing
+    # the coordinator through the shortcut for simple form requests.
+    normalized = tools.normalized(instruction)
+    if resource != 'categoria_ambigua' and any(term in normalized for term in
+            ('no existe', 'no tengo', 'no hay', 'falta', 'crear primero')):
+        resource = None
+    if resource == 'categoria_ambigua':
+        options = [{'etiqueta': 'Categoría de productos', 'instruccion': 'Crear categoría de productos', 'recurso': 'categorias_productos'},
+                   {'etiqueta': 'Categoría de carta', 'instruccion': 'Crear categoría de carta', 'recurso': 'categorias_carta'}]
+        options = [{k: v for k, v in option.items() if k != 'recurso'} for option in options
+                   if tools.allowed(session, option['recurso'], 'crear') and tools.allowed(session, option['recurso'])]
+        if not options:
+            raise AssistantError('Tu perfil no tiene permiso para crear categorías.', 403)
+        return jsonify(respuesta=forms.CATEGORY_QUESTION, opciones=options, consultas=[], borrador=None, agente='orquestador')
+    if resource:
+        return jsonify(respuesta='Completa el formulario y revisa la propuesta antes de realizar el cambio.',
+                       formulario=forms.open_form(session, resource), consultas=[], borrador=None,
+                       agente=resource if resource in ('categorias_carta', 'menajes', 'presentaciones') else 'carta_recetas')
     result = agent.run(session, instruction, previous, context)
+    if result.get('traspaso'):
+        result = communication.coordinate(session, result, instruction, previous, context)
+    return finish_result(session, result)
+
+
+def finish_result(session, result):
     plan = result.pop('plan')
     if plan:
         fresh, code = obtener_sesion_actual(int(get_jwt_identity()), get_jwt())
@@ -96,6 +136,37 @@ def preparar(session):
     else:
         result['borrador'] = None
     return jsonify(result)
+
+
+@asistente_ia_bp.post('/formulario')
+@secured
+def formulario(session):
+    return jsonify(formulario=forms.open_form(session, body().get('recurso')))
+
+
+@asistente_ia_bp.post('/formulario/preparar')
+@secured
+def preparar_formulario(session):
+    data = body()
+    limit()
+    plan = forms.prepare(session, data.get('recurso'), data.get('datos'))
+    if data.get('continuacion'):
+        communication.bind_plan(communication.load(data['continuacion']), plan)
+    view = tools.readable(session, plan)
+    if data.get('reemplaza'):
+        drafts.cancel(identity(data['reemplaza']))
+    return jsonify(respuesta='Revisa los datos y confirma con Realizar.', consultas=[],
+                   agente=plan['recurso'] if plan['recurso'] in ('categorias_carta', 'menajes', 'presentaciones') else 'carta_recetas',
+                   borrador={'id_borrador': drafts.save(plan), 'vista': view, **plan})
+
+
+@asistente_ia_bp.post('/continuar')
+@secured
+def continuar(session):
+    data = body()
+    limit()
+    result = communication.resume(session, data.get('continuacion'), identity(data.get('id_borrador')))
+    return finish_result(session, result)
 
 
 @asistente_ia_bp.post('/realizar')

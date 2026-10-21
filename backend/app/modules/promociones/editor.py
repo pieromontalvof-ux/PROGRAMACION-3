@@ -26,6 +26,7 @@ def guardar_promocion(usuario, datos, identidad=None):
         anterior = None
         grupos_previos = []
         opciones_previas = []
+        reposiciones_previas = []
         if identidad is not None:
             encontrados = repo.filas('SELECT * FROM promocion WHERE id_promocion=:id FOR UPDATE', {'id': identidad})
             if not encontrados:
@@ -34,6 +35,7 @@ def guardar_promocion(usuario, datos, identidad=None):
             anterior = encontrados[0]
             grupos_previos = repo.filas('SELECT * FROM promocion_grupo WHERE id_promocion=:id', {'id': identidad})
             opciones_previas = repo.filas('SELECT o.* FROM promocion_opcion o JOIN promocion_grupo g USING(id_promocion_grupo) WHERE g.id_promocion=:id', {'id': identidad})
+            reposiciones_previas = repo.filas('SELECT * FROM promocion_reposicion WHERE id_promocion=:id', {'id': identidad})
         nombre = datos.get('nombre')
         if not isinstance(nombre, str) or not 1 <= len(nombre.strip()) <= 150:
             raise ValueError('Ingresa un nombre de hasta 150 caracteres')
@@ -84,6 +86,12 @@ def guardar_promocion(usuario, datos, identidad=None):
                 if not filas or (not filas[0]['activo'] and pid not in anteriores):
                     raise ValueError('Selecciona presentaciones activas de la carta')
             validos.append({'id': gid, 'elegir': elegir, 'repetir': repetir, 'opciones': opciones})
+        reposiciones = datos.get('reposiciones', [r['id_presentacion_venta'] for r in reposiciones_previas])
+        opciones_promocion = {pid for grupo in validos for pid in grupo['opciones']}
+        if not isinstance(reposiciones, list) or any(type(pid) is not int or pid <= 0 for pid in reposiciones):
+            raise ValueError('Selecciona presentaciones validas para reposicion')
+        if len(set(reposiciones)) != len(reposiciones) or not set(reposiciones).issubset(opciones_promocion):
+            raise ValueError('Solo puedes habilitar reposicion para opciones incluidas en la promocion')
         valores = {'nombre': nombre, 'precio': precio, 'inicio': inicio, 'fin': fin, 'activo': activo}
         if anterior:
             repo.ejecutar('UPDATE promocion SET nombre=:nombre,precio=:precio,hora_inicio=:inicio,hora_fin=:fin,activo=:activo WHERE id_promocion=:id', {**valores, 'id': identidad})
@@ -104,11 +112,16 @@ def guardar_promocion(usuario, datos, identidad=None):
             repo.ejecutar('DELETE FROM promocion_opcion WHERE id_promocion_grupo=:id AND NOT (id_presentacion_venta=ANY(:opciones))', g)
             for pid in g['opciones']:
                 repo.ejecutar('INSERT INTO promocion_opcion(id_promocion_grupo,id_presentacion_venta) VALUES (:grupo,:pid) ON CONFLICT (id_promocion_grupo,id_presentacion_venta) DO NOTHING', {'grupo': g['id'], 'pid': pid})
+        repo.ejecutar('DELETE FROM promocion_reposicion WHERE id_promocion=:id', {'id': identidad})
+        for pid in reposiciones:
+            repo.ejecutar('INSERT INTO promocion_reposicion(id_promocion,id_presentacion_venta) VALUES (:promo,:pid)',
+                          {'promo': identidad, 'pid': pid})
         nuevo = repo.filas('SELECT * FROM promocion WHERE id_promocion=:id', {'id': identidad})[0]
         accion = 'EDITAR' if anterior else 'CREAR'
         registrar_cambio(usuario, 'PROMOCIONES', accion, 'promocion', identidad,
-                         {'promocion': anterior, 'grupos': grupos_previos, 'opciones': opciones_previas} if anterior else None,
-                         {'promocion': nuevo, 'grupos': validos})
+                         {'promocion': anterior, 'grupos': grupos_previos, 'opciones': opciones_previas,
+                          'reposiciones': reposiciones_previas} if anterior else None,
+                         {'promocion': nuevo, 'grupos': validos, 'reposiciones': reposiciones})
         registrar_actividad(usuario, 'PROMOCIONES', accion, identidad, f'{accion}: {nombre}')
         db.session.commit()
         return {'mensaje': 'Promocion guardada correctamente', 'id_promocion': identidad}, 200 if anterior else 201

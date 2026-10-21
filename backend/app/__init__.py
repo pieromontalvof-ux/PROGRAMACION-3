@@ -28,6 +28,7 @@ from app.modules.recepciones.routes import recepciones_bp
 # 1. IMPORTAR EL BLUEPRINT DE RECETAS
 from app.modules.recetas.routes import recetas_bp
 from app.modules.usuarios.routes import usuarios_bp
+from app.modules.usuarios.locales import locales_bp
 
 
 def create_app():
@@ -36,6 +37,7 @@ def create_app():
     registrar_medidas_api(app)
 
     app.register_blueprint(asistente_ia_bp, url_prefix="/api/asistente-ia")
+    app.register_blueprint(locales_bp, url_prefix="/api/locales")
     db.init_app(app)
     JWTManager(app)
     app.register_blueprint(deletion_bp, url_prefix='/api/eliminaciones')

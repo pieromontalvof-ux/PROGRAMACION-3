@@ -55,8 +55,8 @@ function StockLimitsContent() {
     const min = Number(minimo)
     const max = Number(maximo)
     if (!minimo.trim() || !maximo.trim() || !Number.isFinite(min) ||
-        !Number.isFinite(max) || min < 0 || max < min) {
-      setError('Ingresa un mínimo no negativo y un máximo mayor o igual al mínimo.')
+        !Number.isFinite(max) || min < 0 || max <= min) {
+      setError('Ingresa un mínimo no negativo y un máximo mayor al mínimo. No pueden ser iguales.')
       return
     }
     setGuardando(true)
@@ -104,7 +104,7 @@ function StockLimitsContent() {
         {error && <p className="stock-limits__error" role="alert">{error}</p>}
         <fieldset disabled={guardando}>
           <label>Stock mínimo<input autoFocus type="number" min="0" max="999999999.999" step="0.001" required value={minimo} onChange={(e) => setMinimo(e.target.value)} /></label>
-          <label>Stock máximo<input type="number" min={minimo || '0'} max="999999999.999" step="0.001" required value={maximo} onChange={(e) => setMaximo(e.target.value)} /></label>
+          <label>Stock máximo<input type="number" min={Number.isFinite(Number(minimo)) ? (Number(minimo) + 0.001).toFixed(3) : '0.001'} max="999999999.999" step="0.001" required value={maximo} onChange={(e) => setMaximo(e.target.value)} /></label>
         </fieldset>
         <div className="stock-limits__tools">
           <button type="button" disabled={guardando} onClick={() => setEditando(null)}>Cancelar</button>

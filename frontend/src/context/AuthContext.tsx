@@ -40,6 +40,7 @@ interface AuthContextType {
     idPuestoLaboral?: number,
   ) => Promise<void>
   cambiarLocal: (idLocal: number) => Promise<void>
+  actualizarSesion: () => Promise<void>
   logout: () => void
 }
 
@@ -230,6 +231,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     limpiarSesion()
   }
 
+  async function actualizarSesion() {
+    if (token) aplicarSesion(await obtenerSesion(token), token)
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -248,6 +253,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         cambiarPerfil,
         cambiarLocal,
+        actualizarSesion,
         logout,
       }}
     >

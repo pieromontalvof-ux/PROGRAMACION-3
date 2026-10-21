@@ -4,7 +4,7 @@ import unicodedata
 from flask import current_app, request
 from flask_jwt_extended import get_jwt
 from .provider import AssistantError
-from . import inventory
+from . import inventory, purchases
 
 # menu permission, native URL, collection, primary key
 RESOURCES = {
@@ -20,6 +20,7 @@ RESOURCES = {
     'usuarios': (2, '/usuarios', 'usuarios', 'id_usuario'),
 }
 RESOURCES.update(inventory.RESOURCES)
+RESOURCES.update(purchases.RESOURCES)
 FIELDS = {
     'productos': 'nombre id_categoria id_proveedor unidad presentacion unidad_presentacion motivo',
     'categorias_productos': 'nombre prefijo', 'proveedores': 'nombre ids_categorias',
@@ -33,6 +34,7 @@ REQUIRED = {k: set(v.split()) - {'motivo', 'id_item_carta', 'grupo_salsa', 'unid
 
 
 def allowed(session, resource, action='consultar'):
+    if resource in purchases.RESOURCES:return purchases.allowed(session,resource,action)
     if resource in inventory.RESOURCES:return inventory.allowed(session,resource,action)
     if resource not in RESOURCES:
         return False
@@ -113,6 +115,7 @@ def editable(resource, row):
 
 
 def prepare(session, resource, action, identity, changes):
+    if resource == 'ordenes_compra':return purchases.prepare(session,action,identity,changes)
     if resource in inventory.RESOURCES:return inventory.prepare(session,resource,action,identity,changes)
     if resource not in FIELDS or action not in ('crear', 'editar'):
         raise AssistantError('Esta acción no está habilitada en el asistente. Utiliza el módulo correspondiente.')
@@ -140,6 +143,10 @@ def prepare(session, resource, action, identity, changes):
 
 
 def execute(session, plan):
+    if plan['recurso'] == 'ordenes_compra':
+        authorize(session, 'ordenes_compra', 'crear')
+        authorize(session, 'ordenes_compra')
+        return native('/ordenes-compra', 'POST', plan['datos'])
     if plan['recurso'] in inventory.RESOURCES:return inventory.execute(session,plan)
     authorize(session, plan['recurso'], plan['accion'])
     resource, action, identity = plan['recurso'], plan['accion'], plan['id']
@@ -153,6 +160,10 @@ def execute(session, plan):
 
 def readable(session, plan):
     """Resolve references for the human review, independently of model prose."""
+    if plan['recurso'] == 'ordenes_compra':
+        authorize(session, 'ordenes_compra')
+        return {'advertencia': plan['advertencia'], 'eventos_cercanos': plan.get('eventos_cercanos'),
+                'productos': plan['revision_compra']}
     if plan['recurso'] in inventory.RESOURCES:return inventory.readable(session,plan)
     cache = {}
     references = {'id_categoria_carta': 'categorias_carta', 'id_menaje': 'menajes',
@@ -174,6 +185,8 @@ def readable(session, plan):
 
     def visit(value, key=''):
         if isinstance(value, list):
+            if key == 'ids_categorias' and plan['recurso'] == 'proveedores':
+                return [label('categorias_productos', v) for v in value]
             if key == 'opciones' and plan['recurso'] == 'promociones':
                 return [label('presentaciones', v) for v in value]
             return [visit(v) for v in value]

@@ -44,6 +44,8 @@
 .assistant-card { width: 100%; min-width: 0; padding: 24px 28px 12px; border: 1px solid var(--ai-border); border-radius: 16px; background: white; box-shadow: 0 5px 20px #183e2a05; }
 .assistant-answer-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .assistant-answer-heading h2 { font-size: 18px; margin: 0; letter-spacing: -.015em; }
+.assistant-agent-label { color: #58776a; background: #f0f7f3; border: 1px solid #dce9e0; border-radius: 6px; padding: 4px 7px; font-size: 11px; white-space: nowrap; }
+.assistant-agent-label { margin-left: auto; text-align: right; white-space: normal; }
 .assistant-answer-caption { font-size: 13px; color: var(--ai-muted); line-height: 1.6; margin: 5px 0 18px; }
 .assistant-prose { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.8; margin: 12px 0 20px; }
 .assistant-card details { border-top: 1px solid #e7efea; padding: 12px 0; font-size: 13px; }

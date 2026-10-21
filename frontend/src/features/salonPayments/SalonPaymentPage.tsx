@@ -3,7 +3,7 @@ import {useNavigate, useParams} from 'react-router-dom'
 import {CreditCard, Banknote, ReceiptText, CheckCircle2} from 'lucide-react'
 import {salonApi} from '../../components/SalonPinDialog'
 import {useAuth} from '../../context/AuthContext'
-import {documentNames, money, receiptImage, type Receipt, type ReceiptLine} from './receipt'
+import {documentNames, money, receiptImage, resumenReposiciones, type Receipt, type ReceiptLine} from './receipt'
 import './SalonPaymentPage.css'
 
 interface Account {
@@ -78,8 +78,10 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
         {!ready && <p role="alert" className="payment-error">La cuenta debe tener productos enviados y ningún borrador pendiente. Regresa a la mesa para revisarla.</p>}
       </form>
       <aside className="payment-account"><span className="payment-eyebrow">RESUMEN DE LA CUENTA</span><h2>Mesa {account.mesa}</h2>
-        <div className="payment-items">{account.lineas.map((line,i)=><article key={i}><div><strong>{line.cantidad} × {line.nombre}</strong><span>{money(line.cantidad*line.precio)}</span></div>
+        <div className="payment-items">{account.lineas.filter(line => !line.id_barra_libre).map((line,i)=><article key={line.ids_lineas?.[0] ?? i}><div><strong>{line.cantidad} × {line.nombre}</strong><span>{money(line.cantidad*line.precio)}</span></div>
           {!!line.opciones.length && <small>{line.opciones.map(o=>o.nombre).join(', ')}</small>}
+          {line.selecciones_promocion?.map((selection,index)=><small key={index}>Incluye {selection.nombre}{selection.opciones.length ? ` · Salsa: ${selection.opciones.map(o=>o.nombre).join(', ')}`:''}</small>)}
+          {resumenReposiciones(line,account.lineas) && <small>Reposiciones: {resumenReposiciones(line,account.lineas)}</small>}
           {line.comentario && <small>{line.comentario}</small>}</article>)}</div>
         <div className="payment-total"><span>Total a pagar</span><strong>{money(account.total)}</strong></div>
       </aside>

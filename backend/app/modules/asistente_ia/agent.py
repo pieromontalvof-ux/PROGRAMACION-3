@@ -6,9 +6,9 @@ from .provider import AssistantError
 
 INSTRUCTIONS = '''Eres el asistente de Barbarito. Responde en español, breve y claro.
 Solo puedes consultar los recursos autorizados y preparar UN cambio por confirmación.
+Si piden crear una categoría sin aclarar si es de productos o de carta, pregunta cuál
+antes de abrir formularios o preparar cambios. No deduzcas el tipo por tu especialidad.
 Nunca ejecutes cambios ni digas que se realizaron: preparar_cambio solo prepara una propuesta.
-El agente de inventario consulta stock, conteos, asignaciones, diferencias, jornadas y mix de ventas.
-Solo prepara las operaciones de inventario explícitamente habilitadas por las capacidades.
 No modifica stock, movimientos, compras, recepciones ni pedidos de salón.
 No crees/edites usuarios ni credenciales; para ello dirige al formulario Usuarios si tiene permisos.
 Respeta capacidades recibidas; explica inmediatamente si el perfil no permite la acción.
@@ -51,64 +51,5 @@ def function(name, description, properties):
 
 
 def run(session, instruction, previous='', context=''):
-    capabilities = {r: [a for a in ('consultar', 'crear', 'editar') if tools.allowed(session, r, a)]
-                    for r in tools.RESOURCES if tools.allowed(session, r)}
-    if not capabilities:
-        raise AssistantError('Tu perfil no tiene acceso a los módulos del asistente.', 403)
-    enum = {'type': 'string', 'enum': list(capabilities)}
-    definitions = [function('consultar', 'Buscar registros reales; 30 por página.', {
-        'recurso': enum, 'busqueda': {'type': 'string'}, 'desde': {'type': 'integer'}}),
-        function('formulario', 'Opciones válidas para crear presentaciones, recetas, subproductos o promociones.', {'recurso': enum}),
-        function('preparar_cambio', 'Preparar, sin ejecutar, un único cambio para revisión humana.', {
-            'recurso': enum, 'accion': {'type': 'string', 'enum': ['crear', 'editar']},
-            'id': {'type': ['integer', 'null']}, 'datos_json': {'type': 'string'}})]
-    inventory_resources=[r for r in capabilities if r in inventory.RESOURCES]
-    if inventory_resources:
-        definitions.append(function('consultar_inventario','Consultar inventario del local activo con filtros, detalle de conteo y reportes.',{
-            'recurso':{'type':'string','enum':inventory_resources},'filtros_json':{'type':'string'}}))
-    skill = Path(__file__).with_name('skills').joinpath('operaciones_catalogo', 'SKILL.md').read_text(encoding='utf-8')
-    if inventory_resources:
-        skill+='\n'+Path(__file__).with_name('skills').joinpath('inventario','SKILL.md').read_text(encoding='utf-8')
-        from datetime import datetime, timezone, timedelta
-        skill+='\nFecha actual en Lima: '+datetime.now(timezone(timedelta(hours=-5))).date().isoformat()
-        skill+='\nLocal activo: '+json.dumps(session.get('local_activo'),ensure_ascii=False)
-    messages = [{'role': 'system', 'content': INSTRUCTIONS + '\n' + skill + '\nCapacidades: ' + json.dumps(capabilities)},
-                {'role': 'user', 'content': json.dumps({'contexto_previo': context, 'borrador_previo': previous, 'instruccion': instruction}, ensure_ascii=False)}]
-    consulted = []
-    for _ in range(7):
-        db.session.rollback()
-        output = provider.respond(messages, definitions)
-        messages.extend(output)
-        calls = [item for item in output if item.get('type') == 'function_call']
-        if not calls:
-            answer = '\n'.join(c.get('text', '') for item in output for c in item.get('content', []) if c.get('type') == 'output_text')
-            return {'respuesta': answer or 'No se pudo interpretar el pedido. Prueba con una instrucción más concreta.', 'consultas': consulted, 'plan': None}
-        for item in calls:
-            try:
-                args = json.loads(item['arguments'])
-                if not isinstance(args, dict): raise ValueError()
-                if item['name'] == 'consultar':
-                    result = tools.query(session, args['recurso'], args['busqueda'], args['desde'])
-                    consulted.append(result)
-                elif item['name']=='consultar_inventario':
-                    if args['recurso'] not in inventory_resources:raise AssistantError('Recurso de inventario no permitido.',403)
-                    result=inventory.read(session,args['recurso'],json.loads(args['filtros_json']))
-                    consulted.append(result)
-                elif item['name'] == 'formulario':
-                    resource = args['recurso']
-                    tools.authorize(session, resource)
-                    if resource not in ('presentaciones', 'recetas', 'subproductos', 'promociones'):
-                        raise AssistantError('Consulta los catálogos correspondientes para obtener las opciones.')
-                    result = tools.native(tools.RESOURCES[resource][1] + '/formulario')
-                elif item['name'] == 'preparar_cambio':
-                    plan = tools.prepare(session, args['recurso'], args['accion'], args['id'], json.loads(args['datos_json']))
-                    return {'respuesta': 'Revisa los datos de la propuesta antes de realizarla.', 'consultas': consulted, 'plan': plan}
-                else:
-                    raise AssistantError('Herramienta no permitida.')
-            except AssistantError as error:
-                result = {'error': str(error)}
-            except (KeyError, ValueError, TypeError):
-                result = {'error': 'Argumentos inválidos. Corrige los datos o pregunta al usuario.'}
-            messages.append({'type': 'function_call_output', 'call_id': item['call_id'],
-                             'output': json.dumps(result, ensure_ascii=False, default=str)})
-    raise AssistantError('La consulta requiere demasiados pasos. Indica un artículo o tarea más concreta.', 422)
+    from app.agents.orchestrator import run as coordinate
+    return coordinate(session, instruction, previous, context)

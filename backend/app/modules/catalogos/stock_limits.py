@@ -50,7 +50,7 @@ def validar_limites(datos):
             return None
         if valor != valor.quantize(Decimal("0.001")):
             return None
-    if maximo < minimo:
+    if maximo <= minimo:
         return None
     return minimo, maximo
 
@@ -83,7 +83,7 @@ def guardar_limites_stock(id_producto):
         return jsonify(mensaje="El local se determina por la sesión; cambia de local antes de configurar sus límites"), 400
     limites = validar_limites(datos)
     if limites is None:
-        return jsonify(mensaje="Ingresa límites no negativos con hasta 3 decimales; el máximo debe ser mayor o igual al mínimo"), 400
+        return jsonify(mensaje="Ingresa límites no negativos con hasta 3 decimales; el máximo debe ser mayor al mínimo. No pueden ser iguales"), 400
     minimo, maximo = limites
     id_local = g.id_local_limites
     try:

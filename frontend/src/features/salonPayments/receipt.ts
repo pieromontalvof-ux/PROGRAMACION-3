@@ -1,6 +1,8 @@
 export interface ReceiptLine {
   nombre: string; cantidad: number; precio: number; enviada: boolean
-  comentario: string; opciones: {nombre: string}[]
+  comentario: string; opciones: {nombre: string}[]; barra_nombre?: string | null; cantidad_reposiciones?: number
+  id_barra_libre?: number | null; ids_lineas?: number[]
+  selecciones_promocion?: {nombre: string; opciones: {nombre: string}[]}[]
 }
 export interface Receipt {
   id: number; numero: string; fecha: string; tipo: string; metodo: string
@@ -9,6 +11,17 @@ export interface Receipt {
 }
 export const money = (value: number) => new Intl.NumberFormat('es-PE', {style:'currency', currency:'PEN'}).format(value)
 export const documentNames: Record<string,string> = {BOLETA:'Boleta', BOLETA_ELECTRONICA:'Boleta electrónica', FACTURA:'Factura'}
+
+export function resumenReposiciones(barra: ReceiptLine, lineas: ReceiptLine[]) {
+  const identidad=barra.ids_lineas?.[0]
+  if(!identidad)return ''
+  const cantidades=new Map<string,number>()
+  for(const linea of lineas.filter(linea => linea.id_barra_libre===identidad)) {
+    const salsa=linea.opciones[0]?.nombre.replace(/^Salsa\s+/i,'') ?? 'Sin salsa'
+    cantidades.set(salsa,(cantidades.get(salsa) ?? 0)+linea.cantidad)
+  }
+  return [...cantidades].map(([salsa,cantidad]) => `${cantidad} ${salsa}`).join(' · ')
+}
 
 // Imagen SVG generada exclusivamente con el comprobante persistido del servidor.
 export function receiptImage(receipt: Receipt) {
@@ -34,10 +47,17 @@ export function receiptImage(receipt: Receipt) {
     line(receipt.cliente)
   }
   rule()
-  for (const item of receipt.lineas) {
+  for (const item of receipt.lineas.filter(item => !item.id_barra_libre)) {
     line(`${item.cantidad} × ${item.nombre}`, 15, true)
     line(`${money(item.precio)} c/u                ${money(item.cantidad * item.precio)}`)
     if (item.opciones.length) line(`Opciones: ${item.opciones.map(o=>o.nombre).join(', ')}`, 13)
+    for (const selection of item.selecciones_promocion ?? []) {
+      line(`Incluye: ${selection.nombre}`, 13)
+      if (selection.opciones.length) line(`Salsa: ${selection.opciones.map(o=>o.nombre).join(', ')}`, 13)
+    }
+    const reposiciones=resumenReposiciones(item,receipt.lineas)
+    if (reposiciones) line(`Reposiciones: ${reposiciones}`, 13)
+    if (item.barra_nombre) line(`Reposición para: ${item.barra_nombre}`, 13)
     if (item.comentario) line(`Comentario: ${item.comentario}`, 13)
     y += 8
   }

@@ -21,7 +21,7 @@ class SalonPaymentTests(unittest.TestCase):
         orders.SalonOrderTests.setUp(self)
         db.session.execute(text('''INSERT INTO receta(id_receta,id_presentacion_venta) VALUES(9800,9800);
             INSERT INTO receta_detalle(id_receta,tipo_componente,id_producto,cantidad,unidad)
-            VALUES(9800,'PRODUCTO',1,2,'UNI');
+            VALUES(9800,'PRODUCTO',1,2,'C62');
             INSERT INTO usuario_perfiles(id_usuario,id_perfil,usuario_asignacion) VALUES(1,2,1);
             INSERT INTO usuario_local(id_usuario,id_local) VALUES(1,1),(1,2);'''))
 
@@ -123,10 +123,10 @@ class SalonPaymentTests(unittest.TestCase):
 
     def test_subproduct_yield_and_repeated_options(self):
         db.session.execute(text('''INSERT INTO subproducto(id_subproducto,codigo,nombre,rendimiento,unidad)
-            VALUES(9800,'SP-9800','Mezcla prueba',4,'L');
-            INSERT INTO subproducto_detalle(id_subproducto,id_producto,cantidad,unidad) VALUES(9800,1,8,'UNI');
+            VALUES(9800,'SP-9800','Mezcla prueba',4,'LTR');
+            INSERT INTO subproducto_detalle(id_subproducto,id_producto,cantidad,unidad) VALUES(9800,1,8,'C62');
             INSERT INTO receta_detalle(id_receta,tipo_componente,id_subproducto,cantidad,unidad)
-            VALUES(9800,'SUBPRODUCTO',9800,0.5,'L');
+            VALUES(9800,'SUBPRODUCTO',9800,0.5,'LTR');
             UPDATE grupo_salsa SET permite_repetir=true WHERE id_grupo_salsa=9800;'''))
         self.guardar(enviar=True, lineas=[{**self.linea, 'opciones': [9800, 9800]}])
         before = self.stock(1)
@@ -176,10 +176,40 @@ class SalonPaymentTests(unittest.TestCase):
         self.assertEqual(self.stock(1), before - 3)
 
     def test_integer_presentation_and_legacy_name(self):
-        self.assertIn('1 PORCIÓN', self.client.get('/api/salon/carta', headers=self.headers).json['productos'][0]['nombre'])
+        self.assertIn('1 PORCION', self.client.get('/api/salon/carta', headers=self.headers).json['productos'][0]['nombre'])
         self.guardar()
         db.session.execute(text("UPDATE salon_pedido_linea SET nombre='Prueba · 1.000 UNI'"))
         self.assertEqual(self.account()['lineas'][0]['nombre'], 'Prueba · 1 UNI')
+
+    def test_promotion_charges_once_and_refills_consume_inventory(self):
+                db.session.execute(text('''
+                    INSERT INTO promocion(id_promocion,codigo,nombre,precio,activo)
+                        VALUES(9800,'P-9800','Barra libre de alitas',29.90,true);
+                    INSERT INTO promocion_grupo(id_promocion_grupo,id_promocion,cantidad_elegir,permite_repetir)
+                        VALUES(9800,9800,1,false);
+                    INSERT INTO promocion_opcion(id_promocion_grupo,id_presentacion_venta) VALUES(9800,9800);
+                    INSERT INTO promocion_reposicion(id_promocion,id_presentacion_venta) VALUES(9800,9800);
+                '''))
+                promo={'id_promocion':9800,'cantidad':1,'selecciones':[
+                        {'id_grupo':9800,'id_presentacion':9800,'opciones':[9800]}]}
+                first=self.guardar(enviar=True,lineas=[promo])
+                self.assertEqual(first.status_code,200,first.json)
+                barra=next(l for l in first.json['lineas'] if l['id_promocion']==9800)
+                refill={'id_presentacion':9800,'id_barra_libre':barra['ids_lineas'][0],
+                                'cantidad':1,'comentario':'','opciones':[9800]}
+                second=self.guardar(enviar=True,lineas=[refill])
+                self.assertEqual(second.status_code,200,second.json)
+                before=self.stock(1)
+                result=self.pay(self.payload())
+                self.assertEqual(result.status_code,201,result.json)
+                self.assertEqual(result.json['total'],29.9)
+                self.assertEqual(len(result.json['lineas']),2)
+                reposicion=next(linea for linea in result.json['lineas'] if linea.get('barra_nombre'))
+                self.assertEqual(reposicion['precio'],0)
+                self.assertEqual(reposicion['barra_nombre'],'Barra libre de alitas')
+                barra_cobrada=next(linea for linea in result.json['lineas'] if linea.get('id_promocion'))
+                self.assertEqual(barra_cobrada['cantidad_reposiciones'],1)
+                self.assertEqual(self.stock(1),before-6)
 
     def test_sale_after_count_on_same_day(self):
         db.session.execute(text("""UPDATE inventario_cierre SET

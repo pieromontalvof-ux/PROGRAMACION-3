@@ -29,9 +29,12 @@ class StockLimitsTests(unittest.TestCase):
         return {"Authorization": f"Bearer {token}"}
 
     def test_validacion(self):
-        self.assertEqual(validar_limites({"stock_minimo": 0, "stock_maximo": 0}), (Decimal(0), Decimal(0)))
+        self.assertEqual(validar_limites({"stock_minimo": 0, "stock_maximo": "0.001"}), (Decimal(0), Decimal("0.001")))
         self.assertEqual(validar_limites({"stock_minimo": "1.125", "stock_maximo": 5}), (Decimal("1.125"), Decimal(5)))
         for datos in [None, [], {}, {"stock_minimo": 5, "stock_maximo": 4},
+                      {"stock_minimo": 0, "stock_maximo": 0},
+                      {"stock_minimo": 5, "stock_maximo": 5},
+                      {"stock_minimo": "1.125", "stock_maximo": "1.125"},
                       {"stock_minimo": -1, "stock_maximo": 4},
                       {"stock_minimo": "NaN", "stock_maximo": 4},
                       {"stock_minimo": 0, "stock_maximo": "Infinity"},

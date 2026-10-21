@@ -1,5 +1,39 @@
 # Asistente IA de Barbarito
 
+## Compras con revisión de eventos
+
+El especialista `compras` consulta eventos públicos para los próximos siete días en Centro Cívico,
+Sheraton Lima, Estadio Nacional y alrededores mediante Web Search de Responses. Devuelve fuentes
+y fechas; si la búsqueda falla o no tiene fuentes, informa la limitación. No convierte concurrencia
+en demanda garantizada. Requiere un modelo/proyecto con Web Search habilitado (puede generar costo).
+El informe visible incluye evento, lugar, fecha y hora y un enlace oficial por evento.
+Debajo añade hasta dos líneas (40 palabras) sobre qué es y a qué público se dirige.
+Los intereses deducidos de la temática se indican como «Público probable», sin asegurar
+asistencia ni inventar edades, nacionalidades, capacidad de gasto o hábitos de consumo.
+«Todo el día» requiere confirmación de la fuente; si falta horario, muestra «Hora no publicada».
+No añade análisis de demanda ni preguntas al listado; espera los ajustes del usuario.
+
+Ejemplo: «Quiero hacer una orden de compra; analiza los eventos cercanos». Después del informe:
+«Sobre el pedido sugerido aumenta 20% de todo y otro 10% para los insumos del sour».
+Los ingredientes se consultan en las recetas autorizadas; si no hay permisos, se solicitan productos
+explícitos. Solo se ajustan productos con base sugerida positiva. El servidor calcula aumentos sucesivos
+(1.20 × 1.10 = 1.32) y redondea hacia arriba por presentación. La base existente ya incorpora
+20% sobre consumo antes de restar stock: no equivale a aumentar solo 20% el consumo original.
+
+Consultar requiere permiso nativo de consulta en menú 22; preparar y realizar requieren también crear.
+No se restringe la compra a un nombre de perfil. Realizar guarda una orden BORRADOR mediante la ruta
+nativa, con auditoría y local activo; el envío se revisa desde Compras. Reutiliza la migración existente
+del asistente y su protección contra confirmaciones duplicadas. No requiere migración adicional.
+Las pruebas cubren fallas técnicas y respuestas truncadas. La consulta de eventos usa un límite
+de 4500 tokens y reintenta una vez con 8000 si se agota; conserva informes parciales con fuentes.
+Un fallo técnico muestra su motivo seguro y nunca se interpreta como ausencia de eventos.
+La búsqueda dispone de 90 segundos por intento y reintenta una vez ante cortes de conexión,
+tiempo agotado o errores temporales 500/502/503/504. Los errores de clave, permisos y saldo no
+se reintentan. El transporte distingue tiempo agotado, conexión interrumpida y respuesta inválida;
+las demás llamadas conservan su tiempo de espera de 60 segundos. No se reintentan escrituras.
+Los eventos mencionados en la conversación también se envían como pistas de búsqueda.
+
+
 Módulo conectado a OpenAI Responses y transcripción. La clave permanece en el backend. El modelo consulta herramientas autorizadas y propone un cambio; jamás ejecuta escrituras directamente.
 
 ## Organizacion

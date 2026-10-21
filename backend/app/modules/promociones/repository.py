@@ -93,3 +93,12 @@ def listar_opciones_promocion():
         dict(fila)
         for fila in resultado.mappings().all()
     ]
+
+
+def listar_reposiciones_promocion():
+    resultado = db.session.execute(text("""
+        SELECT id_promocion,id_presentacion_venta
+        FROM promocion_reposicion
+        ORDER BY id_promocion,id_presentacion_venta
+    """))
+    return [dict(fila) for fila in resultado.mappings().all()]

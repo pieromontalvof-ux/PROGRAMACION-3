@@ -17,6 +17,7 @@
 .order-cart h2 {margin:0}
 .order-lines {overflow:auto;min-height:80px;flex:1}
 .order-lines article {border-top:1px solid #dce9e0;padding:18px 0}
+.order-line-card {border-bottom:1px solid #dce9e0;padding:8px 0}
 .salon-order .order-line-select {display:flex;flex-direction:column;gap:8px;text-align:left;width:100%;margin-bottom:10px;padding:14px;background:white;border:1px solid #dce9e0}
 .salon-order .order-line-select.is-sent {background:#f3f5f4}
 .salon-order .order-line-select[aria-pressed=true] {background:#e1f4e9;color:#063f30;border:2px solid #087c50;padding:13px}
@@ -28,6 +29,17 @@
 .order-comment {white-space:pre-wrap;overflow-wrap:anywhere;background:#f0f7f3;padding:10px;border-radius:8px;font-size:.9rem}
 .order-line-actions {display:flex;gap:8px}
 .order-line-actions button {font-size:.85rem;padding:8px}
+.order-refills {display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.order-refills button {padding:7px 10px;font-size:.85rem;background:#e3f4ea}
+.order-promotion-editor {width:min(680px,94vw)}
+.order-refill-editor {width:min(520px,94vw)}
+.order-promo-included {margin:0;padding:8px 0;color:#58776a;font-size:.9rem}
+.order-promo-group {display:grid;gap:8px;padding:12px 0;border-top:1px solid #dce9e0}
+.order-promo-group h3 {margin:0;font-size:1rem}
+.order-promo-selection {padding:10px;border-left:3px solid #087c50;background:#f4f8f5}
+.order-promo-selection>header {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.order-promo-selection .order-option {margin-top:8px}
+.order-promo-group small {color:#58776a}
 .order-total {border-top:2px solid #dce9e0;padding:20px 0;font-size:1.15rem}
 .order-submit {display:grid;gap:10px}
 .order-alert {color:#a32222;background:#fff0f0;padding:14px;border-radius:8px}

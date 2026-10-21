@@ -5,6 +5,7 @@ from app.modules.promociones.repository import (
     listar_grupos_promocion,
     listar_opciones_promocion,
     listar_promociones,
+    listar_reposiciones_promocion,
 )
 
 
@@ -60,6 +61,7 @@ def obtener_promociones():
     promociones_bd = listar_promociones()
     grupos_bd = listar_grupos_promocion()
     opciones_bd = listar_opciones_promocion()
+    reposiciones_bd = listar_reposiciones_promocion()
 
     opciones_por_grupo = {}
 
@@ -74,6 +76,11 @@ def obtener_promociones():
         )
 
     grupos_por_promocion = {}
+    reposiciones_por_promocion = {}
+
+    for reposicion in reposiciones_bd:
+        reposiciones_por_promocion.setdefault(reposicion['id_promocion'], []).append(
+            reposicion['id_presentacion_venta'])
 
     for grupo in grupos_bd:
         id_promocion = grupo["id_promocion"]
@@ -132,6 +139,7 @@ def obtener_promociones():
                 and hora_fin is not None
             ),
             "activo": promocion["activo"],
+            "reposiciones": reposiciones_por_promocion.get(id_promocion, []),
             "total_grupos": len(grupos),
             "total_opciones": sum(
                 grupo["total_opciones"]

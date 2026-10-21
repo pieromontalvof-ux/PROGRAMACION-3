@@ -59,6 +59,7 @@ class AssistantIntegrationTests(unittest.TestCase):
 
     def test_prepare_does_not_write_and_execute_once_with_native_audit(self):
         r = self.prepare(); self.assertEqual(r.status_code, 200, r.json)
+        self.assertEqual(r.json['agente'], 'carta_recetas')
         identity = r.json['borrador']['id_borrador']
         self.assertEqual(db.session.execute(text("SELECT count(*) FROM menaje WHERE nombre='IA prueba'")).scalar(), 0)
         self.assertEqual(self.perform(identity, confirmar=False).status_code, 400)
@@ -129,6 +130,45 @@ class AssistantIntegrationTests(unittest.TestCase):
         rows = r.json['consultas'][0]['registros']
         for row in rows:
             self.assertNotIn('dni', row); self.assertNotIn('clave', row); self.assertNotIn('correo_electronico', row)
+
+    def test_catalog_agent_receives_only_catalog_tools(self):
+        answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Consulta terminada.'}]}]
+        with patch('app.modules.asistente_ia.provider.respond', side_effect=[answer]) as model:
+            response = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
+                json={'instruccion': 'Consulta promociones'})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.json['agente'], 'carta_recetas')
+        names = {tool['name'] for tool in model.call_args.args[1]}
+        self.assertIn('consultar', names)
+        self.assertIn('preparar_cambio', names)
+        self.assertNotIn('consultar_inventario', names)
+
+    def test_agent_directory_is_only_visible_to_system_admin(self):
+        response = self.client.get('/api/asistente-ia/agentes', headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual({agent['id'] for agent in response.json['agentes']}, {'carta_recetas', 'inventario'})
+        catalog = next(agent for agent in response.json['agentes'] if agent['id'] == 'carta_recetas')
+        self.assertTrue(catalog['skills'][0]['contenido'])
+        self.assertIn('orquestador', catalog['relaciones'])
+        self.assertEqual(self.client.get('/api/asistente-ia/agentes', headers=self.token(2)).status_code, 403)
+
+    def test_inventory_agent_receives_inventory_tools_and_queries_active_store(self):
+        self.headers = self.token(2)
+        calls = [{'type': 'function_call', 'call_id': 'inventory-stock',
+                  'name': 'consultar_inventario', 'arguments': json.dumps({
+                      'recurso': 'stock', 'filtros_json': json.dumps({'busqueda': 'Producto compartido'})})}]
+        answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Stock consultado.'}]}]
+        with patch('app.modules.asistente_ia.provider.respond', side_effect=[calls, answer]) as model:
+            response = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
+                json={'instruccion': 'Consulta el stock de Producto compartido'})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.json['agente'], 'inventario')
+        self.assertEqual(response.json['consultas'][0]['recurso'], 'stock')
+        names = {tool['name'] for tool in model.call_args.args[1]}
+        self.assertIn('consultar_inventario', names)
+        self.assertIn('preparar_cambio', names)
+        self.assertNotIn('formulario', names)
+        self.assertNotIn('consultar', names)
 
     def test_inventory_arbitrary_routes_and_unknown_fields_are_rejected(self):
         with self.app.test_request_context(headers=self.headers):

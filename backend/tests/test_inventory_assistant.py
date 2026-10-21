@@ -40,7 +40,7 @@ class InventoryAssistantTests(unittest.TestCase):
         g.pop('local_operativo',None)
         with patch('app.modules.asistente_ia.provider.respond',side_effect=[calls,ANSWER]) as model:
             result=self.client.post('/api/asistente-ia/preparar',headers=headers or self.manager,
-                                    json={'instruccion':'Solicitud del usuario'})
+                                    json={'instruccion':'Consulta de inventario: solicitud del usuario'})
             self.assertEqual(result.status_code,200,result.json)
             return result.json,model
 
@@ -109,7 +109,12 @@ class InventoryAssistantTests(unittest.TestCase):
         self.assertIsNone(self.api(f'conteos/{identity}').json['ronda']['cerrado_en'])
 
     def test_filters_scope_and_totals(self):
-        result,_=self.ask(query('stock',{'bajo_minimo':True}))
+        result,model=self.ask(query('stock',{'bajo_minimo':True}))
+        self.assertEqual(result['agente'],'inventario')
+        names={tool['name'] for tool in model.call_args.args[1]}
+        self.assertIn('consultar_inventario',names)
+        self.assertIn('preparar_cambio',names)
+        self.assertNotIn('consultar',names)
         self.assertTrue(all(p['stock_actual']<p['stock_minimo'] for p in result['consultas'][0]['registros']))
         result,_=self.ask(query('mix_ventas',{'desde':'2026-09-01','hasta':'2026-09-28','horas':[1,2],'por_hora':True}))
         self.assertEqual(result['consultas'][0]['contexto']['total_ventas'],0)

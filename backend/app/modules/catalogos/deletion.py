@@ -16,7 +16,7 @@ ENTIDADES = {
     'presentaciones': ('presentacion_venta', 'id_presentacion_venta', 9, []),
     'subproductos': ('subproducto', 'id_subproducto', 12, [('subproducto_detalle', 'id_subproducto')]),
     'recetas': ('receta', 'id_receta', 28, [('receta_detalle', 'id_receta')]),
-    'promociones': ('promocion', 'id_promocion', 14, [('promocion_grupo', 'id_promocion')]),
+    'promociones': ('promocion', 'id_promocion', 14, [('promocion_grupo', 'id_promocion'), ('promocion_reposicion', 'id_promocion')]),
 }
 
 
@@ -58,6 +58,8 @@ def eliminar_registro(entidad, identidad, usuario):
                     detalles['promocion_opcion'] = [dict(r) for r in db.session.execute(text('SELECT * FROM promocion_opcion WHERE id_promocion_grupo=ANY(:ids) FOR UPDATE'), {'ids': ids}).mappings()]
                     referencias('promocion_opcion', [r['id_promocion_opcion'] for r in detalles['promocion_opcion']], [])
                     db.session.execute(text('DELETE FROM promocion_opcion WHERE id_promocion_grupo=ANY(:ids)'), {'ids': ids})
+            elif hija == 'promocion_reposicion':
+                pass
             elif hija not in ('producto_stock_local', 'proveedor_categoria'):
                 referencias(hija, [r['id_' + hija] for r in detalles[hija]], [])
             elif hija == 'producto_stock_local':

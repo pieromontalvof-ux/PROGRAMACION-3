@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
-import { X, LayoutGrid, Bot } from 'lucide-react'
+import { X, LayoutGrid, Bot, Store } from 'lucide-react'
 
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -81,6 +81,8 @@ export function Sidebar({
         >
           {menuJerarquico.length > 0 || perfilActivo ? (
             <ul className="sidebar-menu">
+              {perfilActivo?.id_perfil === 1 && menu.some(m => m.id_opcion_menu === 2 && m.permisos.consultar) &&
+                <li className="sidebar-item"><NavLink to="/home/tiendas" onClick={cerrarEnMovil} className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}><span className="sidebar-link__main"><Store className="sidebar-link__icon" aria-hidden="true" /><span className="sidebar-link__text">Tiendas</span></span></NavLink></li>}
               {perfilActivo && <li className="sidebar-item"><NavLink to="/home/asistente-ia" onClick={cerrarEnMovil} className={({isActive})=>`sidebar-link ${isActive?'sidebar-link--active':''}`}><span className="sidebar-link__main"><Bot className="sidebar-link__icon" aria-hidden="true"/><span className="sidebar-link__text">Asistente IA</span></span></NavLink></li>}
               {perfilActivo?.id_perfil===2 && <li className="sidebar-item"><NavLink to="/home/opciones-salon" onClick={cerrarEnMovil} className={({isActive})=>`sidebar-link ${isActive?'sidebar-link--active':''}`}><span className="sidebar-link__main"><LayoutGrid className="sidebar-link__icon" aria-hidden="true"/><span className="sidebar-link__text">Opciones de salón</span></span></NavLink></li>}
               {menuJerarquico.map((opcion) => (

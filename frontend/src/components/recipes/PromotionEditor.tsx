@@ -20,6 +20,7 @@ export function PromotionEditor({ token, promocion: p, cerrar, guardado }: {
   const [nombre, setNombre] = useState(p?.nombre ?? '')
   const [precio, setPrecio] = useState(String(p?.precio ?? 0))
   const [activo, setActivo] = useState(p?.activo ?? true)
+  const [reposiciones, setReposiciones] = useState<number[]>(p?.reposiciones ?? [])
   const [horario, setHorario] = useState(p?.tiene_horario ?? false)
   const [inicio, setInicio] = useState(p?.hora_inicio ?? '')
   const [fin, setFin] = useState(p?.hora_fin ?? '')
@@ -47,7 +48,8 @@ export function PromotionEditor({ token, promocion: p, cerrar, guardado }: {
     setGuardando(true); setError('')
     try {
       const r = await guardarPromocion(token, { nombre, precio, activo, hora_inicio: horario ? inicio : null, hora_fin: horario ? fin : null,
-        grupos: grupos.map(g => ({ id_promocion_grupo: g.id_promocion_grupo, cantidad_elegir: Number(g.cantidad), permite_repetir: g.repetir, opciones: g.opciones })) }, p?.id_promocion)
+        grupos: grupos.map(g => ({ id_promocion_grupo: g.id_promocion_grupo, cantidad_elegir: Number(g.cantidad), permite_repetir: g.repetir, opciones: g.opciones })),
+        reposiciones }, p?.id_promocion)
       guardado(r.mensaje)
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar') }
     finally { setGuardando(false) }
@@ -84,8 +86,10 @@ export function PromotionEditor({ token, promocion: p, cerrar, guardado }: {
             {g.opciones.map(id => {
               const o = catalogo.find(x => x.id_presentacion_venta === id)
               return <div key={id} className="recipe-editor__ingredient" style={{ gridTemplateColumns: '1fr auto' }}>
-                <div><strong>{o ? `${o.codigo} · ${o.nombre}` : `Presentación ${id} no disponible`}</strong><small>{o && `${o.contenido} ${formatearUnidad(o.unidad)} · ${o.menaje}${o.activo ? '' : ' · Inactiva'}`}</small></div>
-                <button type="button" aria-label={`Quitar ${o?.nombre ?? id}`} onClick={() => cambiar(g.clave, { opciones: g.opciones.filter(x => x !== id) })}>Quitar</button>
+                <div><strong>{o ? `${o.codigo} · ${o.nombre}` : `Presentación ${id} no disponible`}</strong><small>{o && `${o.contenido} ${formatearUnidad(o.unidad)} · ${o.menaje}${o.activo ? '' : ' · Inactiva'}`}</small>
+                  <label className="recipe-editor__check"><input type="checkbox" checked={reposiciones.includes(id)} onChange={e => setReposiciones(actual => e.target.checked ? [...actual, id] : actual.filter(x => x !== id))} />Permitir reposición sin costo</label>
+                </div>
+                <button type="button" aria-label={`Quitar ${o?.nombre ?? id}`} onClick={() => { cambiar(g.clave, { opciones: g.opciones.filter(x => x !== id) }); setReposiciones(actual => actual.filter(x => x !== id)) }}>Quitar</button>
               </div>
             })}
             {!g.opciones.length && <p className="recipe-editor__hint">Busca y agrega las presentaciones que se pueden elegir.</p>}

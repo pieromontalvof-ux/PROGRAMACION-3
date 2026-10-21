@@ -7,32 +7,42 @@ from uuid import uuid4
 
 
 class AssistantError(ValueError):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, retryable=False):
         super().__init__(message)
         self.status = status
+        self.retryable = retryable
 
 
 def configured():
     return bool(os.getenv('OPENAI_API_KEY', '').strip())
 
 
-def call(path, body, content_type='application/json'):
+def call(path, body, content_type='application/json', timeout=60):
     key = os.getenv('OPENAI_API_KEY', '').strip()
     if not key:
         raise AssistantError('Falta configurar OPENAI_API_KEY en el backend y reiniciarlo.', 503)
     req = Request('https://api.openai.com/v1/' + path, data=body, headers={
         'Authorization': 'Bearer ' + key, 'Content-Type': content_type})
     try:
-        with urlopen(req, timeout=60) as response:
+        with urlopen(req, timeout=timeout) as response:
             return json.load(response)
     except HTTPError as error:
         messages = {401: 'La clave de OpenAI no es válida. Revisa la configuración del backend.',
                     429: 'OpenAI alcanzó el límite de solicitudes o saldo. Revisa Billing y vuelve a intentar.',
                     403: 'Tu proyecto de OpenAI no tiene acceso al modelo configurado.',
                     404: 'El modelo configurado no está disponible para tu proyecto de OpenAI.'}
-        raise AssistantError(messages.get(error.code, 'OpenAI no pudo procesar la solicitud. Intenta nuevamente.'), 502) from None
-    except (URLError, TimeoutError, OSError, ValueError):
-        raise AssistantError('No se pudo obtener respuesta de OpenAI. Intenta nuevamente.', 502) from None
+        raise AssistantError(messages.get(error.code, 'OpenAI no pudo procesar la solicitud. Intenta nuevamente.'),
+                             502, retryable=error.code in (500, 502, 503, 504)) from None
+    except TimeoutError:
+        raise AssistantError('OpenAI superó el tiempo de espera.', 504, retryable=True) from None
+    except URLError as error:
+        if isinstance(error.reason, TimeoutError):
+            raise AssistantError('OpenAI superó el tiempo de espera.', 504, retryable=True) from None
+        raise AssistantError('No se pudo conectar con OpenAI.', 502, retryable=True) from None
+    except OSError:
+        raise AssistantError('Se interrumpió la conexión con OpenAI.', 502, retryable=True) from None
+    except ValueError:
+        raise AssistantError('OpenAI devolvió una respuesta no válida.', 502) from None
 
 
 def respond(messages, tools):

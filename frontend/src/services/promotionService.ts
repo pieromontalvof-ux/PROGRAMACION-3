@@ -12,6 +12,7 @@ export interface PresentacionPromocion {
 export interface PromocionEntrada {
   nombre: string; precio: string; activo: boolean; hora_inicio: string | null; hora_fin: string | null;
   grupos: { id_promocion_grupo?: number; cantidad_elegir: number; permite_repetir: boolean; opciones: number[] }[];
+  reposiciones: number[];
 }
 export async function formularioPromocion(token: string): Promise<{ presentaciones: PresentacionPromocion[] }> {
   return procesarRespuesta(await fetch(`${API_URL}/promociones/formulario`, { headers: { Authorization: `Bearer ${token}` } }))

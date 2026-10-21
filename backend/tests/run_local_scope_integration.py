@@ -61,6 +61,18 @@ try:
     with engine.begin() as c:
         assert c.execute(text('SELECT current_database()')).scalar_one() == 'barbarito_test'
         c.execute(text('DROP TABLE IF EXISTS inventario_asignacion_puesto'))
+        c.execute(text('''DO $$ DECLARE tabla text; restriccion record; BEGIN
+                    FOREACH tabla IN ARRAY ARRAY['producto','subproducto','presentacion_venta',
+                        'subproducto_detalle','receta_detalle','grupo_salsa_opcion'] LOOP
+                        FOR restriccion IN SELECT conname FROM pg_constraint
+                            WHERE conrelid=format('public.%I',tabla)::regclass
+                            AND (conname='fk_'||tabla||'_unidad_medida' OR
+                                (contype='c' AND pg_get_constraintdef(oid) ILIKE '%unidad%')) LOOP
+                            EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT %I',tabla,restriccion.conname);
+                        END LOOP;
+                    END LOOP;
+                END $$'''))
+        c.execute(text('DROP TABLE IF EXISTS unidad_medida CASCADE'))
         # La copia contiene SOLO esquema, sin datos reales. Reproducir aquí el
         # estado anterior permite verificar también la migración del nuevo libro.
         if c.execute(text("SELECT to_regclass('public.inventario_evento')")).scalar():
@@ -124,6 +136,10 @@ try:
         if not c.execute(text("SELECT to_regclass('public.salon_cobro')")).scalar():
             pagos = (ROOT / 'database/migrations/20260926_pagos_salon.sql').read_text(encoding='utf-8')
             c.execute(text(pagos.replace("current_database()<>'barbarito'", "current_database()<>'barbarito_test'")))
+    with engine.connect() as c:
+        if not c.execute(text("SELECT to_regclass('public.promocion_reposicion')")).scalar():
+            promociones = (ROOT / 'database/migrations/20261016_promociones_reposicion_salon.sql').read_text(encoding='utf-8')
+            c.execute(text(promociones.replace("current_database()<>'barbarito'", "current_database()<>'barbarito_test'")))
     engine.dispose()
     env = {**local_env, 'DATABASE_URL': test_url, 'LOCAL_SCOPE_TEST_DB': '1'}
     patterns = sys.argv[1:]

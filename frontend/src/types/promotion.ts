@@ -30,6 +30,7 @@ export interface PromocionDetalle {
   hora_fin: string | null
   tiene_horario: boolean
   activo: boolean
+  reposiciones: number[]
   total_grupos: number
   total_opciones: number
   grupos: GrupoPromocion[]

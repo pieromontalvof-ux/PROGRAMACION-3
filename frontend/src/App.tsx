@@ -50,6 +50,7 @@ import { PendingReceiptsPage } from './pages/PendingReceiptsPage'
 import { PurchaseOrderPage } from './pages/PurchaseOrderPage'
 
 import { UsersPage } from './pages/UsersPage'
+import { StoresPage } from './pages/StoresPage'
 import { RecipesPage } from './pages/RecipesPage'
 
 import { PurchaseOrderHistoryPage } from './pages/PurchaseOrderHistoryPage'
@@ -90,6 +91,7 @@ function App() {
           element={<StockPage />}
         />
         <Route path="asistente-ia" element={<AssistantPage />} />
+        <Route path="tiendas" element={<StoresPage />} />
         <Route path="opciones-salon" element={<SalonLayoutPage />} />
         <Route path="limites-stock" element={<StockLimitsPage />} />
 

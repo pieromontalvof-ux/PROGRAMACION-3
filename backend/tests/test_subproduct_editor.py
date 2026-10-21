@@ -37,7 +37,7 @@ class SubproductEditorTests(unittest.TestCase):
         self.assertEqual(estado,201,resultado)
         identidad=resultado['id_subproducto']
         detalle=db.session.execute(text('SELECT cantidad,unidad FROM subproducto_detalle WHERE id_subproducto=:id'),{'id':identidad}).mappings().one()
-        self.assertEqual(detalle['unidad'],'UNI')
+        self.assertEqual(detalle['unidad'],'C62')
         original=resultado['codigo']
         datos={**self.data,'nombre':'Nombre editado','rendimiento':'3',
                'ingredientes':[{'id':1,'cantidad':'1.125'}]}

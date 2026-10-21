@@ -30,6 +30,8 @@ def contexto(mesa=None):
         raise Conflict('Falta ejecutar database/migrations/20260923_pedidos_salon.sql')
     if not db.session.execute(text("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='salon_pedido' AND column_name='envio_clave')")).scalar():
         raise Conflict('Falta ejecutar database/migrations/20260923_envios_adicionales_salon.sql')
+    if not db.session.execute(text("SELECT to_regclass('public.promocion_reposicion') IS NOT NULL AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='salon_pedido_linea' AND column_name='id_promocion')")).scalar():
+        raise Conflict('Falta ejecutar database/migrations/20261016_promociones_reposicion_salon.sql')
     if not db.session.execute(text("SELECT to_regclass('public.salon_pedido_actual')")).scalar():
         raise Conflict('Ejecuta 20260923_control_salon.sql')
     return sesion
@@ -61,7 +63,40 @@ def catalogo():
         p['precio']=float(p['precio'])
         p['contenido']=float(p['contenido'])
         p['grupo']=por_presentacion.get(p['id'])
-    return productos
+    por_id={p['id']:p for p in productos}
+    promociones=db.session.execute(text('''
+      WITH reloj AS (SELECT (clock_timestamp() AT TIME ZONE 'America/Lima')::time AS hora)
+      SELECT p.id_promocion,p.nombre,p.precio FROM promocion p CROSS JOIN reloj
+      WHERE p.activo AND (p.hora_inicio IS NULL OR p.hora_fin IS NULL OR
+        CASE WHEN p.hora_inicio<p.hora_fin THEN reloj.hora>=p.hora_inicio AND reloj.hora<p.hora_fin
+        ELSE reloj.hora>=p.hora_inicio OR reloj.hora<p.hora_fin END)
+      ORDER BY p.nombre,p.id_promocion
+    ''')).mappings().all()
+    resultado_promociones=[]
+    for promo in promociones:
+        grupos=[]
+        for grupo in db.session.execute(text('''SELECT id_promocion_grupo,cantidad_elegir,permite_repetir
+          FROM promocion_grupo WHERE id_promocion=:id ORDER BY id_promocion_grupo'''),
+          {'id':promo['id_promocion']}).mappings():
+            opciones=[]
+            for opcion in db.session.execute(text('''SELECT po.id_presentacion_venta,
+              EXISTS(SELECT 1 FROM promocion_reposicion r WHERE r.id_promocion=:promo
+                AND r.id_presentacion_venta=po.id_presentacion_venta) AS reponible
+              FROM promocion_opcion po WHERE po.id_promocion_grupo=:grupo
+              ORDER BY po.id_presentacion_venta'''),
+              {'promo':promo['id_promocion'],'grupo':grupo['id_promocion_grupo']}).mappings():
+                producto=por_id.get(opcion['id_presentacion_venta'])
+                if producto:
+                    opciones.append({**producto,'reponible':opcion['reponible']})
+            if not opciones or (not grupo['permite_repetir'] and grupo['cantidad_elegir']>len(opciones)):
+                grupos=[]
+                break
+            grupos.append({'id':grupo['id_promocion_grupo'],'cantidad':grupo['cantidad_elegir'],
+                           'repetir':grupo['permite_repetir'],'opciones':opciones})
+        if grupos:
+            resultado_promociones.append({'id':promo['id_promocion'],'nombre':promo['nombre'],
+                'precio':float(promo['precio']),'grupos':grupos})
+    return {'productos':productos,'promociones':resultado_promociones}
 
 
 def obtener(mesa,sesion,escritura=False):
@@ -71,26 +106,36 @@ def obtener(mesa,sesion,escritura=False):
     if any(p['id_usuario']!=sesion['id_usuario'] for p in pedidos) and (escritura or sesion.get('perfil') not in (2,3)):
         raise Forbidden('Esta mesa está siendo atendida por otro usuario')
     borrador=next((p for p in pedidos if p['estado']=='BORRADOR'),None)
-    filas=db.session.execute(text('''SELECT l.id_linea,l.id_presentacion,l.nombre,l.precio,l.cantidad,l.comentario,l.opciones,
+    filas=db.session.execute(text('''SELECT l.id_linea,l.id_presentacion,l.id_promocion,l.selecciones_promocion,
+        l.id_barra_libre,barra.nombre AS barra_nombre,l.nombre,l.precio,l.cantidad,l.comentario,l.opciones,
         p.estado='ENVIADO' AS enviada FROM salon_pedido_linea l JOIN salon_pedido_actual p USING(id_pedido)
+        LEFT JOIN salon_pedido_linea barra ON barra.id_linea=l.id_barra_libre
         WHERE p.id_local=:local AND p.mesa=:mesa AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea) ORDER BY p.id_pedido,l.posicion'''),
         {'local':sesion['id_local'],'mesa':mesa}).mappings().all()
+    reposiciones_por_barra={}
+    for fila in filas:
+        if fila['id_barra_libre'] is not None:
+            reposiciones_por_barra[fila['id_barra_libre']]=reposiciones_por_barra.get(fila['id_barra_libre'],0)+fila['cantidad']
     enviados={}
     pendientes=[]
     total=0
     for fila in filas:
         l=dict(fila)
+        identidad_linea=l['id_linea']
         l['nombre']=nombre_presentacion(l['nombre'])
         l['ids_lineas']=[l.pop('id_linea')]
+        if l['id_promocion'] is not None:
+            l['cantidad_reposiciones']=reposiciones_por_barra.get(identidad_linea,0)
         total+=l['precio']*l['cantidad']
         l['precio']=float(l['precio'])
-        if l['enviada']:
+        if l['enviada'] and l['id_promocion'] is None and l['id_barra_libre'] is None:
             opciones=sorted(l['opciones'],key=lambda o: json.dumps(o,sort_keys=True))
             clave=(l['id_presentacion'],l['nombre'],l['precio'],l['comentario'],json.dumps(opciones,sort_keys=True))
             if clave in enviados:
                 enviados[clave]['cantidad']+=l['cantidad']
                 enviados[clave]['ids_lineas']+=l['ids_lineas']
             else: enviados[clave]=l
+        elif l['enviada']: enviados[('linea',l['ids_lineas'][0])]=l
         else: pendientes.append(l)
     fecha=next((p['enviado_en'] for p in reversed(pedidos) if p['enviado_en']),None)
     return {'id_borrador':borrador['id_pedido'] if borrador else None,'mesa':mesa,
@@ -104,8 +149,8 @@ def obtener(mesa,sesion,escritura=False):
 @salon_orders_bp.get('/carta')
 @jwt_required()
 def carta():
-    validar_sesion_salon()
-    return jsonify(productos=catalogo())
+    contexto()
+    return jsonify(**catalogo())
 
 
 @salon_orders_bp.get('/mis-mesas')
@@ -125,38 +170,91 @@ def consultar(mesa):
     return jsonify(obtener(mesa,contexto(mesa)))
 
 
-def validar_lineas(datos,productos):
+def validar_opciones(producto,opciones):
+    if not isinstance(opciones,list) or any(type(i) is not int for i in opciones):
+        raise BadRequest('Opciones inválidas')
+    grupo=producto['grupo']
+    if not grupo and opciones: raise BadRequest('Este producto no admite opciones')
+    elegidas=[]
+    if grupo:
+        if len(opciones)>grupo['maximo'] or (not grupo['repetir'] and len(set(opciones))!=len(opciones)):
+            raise BadRequest('Revisa el máximo de opciones y si se permite repetir')
+        permitidas={o['id']:o for o in grupo['opciones']}
+        for identidad in opciones:
+            if identidad not in permitidas: raise BadRequest('Una opción no está disponible para este producto')
+            elegidas.append(permitidas[identidad])
+    return elegidas
+
+
+def validar_lineas(datos,catalogo_actual,sesion,mesa):
     lineas=datos.get('lineas')
     if not isinstance(lineas,list) or len(lineas)>100:
         raise BadRequest('El pedido admite hasta 100 líneas')
-    indice={p['id']:p for p in productos}
+    indice={p['id']:p for p in catalogo_actual['productos']}
+    promociones={p['id']:p for p in catalogo_actual['promociones']}
     resultado=[]
     for linea in lineas:
-        if not isinstance(linea,dict) or type(linea.get('id_presentacion')) is not int:
+        if not isinstance(linea,dict):
             raise BadRequest('Producto inválido')
-        p=indice.get(linea['id_presentacion'])
-        if not p: raise Conflict('Un producto ya no está disponible en la carta. Actualiza el pedido.')
         cantidad=linea.get('cantidad')
         comentario=linea.get('comentario','')
-        opciones=linea.get('opciones',[])
         if type(cantidad) is not int or not 1<=cantidad<=99:
             raise BadRequest('La cantidad debe estar entre 1 y 99')
         if not isinstance(comentario,str) or len(comentario)>500:
             raise BadRequest('El comentario admite hasta 500 caracteres')
-        if not isinstance(opciones,list) or any(type(i) is not int for i in opciones):
-            raise BadRequest('Opciones inválidas')
-        grupo=p['grupo']
-        if not grupo and opciones: raise BadRequest('Este producto no admite opciones')
-        elegidas=[]
-        if grupo:
-            if len(opciones)>grupo['maximo'] or (not grupo['repetir'] and len(set(opciones))!=len(opciones)):
-                raise BadRequest('Revisa el máximo de opciones y si se permite repetir')
-            permitidas={o['id']:o for o in grupo['opciones']}
-            for identidad in opciones:
-                if identidad not in permitidas: raise BadRequest('Una opción no está disponible para este producto')
-                elegidas.append(permitidas[identidad])
+        if type(linea.get('id_promocion')) is int:
+            promo=promociones.get(linea['id_promocion'])
+            if not promo: raise Conflict('La promoción ya no está disponible. Actualiza el pedido.')
+            if cantidad!=1: raise BadRequest('Agrega cada promoción como una barra libre independiente')
+            selecciones=linea.get('selecciones')
+            if not isinstance(selecciones,list) or len(selecciones)>100:
+                raise BadRequest('Configura las opciones incluidas en la promoción')
+            normalizadas=[]
+            ids_seleccionados=set()
+            for grupo in promo['grupos']:
+                seleccion_grupo=[s for s in selecciones if isinstance(s,dict) and s.get('id_grupo')==grupo['id']]
+                if len(seleccion_grupo)!=grupo['cantidad']:
+                    raise BadRequest('Completa la cantidad de opciones de cada grupo')
+                ids=[s.get('id_presentacion') for s in seleccion_grupo]
+                if any(type(i) is not int for i in ids) or (not grupo['repetir'] and len(ids)!=len(set(ids))):
+                    raise BadRequest('Revisa si se pueden repetir las opciones elegidas')
+                permitidas={o['id']:o for o in grupo['opciones']}
+                for seleccion in seleccion_grupo:
+                    producto=permitidas.get(seleccion['id_presentacion'])
+                    if not producto: raise BadRequest('Una opción no pertenece a esta promoción')
+                    ids_seleccionados.add(id(seleccion))
+                    elegidas=validar_opciones(producto,seleccion.get('opciones',[]))
+                    normalizadas.append({'id_grupo':grupo['id'],'id_presentacion':producto['id'],
+                        'nombre':producto['nombre'],'reponible':producto['reponible'],
+                        'grupo':producto['grupo'],'opciones':elegidas})
+            if len(ids_seleccionados)!=len(selecciones):
+                raise BadRequest('Una opción no pertenece a los grupos de esta promoción')
+            resultado.append({'id_presentacion':None,'id_promocion':promo['id'],'id_barra_libre':None,
+                'selecciones_promocion':normalizadas,'nombre':promo['nombre'],'precio':promo['precio'],
+                'cantidad':1,'comentario':comentario.strip(),'opciones':[]})
+            continue
+        if type(linea.get('id_presentacion')) is not int:
+            raise BadRequest('Producto inválido')
+        p=indice.get(linea['id_presentacion'])
+        if not p: raise Conflict('Un producto ya no está disponible en la carta. Actualiza el pedido.')
+        elegidas=validar_opciones(p,linea.get('opciones',[]))
+        barra=linea.get('id_barra_libre')
+        if barra is not None:
+            if type(barra) is not int or barra<=0:
+                raise BadRequest('Selecciona una barra libre válida')
+            padre=db.session.execute(text('''SELECT l.id_promocion,l.selecciones_promocion FROM salon_pedido_linea l
+              JOIN salon_pedido_actual actual USING(id_pedido)
+              WHERE l.id_linea=:id AND l.id_promocion IS NOT NULL AND actual.id_local=:local
+              AND actual.mesa=:mesa AND actual.estado='ENVIADO'
+              AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea)'''),
+              {'id':barra,'local':sesion['id_local'],'mesa':mesa}).mappings().first()
+            reponible=padre and any(s.get('id_presentacion')==p['id'] and s.get('reponible')
+                for s in padre['selecciones_promocion'])
+            if not reponible:
+                raise Conflict('Esta presentación no admite reposición en esa barra libre')
         # Precio y nombres siempre proceden del catálogo, nunca del navegador.
-        resultado.append({'id_presentacion':p['id'],'nombre':p['nombre'],'precio':p['precio'],
+        resultado.append({'id_presentacion':p['id'],'id_promocion':None,'id_barra_libre':barra,
+            'selecciones_promocion':[],'nombre':p['nombre'],'precio':0 if barra is not None else p['precio'],
             'cantidad':cantidad,'comentario':comentario.strip(),'opciones':elegidas})
     return resultado
 
@@ -192,8 +290,8 @@ def guardar(mesa):
                 return jsonify(anterior)
         if anterior['version']!=datos['version']: raise Conflict('El pedido cambió en otra ventana. Vuelve a abrir la mesa.')
         # Protege precios, disponibilidad y opciones durante la captura del pedido.
-        db.session.execute(text('LOCK TABLE presentacion_venta,item_carta,categoria_carta,grupo_salsa,grupo_salsa_opcion,producto IN SHARE MODE'))
-        lineas=validar_lineas(datos,catalogo())
+        db.session.execute(text('LOCK TABLE presentacion_venta,item_carta,categoria_carta,grupo_salsa,grupo_salsa_opcion,producto,promocion,promocion_grupo,promocion_opcion,promocion_reposicion IN SHARE MODE'))
+        lineas=validar_lineas(datos,catalogo(),sesion,mesa)
         enviar=datos.get('enviar',False)
         if enviar and not lineas: raise BadRequest('Agrega al menos un producto antes de enviar')
         if not lineas and anterior['id_borrador'] is not None:
@@ -210,9 +308,13 @@ def guardar(mesa):
             identidad=anterior['id_borrador']
             db.session.execute(text('DELETE FROM salon_pedido_linea WHERE id_pedido=:id'),{'id':identidad})
         for posicion,l in enumerate(lineas):
-            db.session.execute(text('''INSERT INTO salon_pedido_linea(id_pedido,posicion,id_presentacion,nombre,precio,cantidad,comentario,opciones)
-              VALUES(:pedido,:posicion,:id_presentacion,:nombre,:precio,:cantidad,:comentario,CAST(:opciones AS jsonb))'''),
-              {**l,'pedido':identidad,'posicion':posicion,'opciones':json.dumps(l['opciones'],ensure_ascii=False)})
+                        db.session.execute(text('''INSERT INTO salon_pedido_linea(id_pedido,posicion,id_presentacion,id_promocion,
+                            selecciones_promocion,id_barra_libre,nombre,precio,cantidad,comentario,opciones)
+                            VALUES(:pedido,:posicion,:id_presentacion,:id_promocion,CAST(:selecciones_promocion AS jsonb),
+                            :id_barra_libre,:nombre,:precio,:cantidad,:comentario,CAST(:opciones AS jsonb))'''),
+                            {**l,'pedido':identidad,'posicion':posicion,
+                             'selecciones_promocion':json.dumps(l['selecciones_promocion'],ensure_ascii=False),
+                             'opciones':json.dumps(l['opciones'],ensure_ascii=False)})
         db.session.execute(text('''UPDATE salon_pedido SET version=:version,estado=:estado,
             enviado_en=CASE WHEN :enviar THEN clock_timestamp() ELSE NULL END,
             envio_clave=CAST(:envio_clave AS uuid),envio_hash=:envio_hash WHERE id_pedido=:id'''),

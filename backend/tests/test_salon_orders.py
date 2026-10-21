@@ -21,11 +21,11 @@ class SalonOrderTests(unittest.TestCase):
           INSERT INTO item_carta(id_item_carta,codigo,nombre,id_categoria_carta,tipo)
             VALUES(9800,'PT-001','Alitas prueba',9800,'PREPARADO');
           INSERT INTO presentacion_venta(id_presentacion_venta,id_item_carta,id_menaje,contenido,unidad,precio)
-            VALUES(9800,9800,9800,1,'PORCIÓN',15.50);
+                        VALUES(9800,9800,9800,1,'PORCION',15.50);
           INSERT INTO grupo_salsa(id_grupo_salsa,id_presentacion_venta,cantidad_maxima,permite_repetir)
             VALUES(9800,9800,2,false);
           INSERT INTO grupo_salsa_opcion(id_grupo_salsa_opcion,id_grupo_salsa,id_producto,cantidad,unidad)
-            VALUES(9800,9800,1,1,'UNI');
+                        VALUES(9800,9800,1,1,'C62');
         '''))
         self.headers={'Authorization':'Bearer '+self.login().json['token']}
         self.linea={'id_presentacion':9800,'cantidad':2,'comentario':'Sin sal','opciones':[9800],'precio':0.01}
@@ -124,3 +124,38 @@ class SalonOrderTests(unittest.TestCase):
         r=self.client.get('/api/salon/mesas/M01/pedido',headers=self.headers).json
         self.assertEqual(r['estado'],'BORRADOR')
         self.assertEqual(r['lineas'][1]['comentario'],'Bien cocido')
+
+    def test_promotions_are_individual_and_refills_are_free_and_linked(self):
+        db.session.execute(text('''
+                    INSERT INTO presentacion_venta(id_presentacion_venta,id_item_carta,id_menaje,contenido,unidad,precio)
+                        VALUES(9801,9800,9800,2,'C62',25);
+                    INSERT INTO promocion(id_promocion,codigo,nombre,precio,activo)
+                        VALUES(9800,'P-9800','Barra libre de alitas',29.90,true);
+                    INSERT INTO promocion_grupo(id_promocion_grupo,id_promocion,cantidad_elegir,permite_repetir)
+                        VALUES(9800,9800,1,false);
+                    INSERT INTO promocion_opcion(id_promocion_grupo,id_presentacion_venta)
+                        VALUES(9800,9800),(9800,9801);
+                    INSERT INTO promocion_reposicion(id_promocion,id_presentacion_venta) VALUES(9800,9800);
+                '''))
+        carta=self.client.get('/api/salon/carta',headers=self.headers)
+        self.assertEqual(carta.status_code,200,carta.json)
+        self.assertEqual(carta.json['promociones'][0]['precio'],29.9)
+        primera={'id_promocion':9800,'cantidad':1,'selecciones':[
+            {'id_grupo':9800,'id_presentacion':9800,'opciones':[9800]}]}
+        segunda={'id_promocion':9800,'cantidad':1,'selecciones':[
+            {'id_grupo':9800,'id_presentacion':9801,'opciones':[]}]}
+        enviado=self.guardar(enviar=True,lineas=[primera,segunda,primera])
+        self.assertEqual(enviado.status_code,200,enviado.json)
+        barras=[l for l in enviado.json['lineas'] if l['id_promocion']==9800]
+        self.assertEqual(len(barras),3)
+        self.assertEqual(len({l['ids_lineas'][0] for l in barras}),3)
+        self.assertEqual(enviado.json['total'],89.7)
+        refill={'id_presentacion':9800,'id_barra_libre':barras[0]['ids_lineas'][0],
+                'cantidad':1,'comentario':'','opciones':[9800]}
+        repuesto=self.guardar(enviar=True,lineas=[refill])
+        self.assertEqual(repuesto.status_code,200,repuesto.json)
+        self.assertEqual(repuesto.json['total'],89.7)
+        linea_repuesta=next(l for l in repuesto.json['lineas'] if l['id_barra_libre'] is not None)
+        self.assertEqual(linea_repuesta['precio'],0)
+        refill_sin_permiso={**refill,'id_barra_libre':barras[1]['ids_lineas'][0]}
+        self.assertEqual(self.guardar(lineas=[refill_sin_permiso]).status_code,409)

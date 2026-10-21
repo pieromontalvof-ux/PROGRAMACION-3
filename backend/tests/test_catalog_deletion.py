@@ -19,24 +19,25 @@ class CatalogDeletionTests(unittest.TestCase):
             INSERT INTO categoria_producto(id_categoria,nombre,prefijo) VALUES(9200,'Borrar categoria','BC');
             INSERT INTO proveedor(id_proveedor,nombre) VALUES(9200,'Borrar proveedor');
             INSERT INTO producto(id_producto,codigo,nombre,id_categoria,id_proveedor,unidad,presentacion,stock_minimo)
-            VALUES(9200,'BC-001','Borrar producto',9200,9200,'UNI',1,0);
+            VALUES(9200,'BC-001','Borrar producto',9200,9200,'C62',1,0);
             INSERT INTO producto_stock_local(id_producto,id_local,stock_minimo) VALUES(9200,1,0);
             INSERT INTO categoria_carta(id_categoria_carta,nombre,prefijo) VALUES(9200,'Borrar carta','BD');
             INSERT INTO menaje(id_menaje,nombre) VALUES(9200,'Borrar plato');
             INSERT INTO item_carta(id_item_carta,codigo,nombre,id_categoria_carta,tipo) VALUES(9200,'BD-001','Borrar item',9200,'PREPARADO');
-            INSERT INTO presentacion_venta(id_presentacion_venta,id_item_carta,id_menaje,contenido,unidad,precio) VALUES(9200,9200,9200,1,'UNI',1);
+            INSERT INTO presentacion_venta(id_presentacion_venta,id_item_carta,id_menaje,contenido,unidad,precio) VALUES(9200,9200,9200,1,'C62',1);
             INSERT INTO receta(id_receta,id_presentacion_venta,instrucciones) VALUES(9200,9200,'Prueba');
-            INSERT INTO receta_detalle(id_receta,tipo_componente,id_producto,cantidad,unidad) VALUES(9200,'PRODUCTO',9200,1,'UNI');
-            INSERT INTO subproducto(id_subproducto,codigo,nombre,rendimiento,unidad,instruccion) VALUES(9200,'SP-9200','Borrar subproducto',1,'Kg','Prueba');
-            INSERT INTO subproducto_detalle(id_subproducto,id_producto,cantidad,unidad) VALUES(9200,9200,1,'UNI');
+            INSERT INTO receta_detalle(id_receta,tipo_componente,id_producto,cantidad,unidad) VALUES(9200,'PRODUCTO',9200,1,'C62');
+            INSERT INTO subproducto(id_subproducto,codigo,nombre,rendimiento,unidad,instruccion) VALUES(9200,'SP-9200','Borrar subproducto',1,'KGM','Prueba');
+            INSERT INTO subproducto_detalle(id_subproducto,id_producto,cantidad,unidad) VALUES(9200,9200,1,'C62');
             INSERT INTO promocion(id_promocion,codigo,nombre,precio) VALUES(9200,'P-9200','Borrar promo',1);
             INSERT INTO promocion_grupo(id_promocion_grupo,id_promocion,cantidad_elegir,permite_repetir) VALUES(9200,9200,1,false);
             INSERT INTO promocion_opcion(id_promocion_grupo,id_presentacion_venta) VALUES(9200,9200);
+            INSERT INTO promocion_reposicion(id_promocion,id_presentacion_venta) VALUES(9200,9200);
         """));db.session.commit()
 
     def tearDown(self):
         db.session.rollback()
-        for tabla,col in [('promocion_opcion','id_promocion_grupo'),('promocion_grupo','id_promocion'),('promocion','id_promocion'),
+        for tabla,col in [('promocion_reposicion','id_promocion'),('promocion_opcion','id_promocion_grupo'),('promocion_grupo','id_promocion'),('promocion','id_promocion'),
                           ('receta_detalle','id_receta'),('receta','id_receta'),('subproducto_detalle','id_subproducto'),('subproducto','id_subproducto'),
                           ('presentacion_venta','id_presentacion_venta'),('item_carta','id_item_carta'),('categoria_carta','id_categoria_carta'),('menaje','id_menaje'),
                           ('producto_stock_local','id_producto'),('producto','id_producto'),('categoria_producto','id_categoria'),('proveedor','id_proveedor')]:
@@ -65,6 +66,7 @@ class CatalogDeletionTests(unittest.TestCase):
         with patch('app.modules.catalogos.deletion.registrar_actividad',side_effect=RuntimeError('fallo')):
             with self.assertRaises(RuntimeError): eliminar_registro('promociones',9200,1)
         self.assertEqual(db.session.execute(text('SELECT count(*) FROM promocion_opcion WHERE id_promocion_grupo=9200')).scalar(),1)
+        self.assertEqual(db.session.execute(text('SELECT count(*) FROM promocion_reposicion WHERE id_promocion=9200')).scalar(),1)
 
     def test_http_permissions_and_delete(self):
         client=self.app.test_client()
