@@ -2,6 +2,15 @@ import unittest
 from unittest.mock import patch
 
 from app.agents.orchestrator.router import route
+
+
+class CartaWordingTests(unittest.TestCase):
+    def test_menu_products_with_articles_or_joined_words_go_to_presentations(self):
+        for message in ('quiero crear un producto de la carta', 'quiero crearun producto de la carta',
+                        'crear un artículo de la carta', 'editar el producto de la carta',
+                        'crearun producto de la carta usando una promoción como referencia'):
+            with self.subTest(message=message):
+                self.assertEqual(route(message), 'presentaciones')
 from app import create_app
 from app.agents.carta_recetas.agent import run as run_catalog
 from app.agents.inventario.agent import run as run_inventory

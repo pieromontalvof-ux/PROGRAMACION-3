@@ -42,6 +42,9 @@ SPECIALIST_HINTS = {
 
 def catalog_route(instruction):
     value = tools.normalized(instruction)
+    # Natural wording with an article identifies the same menu resource.
+    value = re.sub(r'\b(producto|articulo)\s+de\s+la\s+carta\b', r'\1 de carta', value)
+    value = re.sub(r'\b(crear|crea|agregar|agrega|editar|edita|modificar|modifica)(un|una|el|la)\b', r'\1 \2', value)
     # El objeto de la acción prevalece sobre sus dependencias mencionadas.
     action = r'\b(?:crea|crear|agrega|agregar|edita|editar|modifica|modificar|actualiza|actualizar)\s+(?:(?:un|una|el|la|los|las|nuevo|nueva)\s+)*'
     for identity, hints in SPECIALIST_HINTS.items():
