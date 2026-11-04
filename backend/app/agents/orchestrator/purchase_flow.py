@@ -98,7 +98,8 @@ def analyze(session, state, instruction, context, start=None, end=None):
                            'Destaca qué artículos salieron más, insumos consumidos y cobertura del stock actual. '
                            'Consulta exactamente este rango, sin sustituirlo por los últimos 30 días. '
                            'No atribuyas las ventas a un evento: solo coinciden con el periodo elegido.')
-        result = demand_agent.run(session, instruction, '', context)
+        filters = {'desde': start.isoformat(), 'hasta': end.isoformat()} if start is not None else {}
+        result = demand_agent.run(session, instruction, '', context, bounded=True, filters=filters)
     except AssistantError as error:
         return answer(state, f'No se pudo completar este análisis: {error}. Puedes elegir otra opción o continuar al pedido.')
     state['paso'] = 'analisis'

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -52,6 +53,8 @@ def events(instruction='', context='', local=None):
               'y Cerca de: nombre de esta sede si la ubicación lo sustenta; de lo contrario indica '
               'Cercanía por confirmar. No inventes distancias ni tiempos de viaje. '
               'Compartir ciudad o distrito no prueba cercanía. No rellenes con eventos lejanos. '
+              'Si no verificas la cercanía, no lo presentes como evento cercano: '
+              'sepáralo en una sección Referencias sin cercanía verificada. '
               'Si la dirección no tiene número, no asumas un tramo o centro comercial específico. '
               'Ordena cronológicamente, elimina duplicados y excluye cancelaciones y fechas pasadas. '
               'Separa festividades nacionales de eventos locales; no atribuyas cercanía a una festividad. '
@@ -120,6 +123,24 @@ def events(instruction='', context='', local=None):
 
 
 
+def display_report(report):
+    location = report.get('local') or {}
+    address = tools.normalized(location.get('direccion') or '')
+    lines = []
+    for line in report.get('informe', '').splitlines():
+        plain = tools.normalized(re.sub(r'[*_#`]', '', line)).strip()
+        if re.match(r'^(sede|local|restaurante|periodo)\s*:', plain):
+            continue
+        if address and address in plain and len(plain) < len(address) + len(location.get('nombre', '')) + 20:
+            continue
+        lines.append(line)
+    message = '\n'.join(lines).strip()
+    if 'cercania por confirmar' in tools.normalized(message):
+        message = ('Hay referencias cuya cercanía está por confirmar: no se consideran eventos cercanos verificados '
+                   'ni justifican incrementar el pedido.\n\n' + message)
+    return message
+
+
 def run(session, instruction, previous='', context=''):
     from app.modules.asistente_ia import configuration
     configuration.authorize('eventos', 'eventos_cercanos')
@@ -140,7 +161,7 @@ def run(session, instruction, previous='', context=''):
     elif state == 'sin_direccion':
         message = report.get('informe', 'Falta registrar la dirección del restaurante activo.')
     else:
-        message = report.get('informe', 'No se obtuvo un informe verificable.')
+        message = display_report(report) or 'No se obtuvo un informe verificable.'
     if state in ('no_disponible', 'busqueda_incompleta'):
         message += '\nEsto no significa que no haya eventos; no se obtuvo un informe verificado.'
     if state == 'parcial':

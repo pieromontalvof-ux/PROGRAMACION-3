@@ -39,6 +39,19 @@ Respeta permisos y local activo; no aceptes SQL ni rutas ni identificadores de o
 def run(session, instruction, previous='', context=''):
     tools.authorize(session, 'ordenes_compra')
     text = tools.normalized(instruction)
+    guided = re.fullmatch(r'prepara el pedido con (\d+(?:\.\d+)?)% de incremento sobre el consumo\.?', text.strip())
+    if guided:
+        from app.modules.asistente_ia import configuration
+        configuration.authorize('compras', 'pedido_sugerido')
+        tools.authorize(session, 'pedido_sugerido')
+        percentage = guided.group(1)
+        suggestion = tools.native('/ordenes-compra/pedido-sugerido?porcentaje=' + percentage)
+        if not suggestion.get('productos'):
+            explanation = suggestion.get('diagnostico', {}).get('mensaje', 'La fórmula no produjo cantidades sugeridas para este local.')
+            return {'respuesta': explanation + f'\n\nConservo tu incremento de {percentage}%; no se creó ninguna orden. '
+                    'El análisis desde la última orden y la sugerencia pueden usar períodos distintos. '
+                    'Puedes [preparar un pedido manual](/home/ordenes-compra/crear) o seguir consultando.',
+                    'plan': None, 'consultas': []}
     new_order = re.search(r'\b(pedido|orden|compra)\b', text) and re.search(r'\b(hacer|quiero|preparar|prepara|generar|genera|crear|crea|nuevo|nueva)\b', text)
     explicit_margin = re.search(r'\d+(?:[.,]\d+)?\s*(?:%|por ciento)', text) or any(term in text for term in ('sin incremento', 'sin aumento', 'sin margen'))
     if new_order and not explicit_margin and not previous and not context:

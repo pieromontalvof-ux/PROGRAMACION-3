@@ -26,6 +26,9 @@ Sin ventas o sin datos explica la limitación; no inventes cobertura ni agotamie
 Eres de solo lectura. Compras usa este mismo análisis para explicar una propuesta que la persona revisará.'''
 
 
-def run(session, instruction, previous='', context=''):
+def run(session, instruction, previous='', context='', *, bounded=False, filters=None):
+    if bounded:
+        from .summary import analyze
+        return analyze(session, filters or {})
     return run_specialist(session, instruction, previous, context, RESOURCES, INSTRUCTIONS,
                           SKILLS, writable_resources=())

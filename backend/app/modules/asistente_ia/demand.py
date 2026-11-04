@@ -41,5 +41,6 @@ def read(session, filters=None):
                 registros=products[offset:offset+20], hay_mas=len(products)>offset+20,
                 contexto={k: v for k, v in report.items() if k not in ('productos', 'articulos')} | {
                     'articulos': items[offset:offset+20], 'total_articulos': len(items),
+                    'resumen': {'productos_con_consumo': sum(float(row.get('consumo_ventas') or 0) > 0 for row in products)},
                     'hay_mas_articulos': len(items)>offset+20,
                     'nota_filtro': 'La búsqueda se aplica por separado a artículos e insumos; no implica trazabilidad individual entre ambos rankings.'})

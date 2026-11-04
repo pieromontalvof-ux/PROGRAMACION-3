@@ -99,7 +99,8 @@ def obtener_pedido_sugerido(porcentaje="0"):
     if not porcentaje.is_finite() or not 0 <= porcentaje <= 1000:
         return {"mensaje": "El porcentaje debe estar entre 0 y 1000."}, 400
     sugeridos = []
-    for producto in listar_productos_para_compra():
+    productos = listar_productos_para_compra()
+    for producto in productos:
         cantidad = _calcular_sugerencia(producto, porcentaje)
         if cantidad <= 0:
             continue
@@ -114,10 +115,21 @@ def obtener_pedido_sugerido(porcentaje="0"):
         item["paquetes_sugeridos"] = int(cantidad / (presentacion if presentacion > 0 else 1))
         sugeridos.append(item)
 
+    con_consumo = sum(Decimal(str(p.get('consumo_total') or 0)) > 0 for p in productos)
+    period = ' en los últimos 30 días' if productos and productos[0].get('origen_consumo') == 'ultimos_30_dias' else ' en el período usado para la sugerencia'
+    if not productos:
+        reason, message = 'sin_productos', 'No hay productos elegibles con existencias registradas para este local.'
+    elif not con_consumo:
+        reason, message = 'sin_consumo', 'No hay consumo registrado' + period + '. Esto no demuestra que el stock sea suficiente.'
+    elif not sugeridos:
+        reason, message = 'sin_necesidad_calculada', 'La fórmula de consumo, stock y redondeo por presentación no produjo cantidades a comprar' + period + '.'
+    else:
+        reason, message = 'con_sugerencia', 'Sugerencia calculada a partir del consumo y stock disponibles' + period + '.'
     return {
         "productos": sugeridos,
         "total_productos": len(sugeridos),
         "porcentaje_incremento": float(porcentaje),
+        "diagnostico": {"motivo": reason, "mensaje": message, "productos_evaluados": len(productos), "productos_con_consumo": con_consumo},
     }, 200
 
 

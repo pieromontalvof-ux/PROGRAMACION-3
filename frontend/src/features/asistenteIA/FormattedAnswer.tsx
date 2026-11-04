@@ -2,7 +2,16 @@ import type { ReactNode } from 'react'
 
 // Render a small, safe Markdown subset as React elements. Never interpret HTML.
 function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\*[^*\n]+\*)/g).map((part, i) => {
+  return text.split(/(\[[^\]\n]+\]\([^\s)]+\)|\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\*[^*\n]+\*)/g).map((part, i) => {
+    const link = /^\[([^\]]+)\]\(([^\s)]+)\)$/.exec(part)
+    if (link) {
+      const href = link[2]
+      const external = /^https?:\/\//i.test(href)
+      if (external || (href.startsWith('/') && !href.startsWith('//') && !href.includes('\\'))) {
+        return <a key={i} href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{link[1]}</a>
+      }
+      return link[1]
+    }
     if (part.startsWith('**') || part.startsWith('__')) return <strong key={i}>{part.slice(2, -2)}</strong>
     if (part.startsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>
     if (part.startsWith('*') && part.endsWith('*')) return <em key={i}>{part.slice(1, -1)}</em>

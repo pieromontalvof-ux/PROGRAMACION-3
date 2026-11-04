@@ -10,7 +10,7 @@ def listar_productos_para_compra():
         return ejecutar_local(text('''SELECT p.id_producto,p.codigo,p.nombre,p.unidad,p.presentacion,
             coalesce(sl.stock_minimo,0) stock_minimo,cp.id_categoria,cp.nombre categoria,
             pr.id_proveedor,pr.nombre proveedor,s.stock_actual,
-            coalesce(e.consumo,0) consumo_total
+            coalesce(e.consumo,0) consumo_total, 'ultimos_30_dias' origen_consumo
             FROM producto p JOIN categoria_producto cp USING(id_categoria) JOIN proveedor pr USING(id_proveedor)
             JOIN inventario_stock_teorico s ON s.id_producto=p.id_producto AND s.id_local=:id_local_actual
             LEFT JOIN producto_stock_local sl ON sl.id_producto=p.id_producto AND sl.id_local=:id_local_actual
