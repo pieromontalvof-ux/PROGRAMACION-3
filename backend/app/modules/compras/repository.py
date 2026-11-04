@@ -51,11 +51,11 @@ def listar_productos_para_compra():
                 COALESCE(recepciones.cantidad_recibida, 0) AS entradas_compras,
                 COALESCE(mov.entradas, 0) AS entradas_movimientos,
                 COALESCE(mov.salidas, 0) AS salidas_movimientos,
-                
+
                 -- Consumo total transcurrido = (Stock Inicial + Entradas Compras + Entradas Movs) - (Stock Final + Salidas Movs)
                 GREATEST(
                     0,
-                    (COALESCE(inv_inicio.stock_contado, 0) + COALESCE(recepciones.cantidad_recibida, 0) + COALESCE(mov.entradas, 0)) 
+                    (COALESCE(inv_inicio.stock_contado, 0) + COALESCE(recepciones.cantidad_recibida, 0) + COALESCE(mov.entradas, 0))
                     - (COALESCE(inv_fin.stock_contado, 0) + COALESCE(mov.salidas, 0))
                 ) AS consumo_total
             FROM producto p
@@ -455,4 +455,3 @@ def cambiar_estado_orden_historial(
             "id_usuario": id_usuario,
         },
     )
-

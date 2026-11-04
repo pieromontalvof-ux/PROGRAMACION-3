@@ -45,7 +45,8 @@ def prepare(session, action, identity, changes):
         if type(pid) is not int or pid <= 0 or pid in extra_by_id:
             raise AssistantError('Producto adicional inválido o repetido.')
         extra_by_id[pid] = percentage(extra['porcentaje'])
-    rows = tools.records(session, 'pedido_sugerido')
+    tools.authorize(session, 'pedido_sugerido')
+    rows = tools.native('/ordenes-compra/pedido-sugerido?porcentaje=' + str(general))['productos']
     if set(extra_by_id) - {r['id_producto'] for r in rows}:
         raise AssistantError('Un adicional no tiene cantidad base sugerida. Revisa el pedido en Compras.')
     details, review = [], []
@@ -55,7 +56,7 @@ def prepare(session, action, identity, changes):
         if pack <= 0:
             raise AssistantError('Revisa la presentación del producto antes de comprar.')
         extra = extra_by_id.get(row['id_producto'], Decimal(0))
-        adjusted = base * (1 + general / 100) * (1 + extra / 100)
+        adjusted = base * (1 + extra / 100)
         final = (adjusted / pack).to_integral_value(rounding=ROUND_CEILING) * pack
         details.append({'id_producto': row['id_producto'], 'cantidad_solicitada': float(final)})
         review.append({'producto': row['nombre'], 'unidad': row['unidad'], 'base_sugerida': float(base),
@@ -67,6 +68,6 @@ def prepare(session, action, identity, changes):
     return {'recurso': 'ordenes_compra', 'accion': 'crear', 'id': None, 'anterior': None,
             'datos': {'accion': 'GUARDAR_BORRADOR', 'detalles': details},
             'revision_compra': review,
-            'advertencia': 'La base ya incluye margen de consumo del 20% menos stock. '
-                           'Los aumentos se aplican sobre esa sugerencia y se redondean hacia arriba a presentaciones completas. '
+            'advertencia': f'El margen elegido es {general}% sobre el consumo, antes de restar stock. '
+                           'Los adicionales por producto se aplican después; se redondean a presentaciones completas. '
                            'Se guardará como BORRADOR al pulsar Realizar.'}

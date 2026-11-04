@@ -1,38 +1,29 @@
 # Asistente IA de Barbarito
 
-## Compras con revisión de eventos
+## Pedido guiado
 
-El especialista `compras` consulta eventos públicos para los próximos siete días en Centro Cívico,
-Sheraton Lima, Estadio Nacional y alrededores mediante Web Search de Responses. Devuelve fuentes
-y fechas; si la búsqueda falla o no tiene fuentes, informa la limitación. No convierte concurrencia
-en demanda garantizada. Requiere un modelo/proyecto con Web Search habilitado (puede generar costo).
-El informe visible incluye evento, lugar, fecha y hora y un enlace oficial por evento.
-Debajo añade hasta dos líneas (40 palabras) sobre qué es y a qué público se dirige.
-Los intereses deducidos de la temática se indican como «Público probable», sin asegurar
-asistencia ni inventar edades, nacionalidades, capacidad de gasto o hábitos de consumo.
-«Todo el día» requiere confirmación de la fuente; si falta horario, muestra «Hora no publicada».
-No añade análisis de demanda ni preguntas al listado; espera los ajustes del usuario.
+La solicitud "Quiero hacer un pedido" inicia el Coordinador de compras:
+Eventos cercanos -> analisis opcionales -> consultas por chat -> porcentaje -> borrador.
+Las opciones son un evento pasado parecido (la persona indica fechas), el movimiento
+registrado desde la ultima orden enviada del local, y la cobertura del stock actual.
+No existe un historial que vincule eventos y ventas: el analisis por fechas no implica causalidad.
+Se puede revisar otro analisis, seguir preguntando o continuar directamente al pedido.
 
-Ejemplo: «Quiero hacer una orden de compra; analiza los eventos cercanos». Después del informe:
-«Sobre el pedido sugerido aumenta 20% de todo y otro 10% para los insumos del sour».
-Los ingredientes se consultan en las recetas autorizadas; si no hay permisos, se solicitan productos
-explícitos. Solo se ajustan productos con base sugerida positiva. El servidor calcula aumentos sucesivos
-(1.20 × 1.10 = 1.32) y redondea hacia arriba por presentación. La base existente ya incorpora
-20% sobre consumo antes de restar stock: no equivale a aumentar solo 20% el consumo original.
+El Coordinador consulta Eventos una vez al iniciar; los reintentos son explicitos.
+Eventos usa la direccion del local activo, los proximos siete dias y fuentes verificadas.
+Un fallo no demuestra ausencia de eventos ni bloquea continuar al pedido.
+Compras no busca eventos ni repite el analisis de demanda automaticamente.
 
-Consultar requiere permiso nativo de consulta en menú 22; preparar y realizar requieren también crear.
-No se restringe la compra a un nombre de perfil. Realizar guarda una orden BORRADOR mediante la ruta
-nativa, con auditoría y local activo; el envío se revisa desde Compras. Reutiliza la migración existente
-del asistente y su protección contra confirmaciones duplicadas. No requiere migración adicional.
-Las pruebas cubren fallas técnicas y respuestas truncadas. La consulta de eventos usa un límite
-de 4500 tokens y reintenta una vez con 8000 si se agota; conserva informes parciales con fuentes.
-Un fallo técnico muestra su motivo seguro y nunca se interpreta como ausencia de eventos.
-La búsqueda dispone de 90 segundos por intento y reintenta una vez ante cortes de conexión,
-tiempo agotado o errores temporales 500/502/503/504. Los errores de clave, permisos y saldo no
-se reintentan. El transporte distingue tiempo agotado, conexión interrumpida y respuesta inválida;
-las demás llamadas conservan su tiempo de espera de 60 segundos. No se reintentan escrituras.
-Los eventos mencionados en la conversación también se envían como pistas de búsqueda.
+El estado del flujo esta firmado, ligado al usuario/perfil/local y vence en dos horas.
+Se conserva en el workspace. Las consultas durante la investigacion no tienen
+herramientas de escritura. Una pregunta hipotetica sobre porcentajes no elige el margen.
 
+Antes de preparar, el usuario elige porcentaje_general, sin un 20% fijo:
+consumo * (1 + porcentaje / 100) - stock, redondeado por presentacion.
+0% significa sin incremento. Los extras por producto son opcionales y no duplican el margen.
+Realizar guarda un BORRADOR mediante la ruta nativa; el envio se revisa desde Compras.
+Se conservan permisos, local, auditoria y proteccion contra confirmaciones duplicadas.
+No requiere una migracion adicional.
 
 Módulo conectado a OpenAI Responses y transcripción. La clave permanece en el backend. El modelo consulta herramientas autorizadas y propone un cambio; jamás ejecuta escrituras directamente.
 
@@ -64,5 +55,5 @@ La conversación editable es temporal y se elimina del navegador al salir/cambia
 La limitación de ocho solicitudes por usuario/minuto es por proceso; un despliegue con varios workers necesita un limitador compartido o de proxy. El presupuesto de OpenAI debe administrarse también desde la cuenta/proyecto. El límite de audio es 15 MB, con grabación de hasta cinco minutos en la interfaz.
 
 No se instala ningún paquete nuevo. La migración real se entrega para ejecución por el usuario.
-La ampliación de inventario del 28/09/2026 no requiere SQL adicional sobre las migraciones existentes de asistente, jornadas y asignaciones por puesto. Informe: database/normalizacion/INFORME_AGENTE_INVENTARIO_20260928.md.
+La ampliación de inventario del 28/09/2026 no requiere SQL adicional sobre las migraciones existentes de asistente, jornadas y asignaciones por puesto.
 Pruebas: desde backend, .venv/Scripts/python.exe -m unittest app.modules.asistente_ia.test_routes -v

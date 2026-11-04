@@ -1,10 +1,7 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  Boxes,
-  CheckCircle2,
-  CircleOff,
-  Layers3,
   PackageSearch,
   RefreshCw,
   Search,
@@ -357,7 +354,7 @@ export function ProductsPage() {
             CATÁLOGO DE INVENTARIO
           </span>
 
-          <h1>Productos</h1>
+          <h1>Productos <span className="catalog-title-count">{datos.resumen.total_productos} productos</span></h1>
 
           <p>
             Consulta los insumos, sus categorías,
@@ -365,6 +362,14 @@ export function ProductsPage() {
           </p>
         </div>
 
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todos', count: datos.resumen.total_productos },
+          { value: 'activos', label: 'Activos', count: datos.resumen.productos_activos },
+          { value: 'inactivos', label: 'Inactivos', count: datos.resumen.productos_inactivos },
+        ]} />
         <div className="catalog-admin-actions">
           {(administrador || permisos.crear) && (
             <button
@@ -396,73 +401,6 @@ export function ProductsPage() {
               : 'Actualizar catálogo'}
           </button>
         </div>
-      </header>
-
-      <div className="products-summary">
-        <article className="products-summary-card">
-          <span className="products-summary-card__icon">
-            <Boxes aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Total de productos</span>
-            <strong>
-              {datos.resumen.total_productos}
-            </strong>
-          </div>
-        </article>
-
-        <article className="products-summary-card">
-          <span className="products-summary-card__icon products-summary-card__icon--active">
-            <CheckCircle2 aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Productos activos</span>
-            <strong>
-              {datos.resumen.productos_activos}
-            </strong>
-          </div>
-        </article>
-
-        <article className="products-summary-card">
-          <span className="products-summary-card__icon products-summary-card__icon--inactive">
-            <CircleOff aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Productos inactivos</span>
-            <strong>
-              {datos.resumen.productos_inactivos}
-            </strong>
-          </div>
-        </article>
-
-        <article className="products-summary-card">
-          <span className="products-summary-card__icon products-summary-card__icon--category">
-            <Layers3 aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Categorías</span>
-            <strong>
-              {datos.resumen.total_categorias}
-            </strong>
-          </div>
-        </article>
-
-        <article className="products-summary-card">
-          <span className="products-summary-card__icon products-summary-card__icon--supplier">
-            <Truck aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Proveedores</span>
-            <strong>
-              {datos.resumen.total_proveedores}
-            </strong>
-          </div>
-        </article>
       </div>
 
       {!datos.categorias_proveedor_configurables && (
@@ -480,14 +418,6 @@ export function ProductsPage() {
       )}
 
       <section className="products-content">
-        <div className="products-content__heading">
-          <div>
-            <span>LISTADO GENERAL</span>
-            <h2>Catálogo de productos</h2>
-          </div>
-
-          <p>Información registrada en la base de datos.</p>
-        </div>
 
         <div className="products-filters">
           <label className="products-search">
@@ -546,23 +476,7 @@ export function ProductsPage() {
             ))}
           </select>
 
-          <select
-            value={estado}
-            onChange={(evento) =>
-              setEstado(
-                evento.target.value as FiltroEstado,
-              )
-            }
-            aria-label="Filtrar por estado"
-          >
-            <option value="todos">
-              Todos los estados
-            </option>
-            <option value="activos">Activos</option>
-            <option value="inactivos">Inactivos</option>
-          </select>
-
-          <button
+<button
             className="products-clear"
             type="button"
             onClick={limpiarFiltros}
@@ -571,13 +485,6 @@ export function ProductsPage() {
             Limpiar
           </button>
         </div>
-
-        <p className="products-results">
-          Mostrando{' '}
-          <strong>{productosFiltrados.length}</strong>{' '}
-          de <strong>{datos.productos.length}</strong>{' '}
-          productos
-        </p>
 
         <div className="products-table-container">
           <table className="products-table">
@@ -682,6 +589,7 @@ export function ProductsPage() {
       </section>
 
       <CatalogDialog
+        error={error}
         titulo={editando ? 'Editar producto' : 'Nuevo producto'}
         abierto={modal}
         procesando={procesando}

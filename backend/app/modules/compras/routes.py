@@ -25,7 +25,7 @@ def consultar_formulario():
 @compras_bp.get("/pedido-sugerido")
 @requiere_permiso(id_opcion_menu=22, accion="consultar")
 def consultar_pedido_sugerido():
-    respuesta, estado = obtener_pedido_sugerido()
+    respuesta, estado = obtener_pedido_sugerido(request.args.get("porcentaje", "0"))
     return jsonify(respuesta), estado
 
 

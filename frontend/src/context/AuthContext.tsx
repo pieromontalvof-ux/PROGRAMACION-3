@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -71,6 +72,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [cargando, setCargando] = useState(true)
   const [cambiandoPerfil, setCambiandoPerfil] = useState(false)
   const [cambiandoLocal, setCambiandoLocal] = useState(false)
+  const [identidadSesion, setIdentidadSesion] = useState({
+    token: null as string | null,
+    pendiente: false,
+  })
+  const sesionVigente = useRef(identidadSesion)
+  const montado = useRef(true)
+
+  function esSesionVigente(identidad: typeof identidadSesion) {
+    return montado.current && sesionVigente.current === identidad
+  }
+
+  // Replace synchronously, before awaiting or rendering, to invalidate saved callbacks.
+  function reemplazarIdentidad(tokenSesion: string | null, pendiente = false) {
+    const identidad = { token: tokenSesion, pendiente }
+    sesionVigente.current = identidad
+    setIdentidadSesion(identidad)
+    return identidad
+  }
+
+  function iniciarCambio() {
+    const identidad = reemplazarIdentidad(sesionVigente.current.token, true)
+    setCargando(false)
+    setCambiandoPerfil(false)
+    setCambiandoLocal(false)
+    return identidad
+  }
+
+  function finalizarCambio(identidad: typeof identidadSesion) {
+    if (!esSesionVigente(identidad)) return
+    reemplazarIdentidad(identidad.token)
+    setCambiandoPerfil(false)
+    setCambiandoLocal(false)
+  }
 
   function limpiarAlmacenamiento() {
     sessionStorage.removeItem('token')
@@ -85,7 +119,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   function limpiarSesion() {
+    reemplazarIdentidad(null)
     limpiarAlmacenamiento()
+    setCargando(false)
+    setCambiandoPerfil(false)
+    setCambiandoLocal(false)
     setToken(null)
     setUsuario(null)
     setMenu([])
@@ -100,7 +138,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   function aplicarSesion(
     respuesta: RespuestaSesionActiva,
     tokenSesion: string,
+    identidad: typeof identidadSesion,
   ) {
+    if (!esSesionVigente(identidad)) return
+    reemplazarIdentidad(tokenSesion)
+    setCargando(false)
+    setCambiandoPerfil(false)
+    setCambiandoLocal(false)
     sessionStorage.setItem('token', tokenSesion)
     sessionStorage.setItem('usuario', JSON.stringify(respuesta.usuario))
     sessionStorage.setItem('menu', JSON.stringify(respuesta.menu))
@@ -141,8 +185,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   useEffect(() => {
+    montado.current = true
+
     async function restaurarSesion() {
       const tokenGuardado = sessionStorage.getItem('token')
+      const identidad = reemplazarIdentidad(tokenGuardado, !!tokenGuardado)
 
       if (!tokenGuardado) {
         setCargando(false)
@@ -151,31 +198,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       try {
         const sesion = await obtenerSesion(tokenGuardado)
-        aplicarSesion(sesion, tokenGuardado)
+        aplicarSesion(sesion, tokenGuardado, identidad)
       } catch {
-        limpiarSesion()
+        if (esSesionVigente(identidad)) limpiarSesion()
       } finally {
-        setCargando(false)
+        if (esSesionVigente(identidad)) setCargando(false)
       }
     }
 
     void restaurarSesion()
+    return () => {
+      montado.current = false
+    }
   }, [])
 
   async function login(correo: string, clave: string) {
-    const respuesta = await iniciarSesion(correo, clave)
+    if (!montado.current) return
+    const identidad = iniciarCambio()
+    try {
+      const respuesta = await iniciarSesion(correo, clave)
+      if (!esSesionVigente(identidad)) return
 
-    if (!respuesta.token) {
-      throw new Error('El servidor no devolvió un token de sesión')
+      if (!respuesta.token) {
+        throw new Error('El servidor no devolvió un token de sesión')
+      }
+
+      aplicarSesion(respuesta, respuesta.token, identidad)
+    } catch (error) {
+      if (esSesionVigente(identidad)) throw error
+    } finally {
+      finalizarCambio(identidad)
     }
-
-    aplicarSesion(respuesta, respuesta.token)
   }
 
   async function cambiarPerfil(
     idPerfil: number,
     idPuestoLaboral?: number,
   ) {
+    if (!esSesionVigente(identidadSesion)) return
     if (!token) {
       throw new Error('No existe una sesión activa')
     }
@@ -188,6 +248,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return
     }
 
+    const identidad = iniciarCambio()
     try {
       setCambiandoPerfil(true)
       const respuesta = await cambiarPerfilActivo(
@@ -195,44 +256,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
         idPerfil,
         idPuestoLaboral,
       )
+      if (!esSesionVigente(identidad)) return
 
       if (!respuesta.token) {
         throw new Error('El servidor no devolvió un token nuevo')
       }
 
-      aplicarSesion(respuesta, respuesta.token)
+      aplicarSesion(respuesta, respuesta.token, identidad)
+    } catch (error) {
+      if (esSesionVigente(identidad)) throw error
     } finally {
-      setCambiandoPerfil(false)
+      finalizarCambio(identidad)
     }
   }
 
   async function cambiarLocal(idLocal: number) {
+    if (!esSesionVigente(identidadSesion)) return
     if (!token) {
       throw new Error('No existe una sesión activa')
     }
 
     if (localActivo?.id_local === idLocal) return
 
+    const identidad = iniciarCambio()
     try {
       setCambiandoLocal(true)
       const respuesta = await solicitarCambioLocal(token, idLocal)
+      if (!esSesionVigente(identidad)) return
 
       if (!respuesta.token) {
         throw new Error('El servidor no devolvió un token nuevo')
       }
 
-      aplicarSesion(respuesta, respuesta.token)
+      aplicarSesion(respuesta, respuesta.token, identidad)
+    } catch (error) {
+      if (esSesionVigente(identidad)) throw error
     } finally {
-      setCambiandoLocal(false)
+      finalizarCambio(identidad)
     }
   }
 
   function logout() {
+    if (!montado.current) return
     limpiarSesion()
   }
 
   async function actualizarSesion() {
-    if (token) aplicarSesion(await obtenerSesion(token), token)
+    if (!token || !esSesionVigente(identidadSesion) || identidadSesion.pendiente) return
+    try {
+      const respuesta = await obtenerSesion(token)
+      aplicarSesion(respuesta, token, identidadSesion)
+    } catch (error) {
+      if (esSesionVigente(identidadSesion)) throw error
+    }
   }
 
   return (

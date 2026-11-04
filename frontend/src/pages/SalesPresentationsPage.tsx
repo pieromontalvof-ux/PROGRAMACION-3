@@ -1,10 +1,8 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  CheckCircle2,
-  CircleOff,
-  GlassWater,
   Layers3,
   RefreshCw,
   Search,
@@ -194,14 +192,22 @@ export function SalesPresentationsPage() {
           <span className="carta-catalog-eyebrow">
             CATÁLOGO DE VENTA
           </span>
-          <h1>Presentaciones de venta</h1>
+          <h1>Presentaciones de venta <span className="catalog-title-count">{datos.resumen.total_presentaciones} presentaciones</span></h1>
           <p>
             Consulta formatos, contenidos, precios y menajes
             asociados a cada artículo de la carta.
           </p>
         </div>
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todas', count: datos.resumen.total_presentaciones },
+          { value: 'activos', label: 'Activas', count: datos.resumen.presentaciones_activas },
+          { value: 'inactivos', label: 'Inactivas', count: datos.resumen.presentaciones_inactivas },
+        ]} />
         <div className="catalog-admin-actions">
-        {permisos.crear && <button type="button" onClick={() => { setSeleccionada(null); setEditor(true) }}>Nueva presentación</button>}
+        {permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => { setSeleccionada(null); setEditor(true) }}>Nueva presentación</button>}
         <button
           className="carta-catalog-refresh"
           type="button"
@@ -214,49 +220,11 @@ export function SalesPresentationsPage() {
           {actualizando ? 'Actualizando...' : 'Actualizar'}
         </button>
         </div>
-      </header>
-
-      <div className="carta-catalog-summary">
-        <article>
-          <span><GlassWater /></span>
-          <div>
-            <small>Presentaciones</small>
-            <strong>{datos.resumen.total_presentaciones}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-green"><CheckCircle2 /></span>
-          <div>
-            <small>Activas</small>
-            <strong>{datos.resumen.presentaciones_activas}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-red"><CircleOff /></span>
-          <div>
-            <small>Inactivas</small>
-            <strong>{datos.resumen.presentaciones_inactivas}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-yellow"><Utensils /></span>
-          <div>
-            <small>Ítems asociados</small>
-            <strong>{datos.resumen.total_items}</strong>
-          </div>
-        </article>
       </div>
 
       <section className="carta-catalog-content">
         {mensaje && <p role="status">{mensaje}</p>}
         {error && <p role="alert">{error}</p>}
-        <div className="carta-catalog-title">
-          <div>
-            <span>LISTADO GENERAL</span>
-            <h2>Presentaciones registradas</h2>
-          </div>
-          <p>Precios expresados en soles.</p>
-        </div>
 
         <div className="carta-catalog-filters is-wide">
           <label>
@@ -285,23 +253,8 @@ export function SalesPresentationsPage() {
               <option key={id} value={id}>{nombre}</option>
             ))}
           </select>
-          <select
-            value={estado}
-            onChange={(e) =>
-              setEstado(e.target.value as EstadoFiltro)
-            }
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="activos">Activos</option>
-            <option value="inactivos">Inactivos</option>
-          </select>
           <button type="button" onClick={limpiar}>Limpiar</button>
         </div>
-
-        <p className="carta-catalog-results">
-          Mostrando <strong>{filtradas.length}</strong> de{' '}
-          <strong>{datos.presentaciones.length}</strong>
-        </p>
 
         <div className="carta-catalog-table-wrap">
           <table className="carta-catalog-table">

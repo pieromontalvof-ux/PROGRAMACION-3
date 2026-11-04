@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Plus, Search, Store, MapPin, Pencil, Power, Trash2, X } from 'lucide-react'
+import { Plus, Search, Store, MapPin, Pencil, Trash2, X, Download, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import './UsersPage.css'
@@ -87,28 +87,44 @@ export function StoresPage() {
   const visibles = tiendas.filter(t => `${t.nombre} ${t.codigo} ${t.direccion ?? ''}`.toLocaleLowerCase().includes(busqueda.toLocaleLowerCase()) &&
     (filtro === 'todas' || t.estado_registro === (filtro === 'activas' ? 1 : 0)))
   const activas = tiendas.filter(t => t.estado_registro === 1).length
+  function exportar() {
+    const cell = (value: string) => '"' + value.replace(/^[\s=+@-]/, "'$&").replaceAll('"', '""') + '"'
+    const rows = [['Código', 'Tienda', 'Dirección', 'Estado'], ...visibles.map(t =>
+      [t.codigo, t.nombre, t.direccion ?? '', t.estado_registro === 1 ? 'Activa' : 'Inactiva'])]
+    const url = URL.createObjectURL(new Blob(['\ufeff' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a'); link.href = url; link.download = 'tiendas.csv'; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
   const accionTexto = confirmacion?.accion === 'eliminar' ? 'Eliminar' : confirmacion?.tienda.estado_registro === 1 ? 'Desactivar' : 'Reactivar'
   if (!permitido) return <p>La gestión de tiendas corresponde al Administrador.</p>
   return <main className="users-page stores-page">
-    <header className="users-header stores-header"><div><span>CONFIGURACIÓN DE LA MARCA</span><h1>Tiendas</h1><p>Gestiona tus sedes, sus direcciones y su disponibilidad.</p></div><Store aria-hidden="true" /></header>
+    <section className="stores-overview" aria-label="Resumen de tiendas">
+    <header className="users-header stores-header"><span className="stores-hero-icon"><Store size={32} aria-hidden="true" /></span><div><div className="stores-title-line"><h1>Tiendas</h1><span className="stores-count">{cargando ? '…' : tiendas.length} sedes</span></div><p>Administra tus locales y su disponibilidad.</p></div></header>
     {error && <div role="alert" className="users-alert error">{error}</div>}
     {mensaje && <div role="status" className="users-alert ok">{mensaje}</div>}
-    <div className="users-summary">{[[tiendas.length, 'Tiendas registradas'], [activas, 'Sedes activas'], [tiendas.length - activas, 'Sedes inactivas']].map(([n, label]) => <article key={label}><b>{cargando ? '—' : n}</b><span>{label}</span></article>)}</div>
+    <div className="stores-overview-tools"><nav className="stores-status-tabs" aria-label="Estado de las tiendas">
+      {([['todas', 'Todas', tiendas.length], ['activas', 'Activas', activas], ['inactivas', 'Inactivas', tiendas.length - activas]] as const).map(([value, label, count]) =>
+        <button key={value} type="button" aria-pressed={filtro === value} onClick={() => setFiltro(value)}>{label}<span>{cargando ? '—' : count}</span></button>)}
+    </nav>
+      {permiso?.crear && <button className="stores-create" onClick={() => abrir()}><Plus size={20} aria-hidden="true" />Nueva tienda</button>}
+    </div>
+    </section>
     <section className="users-card">
       <div className="users-tools stores-toolbar"><label><Search size={18} aria-hidden="true" /><input aria-label="Buscar tiendas" placeholder="Buscar por nombre, código o dirección…" value={busqueda} onChange={e => setBusqueda(e.target.value)} /></label>
-        <select aria-label="Filtrar por estado" value={filtro} onChange={e => setFiltro(e.target.value)}><option value="todas">Todos los estados</option><option value="activas">Activas</option><option value="inactivas">Inactivas</option></select>
-        {permiso?.crear && <button onClick={() => abrir()}><Plus size={18} />Nueva tienda</button>}</div>
+        <button className="stores-export" disabled={cargando || !visibles.length} onClick={exportar}><Download size={18} aria-hidden="true" />Exportar CSV</button></div>
       <div className="users-table"><table><thead><tr><th>Tienda</th><th>Dirección</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
         {visibles.map(t => <tr key={t.id_local}><td><div className="stores-name"><span className="stores-avatar"><Store size={21} /></span><div><strong>{t.nombre}</strong><small>{t.codigo}</small></div></div></td>
           <td><span className="stores-address"><MapPin size={16} aria-hidden="true" />{t.direccion || 'Sin dirección registrada'}</span></td>
-          <td><span className={`users-status ${t.estado_registro === 1 ? 'is-active' : 'is-inactive'}`}>{t.estado_registro === 1 ? 'Activa' : 'Inactiva'}</span></td>
-          <td><div className="users-actions">{permiso?.editar && <><button title={`Editar ${t.nombre}`} aria-label={`Editar ${t.nombre}`} onClick={() => abrir(t)}><Pencil /></button><button title={`${t.estado_registro === 1 ? 'Desactivar' : 'Reactivar'} ${t.nombre}`} aria-label={`${t.estado_registro === 1 ? 'Desactivar' : 'Reactivar'} ${t.nombre}`} onClick={() => { setErrorModal(''); setConfirmacion({ tienda: t, accion: 'estado' }) }}><Power /></button></>}
+          <td><div className="stores-state"><button type="button" className="stores-switch" role="switch" aria-checked={t.estado_registro === 1} disabled={!permiso?.editar}
+            aria-label={`${t.estado_registro === 1 ? 'Desactivar' : 'Reactivar'} ${t.nombre}`} onClick={() => { setErrorModal(''); setConfirmacion({ tienda: t, accion: 'estado' }) }}><span /></button><span>{t.estado_registro === 1 ? 'Activa' : 'Inactiva'}</span></div></td>
+          <td><div className="users-actions">{permiso?.editar && <button className="stores-edit" title={`Editar ${t.nombre}`} aria-label={`Editar ${t.nombre}`} onClick={() => abrir(t)}><Pencil aria-hidden="true" /><span>Editar</span></button>}
             {permiso?.eliminar && <button className="stores-danger" title={`Eliminar ${t.nombre}`} aria-label={`Eliminar ${t.nombre}`} onClick={() => { setErrorModal(''); setConfirmacion({ tienda: t, accion: 'eliminar' }) }}><Trash2 /></button>}</div></td></tr>)}
         {(cargando || !visibles.length) && <tr><td colSpan={4} className="empty">{cargando ? 'Cargando tiendas…' : 'No hay tiendas para estos filtros.'}</td></tr>}
       </tbody></table></div><footer className="stores-footer">{visibles.length} de {tiendas.length} tiendas <Link to="/home/usuarios">Asignar gerente y equipo en Usuarios →</Link></footer>
     </section>
-    <dialog ref={dialog} className="stores-dialog" onCancel={e => { if (guardando) e.preventDefault(); else setModal(false) }}>
-      <form onSubmit={e => void guardar(e)}><header className="users-modal-title"><div><h2>{edicion ? 'Editar tienda' : 'Nueva tienda'}</h2><p>Datos de la sede y ubicación para eventos cercanos.</p></div><button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setModal(false)}><X /></button></header>
+    <aside className="stores-help"><Info size={20} aria-hidden="true" /><span>Revisa la dirección y disponibilidad de cada sede. Los cambios de estado requieren tu confirmación.</span></aside>
+    <dialog ref={dialog} className="stores-dialog" aria-labelledby="stores-form-title" onCancel={e => { if (guardando) e.preventDefault(); else setModal(false) }}>
+      <form onSubmit={e => void guardar(e)}><header className="users-modal-title"><div><h2 id="stores-form-title">{edicion ? 'Editar tienda' : 'Nueva tienda'}</h2><p>Datos de la sede y ubicación para eventos cercanos.</p></div><button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setModal(false)}><X /></button></header>
         {errorModal && <div role="alert" className="users-alert error">{errorModal}</div>}
         <fieldset disabled={guardando} className="stores-form"><label>Nombre de la tienda<input autoFocus required maxLength={100} value={form.nombre} placeholder="Ej. BarBarian San Isidro" onChange={e => setForm({ ...form, nombre: e.target.value })} /></label>
           <label>Código de la sede<input readOnly value={edicion?.codigo ?? 'Se asignará al crear la tienda'} /><small>{edicion ? 'El código se conserva al editar.' : 'Formato TDA-001. Se asigna el primer número disponible; las tiendas inactivas conservan su número.'}</small></label>
@@ -116,8 +132,8 @@ export function StoresPage() {
         </fieldset><footer className="users-modal-buttons"><button type="button" disabled={guardando} onClick={() => setModal(false)}>Cancelar</button><button className="save" disabled={guardando}>{guardando ? 'Guardando…' : edicion ? 'Guardar cambios' : 'Crear tienda'}</button></footer>
       </form>
     </dialog>
-    <dialog ref={confirmDialog} className="stores-dialog" onCancel={e => { if (guardando) e.preventDefault(); else setConfirmacion(null) }}>
-      <h2>{accionTexto} tienda</h2><p>¿Quieres {accionTexto.toLowerCase()} <strong>{confirmacion?.tienda.nombre}</strong>?</p>
+    <dialog ref={confirmDialog} className="stores-dialog" aria-labelledby="stores-confirm-title" onCancel={e => { if (guardando) e.preventDefault(); else setConfirmacion(null) }}>
+      <h2 id="stores-confirm-title">{accionTexto} tienda</h2><p>¿Quieres {accionTexto.toLowerCase()} <strong>{confirmacion?.tienda.nombre}</strong>?</p>
       <p className="stores-detail">{confirmacion?.accion === 'eliminar' ? 'Esta acción es permanente. Solo se pueden eliminar tiendas sin usuarios, configuraciones ni historial asociado.' : confirmacion?.tienda.estado_registro === 1 ? 'La tienda dejará de estar disponible para nuevas sesiones. Su historial se conservará.' : 'La tienda volverá a estar disponible para los usuarios asignados.'}</p>
       {errorModal && <div role="alert" className="users-alert error">{errorModal}</div>}
       <footer className="users-modal-buttons"><button autoFocus disabled={guardando} onClick={() => setConfirmacion(null)}>Cancelar</button><button className={confirmacion?.accion === 'eliminar' ? 'stores-delete-button' : 'save'} disabled={guardando} onClick={() => void confirmar()}>{guardando ? 'Procesando…' : accionTexto}</button></footer>

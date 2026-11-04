@@ -59,6 +59,9 @@ def category_choice(instruction, previous):
 def open_form(session, resource):
     if not isinstance(resource, str) or resource not in TITLES:
         raise AssistantError('Este formulario no está disponible.', 400)
+    from . import configuration
+    configuration.authorize_owner(resource, 'crear')
+    configuration.authorize_form_dependencies(session, resource)
     tools.authorize(session, resource, 'crear')
     tools.authorize(session, resource)
     result = tools.native(tools.RESOURCES[resource][1] + ('/formulario' if resource == 'presentaciones' else ''))
@@ -75,7 +78,7 @@ def open_form(session, resource):
                 'productos': ('categorias_productos', 'proveedores'),
                 'proveedores': ('categorias_productos',),
                 'presentaciones': ('categorias_carta', 'menajes'),
-            }.get(resource, ()) if tools.allowed(session, r, 'crear') and tools.allowed(session, r)],
+            }.get(resource, ()) if tools.allowed(session, r, 'crear') and tools.allowed(session, r) and configuration.owner_allows(r, 'crear')],
             'categorias_proveedor_configurables': result.get('categorias_proveedor_configurables', True)}
 
 

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bot, Send, ShieldCheck, Sparkles, UserRound, Plus, PencilLine, CheckCheck, Network } from 'lucide-react'
+import { Bot, Send, ShieldCheck, Sparkles, UserRound, Plus, PencilLine, CheckCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { obtenerAgentesAsistente, obtenerEstadoAsistente, solicitar, type CatalogoAgentes, type Consulta, type EstadoAsistente, type RespuestaAsistente, type FormularioCatalogo } from './service'
-import { CatalogWorkflow } from './CatalogWorkflow'
+import { obtenerEstadoAsistente, solicitar, type EstadoAsistente, type RespuestaAsistente } from './service'
+import { CatalogWorkflow, type WorkflowSnapshot } from './CatalogWorkflow'
+import { useWorkspaceState, hasWorkspace, normalizeWorkspace } from './workspaceState'
+import { useWorkspacePersistence } from './useWorkspacePersistence'
 import { nombresAgentes } from './service'
-import { AgentMap } from './AgentMap'
 import { VoiceButton } from './VoiceButton'
 import { ReviewDetails } from './ReviewDetails'
 import { etiqueta, textoRevision } from './labels'
@@ -22,41 +23,41 @@ export function AssistantWorkspace() {
   const [estado, setEstado] = useState<EstadoAsistente | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [instruction, setInstruction] = useState('')
-  const [review, setReview] = useState('')
-  const [original, setOriginal] = useState('')
-  const [context, setContext] = useState('')
+  const workspace = useWorkspaceState()
+  const { state, setInstruction, setReview, setOriginal, setContext, setResult, setCatalogForm,
+    setFormVersion, setFormDirty, setConfirmed, setLastPrompt, setTime, setHistory,
+    setResumeDraft, setDraftId, setWorkflow } = workspace
+  const { instruction, review, original, context, result, catalogForm, formVersion, formDirty,
+    confirmed, lastPrompt, time, history, resumeDraft, workflow } = state
   const [continuation, setContinuation] = useState<string | undefined>()
-  const [resumeDraft, setResumeDraft] = useState<string | null>(null)
-  const [result, setResult] = useState<RespuestaAsistente | null>(null)
-  const [catalogForm, setCatalogForm] = useState<FormularioCatalogo | null>(null)
-  const [formVersion, setFormVersion] = useState(0)
-  const [formDirty, setFormDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [voiceBusy, setVoiceBusy] = useState(false)
   const [workflowBusy, setWorkflowBusy] = useState(false)
   const [dependencyOpen, setDependencyOpen] = useState(false)
   const [checked, setChecked] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [lastPrompt, setLastPrompt] = useState('')
-  const [time, setTime] = useState('')
-  const [history, setHistory] = useState<{ prompt: string; response: string; time: string; done: boolean; queries: Consulta[] }[]>([])
-  const [agentCatalog, setAgentCatalog] = useState<CatalogoAgentes | null>(null)
-  const [agentsOpen, setAgentsOpen] = useState(false)
   const latest = useRef<HTMLDivElement>(null)
   const controllers = useRef(new Set<AbortController>())
   const alive = useRef(true)
   const input = useRef<HTMLTextAreaElement>(null)
-  const locked = busy || voiceBusy || workflowBusy || dependencyOpen
+  const progress = useWorkspacePersistence(token, hasWorkspace(state) ? state : null, saved => {
+    const restored = normalizeWorkspace(saved)
+    workspace.restore(restored); setContinuation(restored.result?.continuacion)
+    setChecked(false); setEditing(false); setDependencyOpen(Boolean(restored.workflow && restored.workflow.frames.length > 1))
+  })
+  const locked = busy || voiceBusy || workflowBusy || dependencyOpen || progress.status === 'loading' || progress.status === 'conflict'
   const inventoryEnabled = Boolean(estado?.capacidades?.conteos || estado?.capacidades?.stock)
   const catalogFormsEnabled = ['categorias_productos', 'proveedores', 'productos', 'categorias_carta', 'menajes', 'presentaciones'].some(r => estado?.capacidades?.[r]?.includes('crear'))
-  const suggestions = inventoryEnabled ? [
+  const suggestions = [
+    ...(estado?.capacidades?.ordenes_compra?.includes('consultar') ? ['Quiero hacer un pedido'] : []),
+    ...(inventoryEnabled ? [
     ...(estado?.capacidades?.stock ? ['Muéstrame los productos bajo el mínimo'] : []),
     ...(estado?.capacidades?.conteos ? ['¿Cómo va el conteo del equipo?'] : []),
     ...(estado?.capacidades?.conteos?.includes('crear') ? ['Quiero abrir un nuevo conteo'] : []),
-  ] : catalogFormsEnabled ? ['Crear categoría de productos', 'Crear proveedor', 'Crear producto'] : ['Consultar productos de la carta', 'Revisar una receta', 'Preparar un cambio de precio']
+  ] : catalogFormsEnabled ? ['Crear categoría de productos', 'Crear proveedor', 'Crear producto'] : ['Consultar productos de la carta', 'Revisar una receta', 'Preparar un cambio de precio']),
+  ]
   const modified = review !== original || Boolean(instruction.trim()) || formDirty
+  const sendDisabled = locked || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000
   useEffect(() => { if (original) latest.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [original])
   useEffect(() => {
     alive.current = true
@@ -89,6 +90,7 @@ export function AssistantWorkspace() {
         instruccion: prompt || 'Prepara nuevamente este borrador con las correcciones del texto.',
         borrador_previo: confirmed ? `YA REALIZADO: ${review}` : review, contexto_previo: context, reemplaza: old,
         continuacion: continuation,
+        flujo_compra: confirmed ? undefined : result?.flujo_compra,
       }, signal)
       if (!alive.current) return
       const text = summary(data)
@@ -100,7 +102,7 @@ export function AssistantWorkspace() {
       setContext(current => `${current}\nUsuario: ${prompt}\nAsistente: ${text}`.slice(-16000))
       setResult(data); setReview(text); setOriginal(text); setInstruction(''); setConfirmed(false)
       setContinuation(data.continuacion); setResumeDraft(null)
-      setCatalogForm(data.formulario ?? null); setFormVersion(v => v + 1); setFormDirty(false)
+      setCatalogForm(data.formulario ?? null); setWorkflow(null); setDraftId(data.borrador?.id_borrador ?? null); setFormVersion(v => v + 1); setFormDirty(false)
     })
   }
 
@@ -115,7 +117,7 @@ export function AssistantWorkspace() {
       const text = summary(data)
       setResult({ ...data, continuacion: continuation, tarea_pendiente: result?.tarea_pendiente,
         comunicaciones: result?.comunicaciones }); setReview(text); setOriginal(text); setInstruction(''); setFormDirty(false)
-      setChecked(false); setConfirmed(false); setEditing(false)
+      setChecked(false); setConfirmed(false); setEditing(false); setDraftId(data.borrador?.id_borrador ?? null)
       setContext(current => `${current}\nFormulario: ${catalogForm.titulo}\nPropuesta: ${text}`.slice(-16000))
     })
   }
@@ -124,6 +126,7 @@ export function AssistantWorkspace() {
     if (result?.borrador) await solicitar(token!, 'cancelar', { id: result.borrador.id_borrador })
     if (!alive.current) return
     setResult(current => current ? { ...current, borrador: null } : null)
+    setDraftId(null)
     const text = 'Completa los requisitos del formulario para continuar con la creación.'
     setReview(text); setOriginal(text); setInstruction(''); setChecked(false); setFormDirty(true)
   }
@@ -132,13 +135,17 @@ export function AssistantWorkspace() {
     if (!result?.borrador || modified || !checked || confirmed) return
     void action(async signal => {
       const draftId = result.borrador!.id_borrador
+      await progress.flush()
       const data = await solicitar<{ mensaje: string }>(token!, 'realizar', {
         id: draftId, confirmar: true,
       }, signal)
-      if (alive.current) { setConfirmed(true); setChecked(false); setCatalogForm(null); setFormDirty(false); setSuccess(data.mensaje); setResult({ ...result, borrador: null }); setContext(current => `${current}\nOPERACIÓN CONFIRMADA Y REALIZADA: ${data.mensaje}`.slice(-16000)) }
-      if (alive.current && continuation) {
+      if (alive.current) { setConfirmed(true); setChecked(false); setCatalogForm(null); setWorkflow(null); setFormDirty(false); setSuccess(data.mensaje); setResult({ ...result, borrador: null }); setContext(current => `${current}\nOPERACIÓN CONFIRMADA Y REALIZADA: ${data.mensaje}`.slice(-16000)) }
+      if (alive.current && continuation && result.tarea_pendiente) {
         setResumeDraft(draftId)
         await resumeTask(draftId, signal)
+      } else if (alive.current) {
+        setContinuation(undefined)
+        setResult(current => current ? { ...current, continuacion: undefined } : null)
       }
     })
   }
@@ -151,23 +158,15 @@ export function AssistantWorkspace() {
     const text = summary(data)
     setResult(data); setContinuation(data.continuacion); setResumeDraft(null)
     setReview(text); setOriginal(text); setInstruction(''); setConfirmed(false); setChecked(false)
-    setCatalogForm(data.formulario ?? null); setFormVersion(v => v + 1); setFormDirty(false)
+    setCatalogForm(data.formulario ?? null); setWorkflow(null); setDraftId(data.borrador?.id_borrador ?? null); setFormVersion(v => v + 1); setFormDirty(false)
     setContext(current => `${current}\nTAREA RETOMADA: ${text}`.slice(-16000))
   }
 
   function clear() {
     void action(async signal => {
       if (result?.borrador) await solicitar(token!, 'cancelar', { id: result.borrador.id_borrador }, signal)
-      if (alive.current) { setResult(null); setContinuation(undefined); setResumeDraft(null); setCatalogForm(null); setFormDirty(false); setReview(''); setOriginal(''); setInstruction(''); setContext(''); setConfirmed(false); setChecked(false); setHistory([]); setLastPrompt(''); setEditing(false) }
-    })
-  }
-
-  function toggleAgents() {
-    if (agentsOpen) { setAgentsOpen(false); return }
-    if (agentCatalog) { setAgentsOpen(true); return }
-    void action(async signal => {
-      const catalog = await obtenerAgentesAsistente(token!, signal)
-      if (alive.current) { setAgentCatalog(catalog); setAgentsOpen(true) }
+      await progress.clear()
+      if (alive.current) { workspace.reset(); setResult(null); setContinuation(undefined); setResumeDraft(null); setCatalogForm(null); setFormDirty(false); setReview(''); setOriginal(''); setInstruction(''); setContext(''); setConfirmed(false); setChecked(false); setHistory([]); setLastPrompt(''); setEditing(false) }
     })
   }
 
@@ -176,15 +175,17 @@ export function AssistantWorkspace() {
       <div><h1>Barbarito<span className="assistant-brand-dot" /></h1><p>Consulta y revisa antes de realizar cambios.</p></div>
       <div className="assistant-heading-actions">
         <span className="assistant-scope"><ShieldCheck size={15} />{perfilActivo?.id_perfil === 1 ? 'Administración global' : localActivo?.nombre}</span>
-        {perfilActivo?.id_perfil === 1 && <button className="assistant-secondary" onClick={toggleAgents} disabled={locked} aria-expanded={agentsOpen}><Network size={16} />{agentsOpen ? 'Cerrar agentes' : 'Ver agentes'}</button>}
-        <button className="assistant-secondary" onClick={clear} disabled={locked || (!instruction && !result && !review)}><Plus size={17} />Nueva consulta</button>
+        <button className="assistant-secondary" onClick={clear} disabled={locked || (!instruction && !result && !review)}><Plus size={17} />Limpiar conversación</button>
       </div>
     </header>
+    <div className="assistant-progress" role="status">
+      {progress.status === 'loading' ? 'Recuperando tu progreso…' : progress.status === 'saving' ? 'Guardando progreso…' : progress.message || 'El progreso se guarda para este perfil y tienda.'}
+      {(progress.status === 'error' || progress.status === 'conflict' || progress.status === 'unavailable') && <button className="assistant-secondary" disabled={busy || workflowBusy} onClick={progress.reload}>Recargar progreso</button>}
+    </div>
     <details className="assistant-access"><summary><ShieldCheck size={15} />Tu acceso · {perfilActivo?.nombre}</summary>
       <div className="assistant-module-list">{estado?.modulos_consultables.map(m => <Link key={m.ruta} to={m.ruta}>{m.nombre}<span>↗</span></Link>)}</div>
       <p>Las consultas y acciones respetan tu perfil y el local activo. Los cambios requieren tu confirmación.</p>
     </details>
-    {perfilActivo?.id_perfil === 1 && agentsOpen && agentCatalog && <AgentMap catalog={agentCatalog} communications={result?.comunicaciones} onClose={() => setAgentsOpen(false)} />}
     {(!estado || !estado.ia_disponible || !estado.ejecucion_disponible) && <p className="assistant-status" role="status"><Sparkles size={18} />
       {!estado ? 'Verificando acceso…' : !estado.ia_disponible ? catalogFormsEnabled ? 'Los formularios de catálogo están disponibles. Las consultas libres y el dictado requieren configurar la conexión con OpenAI.' : 'Falta configurar la conexión con OpenAI.' : 'Puedes consultar y dictar. La confirmación de cambios requiere completar la configuración.'}</p>}
     <div className="assistant-conversation">
@@ -218,6 +219,8 @@ export function AssistantWorkspace() {
             {resumeDraft && <button className="assistant-secondary" disabled={locked} onClick={() => { void action(signal => resumeTask(resumeDraft, signal)) }}>Retomar tarea pendiente</button>}
             {catalogForm && token && <CatalogWorkflow key={formVersion} token={token} form={catalogForm} disabled={busy || voiceBusy}
               onChange={() => { setFormDirty(true); setChecked(false) }} onReview={reviewForm} onInvalidate={invalidateFormProposal}
+              initialSnapshot={workflow} onSnapshot={setWorkflow}
+              onCheckpoint={async (snapshot: WorkflowSnapshot) => { setWorkflow(snapshot); await progress.flush({ ...state, workflow: snapshot }) }}
               onNestedChange={setDependencyOpen} onBusy={setWorkflowBusy} onSaved={message => { setSuccess(message); setContext(current => `${current}\nREQUISITO CREADO: ${message}`.slice(-16000)) }} />}
             {editing ? <div className="assistant-editor"><label htmlFor="assistant-review">Editar resumen</label>
               <textarea id="assistant-review" rows={7} maxLength={16000} disabled={locked} value={review} onChange={e => { setReview(e.target.value); setChecked(false) }} />
@@ -225,7 +228,7 @@ export function AssistantWorkspace() {
               !result?.borrador && <AnswerContent text={review}
                 queries={!confirmed && review === original ? result?.consultas ?? [] : []}
               />}
-            {!confirmed && Boolean(result?.opciones?.length) && <div className="assistant-suggestions" aria-label="Elegir tipo de categoría">
+            {!confirmed && Boolean(result?.opciones?.length) && <div className="assistant-suggestions" aria-label="Opciones para continuar">
               {result?.opciones?.map(option => <button key={option.instruccion} className="assistant-secondary" disabled={locked} onClick={() => prepare(option.instruccion)}>{option.etiqueta}</button>)}
             </div>}
             {result?.borrador && <section className="assistant-proposal"><header><span className="assistant-eyebrow">{etiqueta(result.borrador.accion)}</span><h3>{etiqueta(result.borrador.recurso)}</h3></header>
@@ -252,13 +255,18 @@ export function AssistantWorkspace() {
       <div className="assistant-composer">
         <div className="assistant-input-wrap"><PencilLine size={20} /><label className="assistant-sr-only" htmlFor="assistant-instruction">Consulta o corrección</label>
           <textarea ref={input} id="assistant-instruction" disabled={locked} rows={2} maxLength={8000} value={instruction}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.nativeEvent.isComposing || e.repeat) return
+              e.preventDefault()
+              if (!sendDisabled) prepare()
+            }}
             onChange={e => { setInstruction(e.target.value); setChecked(false) }} placeholder="Escribe una consulta o una corrección…" />
         </div>
         {token && <VoiceButton token={token} disabled={locked || !estado?.dictado_disponible} onBusy={setVoiceBusy} onError={setError}
           onText={text => { setInstruction(current => (current ? current + '\n' : '') + text); setChecked(false) }} />}
-        <button className="assistant-send" onClick={() => prepare()} disabled={locked || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000}><Send size={20} />{busy ? 'Procesando…' : 'Enviar'}</button>
+        <button className="assistant-send" onClick={() => prepare()} disabled={sendDisabled}><Send size={20} />{busy ? 'Procesando…' : 'Enviar'}</button>
       </div>
-      <p className="assistant-compose-hint">Dicta o escribe. Tú revisas y decides qué cambios realizar.</p>
+      <p className="assistant-compose-hint">Enter para enviar · Shift + Enter para salto de línea. Tú confirmas los cambios.</p>
     </section>
   </main>
 }

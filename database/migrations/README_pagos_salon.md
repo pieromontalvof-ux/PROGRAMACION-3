@@ -59,5 +59,3 @@ Tarjeta registra el medio de un pago ya recibido en el POS; no carga una tarjeta
 - Pruebas: `backend/tests/test_salon_payments.py`, ejecutadas por `run_local_scope_integration.py` en PostgreSQL temporal con datos ficticios.
 
 El recorrido visual con un usuario real queda para la comprobación manual después de activar la migración.
-
-Validación completada: 125 pruebas aprobadas en PostgreSQL temporal (9 nuevas de pagos), compilación de producción del frontend correcta y lint de `features/salonPayments` sin observaciones. Evidencia en `database/normalizacion/VALIDACION_PAGOS_SALON_20260926.txt`. No se ejecutaron cobros ni migraciones sobre datos reales.

@@ -6,6 +6,8 @@ import { solicitar, type FormularioCatalogo, type RecursoFormulario, type Respue
 
 type Frame = { form: FormularioCatalogo; values: FormValues; version: number }
 type Created = { mensaje: string; id_categoria?: number; id_proveedor?: number; id_categoria_carta?: number; id_menaje?: number }
+export type WorkflowSnapshot = { frames: Frame[]; proposal: RespuestaAsistente | null; dirty: boolean;
+  saved: Created | null; draftId: string | null }
 interface Props {
   token: string
   form: FormularioCatalogo
@@ -16,20 +18,29 @@ interface Props {
   onNestedChange: (nested: boolean) => void
   onBusy: (busy: boolean) => void
   onSaved: (message: string) => void
+  initialSnapshot?: WorkflowSnapshot | null
+  onSnapshot?: (snapshot: WorkflowSnapshot) => void
+  onCheckpoint?: (snapshot: WorkflowSnapshot) => Promise<void>
 }
 
-export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onInvalidate, onNestedChange, onBusy, onSaved }: Props) {
-  const [frames, setFrames] = useState<Frame[]>([{ form, values: {}, version: 0 }])
-  const [proposal, setProposal] = useState<RespuestaAsistente | null>(null)
+export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onInvalidate, onNestedChange, onBusy, onSaved, initialSnapshot, onSnapshot, onCheckpoint }: Props) {
+  const [frames, setFrames] = useState<Frame[]>(initialSnapshot?.frames ?? [{ form, values: {}, version: 0 }])
+  const [proposal, setProposal] = useState<RespuestaAsistente | null>(initialSnapshot?.proposal ?? null)
   const [checked, setChecked] = useState(false)
-  const [dirty, setDirty] = useState(false)
+  const [dirty, setDirty] = useState(initialSnapshot?.dirty ?? false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [saved, setSaved] = useState<Created | null>(null)
+  const [saved, setSaved] = useState<Created | null>(initialSnapshot?.saved ?? null)
+  const [draftId, setDraftId] = useState<string | null>(initialSnapshot?.draftId ?? null)
   const controller = useRef<AbortController | null>(null)
   const alive = useRef(true)
   const current = frames[frames.length - 1]
   const nested = frames.length > 1
+  const snapshotCallback = useRef(onSnapshot)
+  useEffect(() => { snapshotCallback.current = onSnapshot }, [onSnapshot])
+  const serialized = JSON.stringify({ frames, proposal, dirty, saved, draftId })
+  useEffect(() => { snapshotCallback.current?.(JSON.parse(serialized)) }, [serialized])
+  useEffect(() => { onNestedChange(nested) }, [nested, onNestedChange])
 
   useEffect(() => {
     alive.current = true
@@ -63,7 +74,7 @@ export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onI
       const parent = { ...current, values, version: current.version + 1 }
       setFrames(resource === current.form.recurso ? [...frames.slice(0, -1), { ...parent, form: options }] :
         [...frames.slice(0, -1), parent, { form: options, values: seed, version: 0 }])
-      setProposal(null); setChecked(false); setSaved(null)
+      setProposal(null); setChecked(false); setSaved(null); setDraftId(null)
       if (resource !== current.form.recurso) onNestedChange(true)
     })
   }
@@ -72,7 +83,7 @@ export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onI
     void work(async signal => {
       await cancelProposal(signal); await onInvalidate()
       if (!alive.current) return
-      setFrames(frames.slice(0, -1)); setProposal(null); setChecked(false); setSaved(null)
+      setFrames(frames.slice(0, -1)); setProposal(null); setChecked(false); setSaved(null); setDraftId(null)
       onNestedChange(frames.length > 2)
     })
   }
@@ -83,7 +94,7 @@ export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onI
       const result = await solicitar<RespuestaAsistente>(token, 'formulario/preparar', {
         recurso: current.form.recurso, datos: data, reemplaza: proposal?.borrador?.id_borrador,
       }, signal)
-      if (alive.current) { setProposal(result); setDirty(false); setChecked(false) }
+      if (alive.current) { setProposal(result); setDraftId(result.borrador?.id_borrador ?? null); setDirty(false); setChecked(false) }
     })
   }
 
@@ -103,17 +114,19 @@ export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onI
     else if (current.form.recurso === 'menajes' && result.id_menaje) values.menaje = String(result.id_menaje)
     if (!alive.current) return
     setFrames([...frames.slice(0, -2), { form: options, values, version: parent.version + 1 }])
-    setSaved(null); setProposal(null); setChecked(false); setDirty(false)
+    setSaved(null); setProposal(null); setDraftId(null); setChecked(false); setDirty(false)
     onNestedChange(frames.length > 2); onChange(); onSaved(result.mensaje + ' Continúa con ' + parent.form.titulo.toLocaleLowerCase() + '.')
   }
 
   function execute() {
     if (!proposal?.borrador || !checked || dirty || saved) return
     void work(async signal => {
+      await onCheckpoint?.({ frames, proposal, dirty, saved: null, draftId: proposal!.borrador!.id_borrador })
       const result = await solicitar<Created>(token, 'realizar', { id: proposal.borrador!.id_borrador, confirmar: true }, signal)
       if (!alive.current) return
       // Si actualizar las opciones falla, solo se reintenta retomar, nunca la creación.
       setSaved(result); setProposal(null); setChecked(false)
+      await onCheckpoint?.({ frames, proposal: null, dirty: false, saved: result, draftId: proposal!.borrador!.id_borrador })
       await resume(result, signal)
     })
   }
@@ -124,6 +137,11 @@ export function CatalogWorkflow({ token, form, disabled, onChange, onReview, onI
     {error && <p className="assistant-error" role="alert">{error}</p>}
     {saved ? <div className="assistant-workflow-saved" role="status"><CheckCheck size={20} /><p>{saved.mensaje} La creación ya se realizó.</p><button disabled={busy || disabled} onClick={() => void work(signal => resume(saved, signal))}>Retomar paso anterior</button></div> : <>
       <CatalogForm key={`${frames.length}-${current.version}`} form={current.form} initialValues={current.values} disabled={busy || disabled}
+        onValuesChange={values => setFrames(currentFrames => {
+          const index = currentFrames.length - 1
+          if (JSON.stringify(currentFrames[index].values) === JSON.stringify(values)) return currentFrames
+          return currentFrames.map((frame, i) => i === index ? { ...frame, values } : frame)
+        })}
         onChange={() => { setDirty(true); setChecked(false); onChange() }} onReview={review} onDependency={open} />
       {nested && proposal?.borrador && <section className="assistant-proposal assistant-workflow-review"><header><h3>Revisa este requisito</h3></header><ReviewDetails value={proposal.borrador.vista} />
         <label className="assistant-confirm"><input type="checkbox" checked={checked} disabled={busy || disabled || dirty} onChange={e => setChecked(e.target.checked)} />Revisé los datos que se guardarán.</label>

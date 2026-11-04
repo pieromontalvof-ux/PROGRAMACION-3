@@ -54,7 +54,7 @@ def obtener_formulario_orden():
     }, 200
 
 
-def _calcular_sugerencia(producto):
+def _calcular_sugerencia(producto, porcentaje=Decimal("0")):
     consumo = producto.get("consumo_total")
     stock_actual = producto.get("stock_actual")
 
@@ -68,8 +68,8 @@ def _calcular_sugerencia(producto):
     if presentacion <= 0:
         presentacion = Decimal("1")
 
-    # 1. Consumo transcurrido con el 20% adicional
-    consumo_con_margen = consumo_dec * Decimal("1.20")
+    # 1. Aplicar únicamente el margen elegido al consumo
+    consumo_con_margen = consumo_dec * (Decimal("1") + porcentaje / Decimal("100"))
 
     # 2. Restar el stock disponible actual (último inventario de cierre)
     necesidad_neta = consumo_con_margen - actual_dec
@@ -91,20 +91,33 @@ def _calcular_sugerencia(producto):
 
     return Decimal(paquetes_finales) * presentacion
 
-def obtener_pedido_sugerido():
+def obtener_pedido_sugerido(porcentaje="0"):
+    try:
+        porcentaje = Decimal(str(porcentaje))
+    except (InvalidOperation, TypeError, ValueError):
+        return {"mensaje": "Indica un porcentaje válido entre 0 y 1000."}, 400
+    if not porcentaje.is_finite() or not 0 <= porcentaje <= 1000:
+        return {"mensaje": "El porcentaje debe estar entre 0 y 1000."}, 400
     sugeridos = []
     for producto in listar_productos_para_compra():
-        cantidad = _calcular_sugerencia(producto)
+        cantidad = _calcular_sugerencia(producto, porcentaje)
         if cantidad <= 0:
             continue
 
         item = _serializar_producto(producto)
         item["cantidad_sugerida"] = float(cantidad)
+        item["cantidad_sin_redondear"] = float(
+            Decimal(str(producto["consumo_total"])) * (1 + porcentaje / 100)
+            - Decimal(str(producto["stock_actual"] or 0))
+        )
+        presentacion = Decimal(str(producto["presentacion"]))
+        item["paquetes_sugeridos"] = int(cantidad / (presentacion if presentacion > 0 else 1))
         sugeridos.append(item)
 
     return {
         "productos": sugeridos,
         "total_productos": len(sugeridos),
+        "porcentaje_incremento": float(porcentaje),
     }, 200
 
 

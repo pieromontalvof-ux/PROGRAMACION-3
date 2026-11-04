@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BadgePercent,
+  Bot,
   BarChart3,
   Boxes,
   ChevronDown,
@@ -28,9 +29,11 @@ interface SidebarItemProps {
   opcion: OpcionMenuConHijos
   nivel?: number
   alNavegar?: () => void
+  forzarAbierto?: boolean
 }
 
 const iconosPorOpcion: Record<number, LucideIcon> = {
+  [-100]: Bot,
   1: House,
   2: Users,
   3: Boxes,
@@ -72,6 +75,7 @@ export function SidebarItem({
   opcion,
   nivel = 0,
   alNavegar,
+  forzarAbierto = false,
 }: SidebarItemProps) {
   const location = useLocation()
   const tieneHijos = opcion.hijos.length > 0
@@ -92,6 +96,7 @@ export function SidebarItem({
   }, [perteneceARutaActual])
 
   const Icono = iconosPorOpcion[opcion.id_opcion_menu] ?? Circle
+  const abierto = forzarAbierto || desplegado
 
   if (tieneHijos) {
     return (
@@ -102,7 +107,8 @@ export function SidebarItem({
           }`}
           type="button"
           onClick={() => setDesplegado((estado) => !estado)}
-          aria-expanded={desplegado}
+          aria-expanded={abierto}
+          aria-controls={`nav-group-${opcion.id_opcion_menu}`}
         >
           <span className="sidebar-link__main">
             <Icono
@@ -117,7 +123,7 @@ export function SidebarItem({
 
           <ChevronDown
             className={`sidebar-link__chevron ${
-              desplegado
+              abierto
                 ? 'sidebar-link__chevron--open'
                 : ''
             }`}
@@ -126,8 +132,10 @@ export function SidebarItem({
         </button>
 
         <div
+          id={`nav-group-${opcion.id_opcion_menu}`}
+          hidden={!abierto}
           className={`sidebar-submenu ${
-            desplegado ? 'sidebar-submenu--open' : ''
+            abierto ? 'sidebar-submenu--open' : ''
           }`}
         >
           <ul>
@@ -137,6 +145,7 @@ export function SidebarItem({
                 opcion={hijo}
                 nivel={nivel + 1}
                 alNavegar={alNavegar}
+                forzarAbierto={forzarAbierto}
               />
             ))}
           </ul>

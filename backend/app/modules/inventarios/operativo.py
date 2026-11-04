@@ -169,6 +169,21 @@ def mix():
                           'cantidad':sum((r['cantidad'] for r in resultados),Decimal(0))}))
 
 
+@operativo_bp.get('/demanda')
+@requiere_permiso(37, 'consultar')
+@requiere_permiso(15, 'consultar')
+def demanda():
+    from .demand import report
+    from datetime import datetime, timedelta, timezone
+    local, _, _ = contexto((2, 3))
+    desde, hasta = rango()
+    if not db.session.execute(text("SELECT to_regclass('public.salon_cobro') IS NOT NULL")).scalar():
+        raise Conflict('Falta instalar el registro de cobros de Salón para analizar demanda')
+    if hasta > datetime.now(timezone(timedelta(hours=-5))).date():
+        raise BadRequest('El análisis de ventas no admite fechas futuras')
+    return jsonify(report(local, desde, hasta))
+
+
 def equipo(local):
     return filas('''SELECT u.id_usuario,concat_ws(' ',u.nombres,u.apellido_paterno) nombre
         FROM usuario u JOIN usuario_local ul USING(id_usuario) WHERE ul.id_local=:local AND ul.estado_registro=1

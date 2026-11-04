@@ -68,4 +68,3 @@ export interface RespuestaRegistrarMovimiento {
   mensaje: string
   movimiento: MovimientoRegistrado
 }
-

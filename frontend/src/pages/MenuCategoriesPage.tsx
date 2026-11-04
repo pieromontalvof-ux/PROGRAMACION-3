@@ -1,13 +1,10 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  CheckCircle2,
   CircleOff,
-  Hash,
-  Layers3,
   RefreshCw,
   Search,
-  ShoppingBag,
 } from 'lucide-react'
 import {
   useCallback,
@@ -218,7 +215,7 @@ export function MenuCategoriesPage() {
             CATÁLOGO DE VENTA
           </span>
 
-          <h1>Categorías de carta</h1>
+          <h1>Categorías de carta <span className="catalog-title-count">{datos.resumen.total_categorias} categorías</span></h1>
 
           <p>
             Consulta la organización de bebidas, platos,
@@ -226,8 +223,16 @@ export function MenuCategoriesPage() {
           </p>
         </div>
 
-        <div className="menu-categories-header-actions">
-        {administrador && permisos.crear && <button className="menu-categories-refresh" type="button" onClick={() => abrir(null, 'crear')}>Nueva categoría</button>}
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todas', label: 'Todas', count: datos.resumen.total_categorias },
+          { value: 'activas', label: 'Activas', count: datos.resumen.categorias_activas },
+          { value: 'inactivas', label: 'Inactivas', count: Math.max(0, datos.resumen.total_categorias - datos.resumen.categorias_activas) },
+        ]} />
+        <div className="catalog-admin-actions">
+        {administrador && permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => abrir(null, 'crear')}>Nueva categoría</button>}
         <button
           className="menu-categories-refresh"
           type="button"
@@ -248,48 +253,6 @@ export function MenuCategoriesPage() {
             : 'Actualizar categorías'}
         </button>
         </div>
-      </header>
-
-      <div className="menu-categories-summary">
-        <article className="menu-categories-summary-card">
-          <span className="menu-categories-summary-card__icon">
-            <Layers3 aria-hidden="true" />
-          </span>
-          <div>
-            <span>Total de categorías</span>
-            <strong>{datos.resumen.total_categorias}</strong>
-          </div>
-        </article>
-
-        <article className="menu-categories-summary-card">
-          <span className="menu-categories-summary-card__icon menu-categories-summary-card__icon--active">
-            <CheckCircle2 aria-hidden="true" />
-          </span>
-          <div>
-            <span>Categorías activas</span>
-            <strong>{datos.resumen.categorias_activas}</strong>
-          </div>
-        </article>
-
-        <article className="menu-categories-summary-card">
-          <span className="menu-categories-summary-card__icon menu-categories-summary-card__icon--items">
-            <ShoppingBag aria-hidden="true" />
-          </span>
-          <div>
-            <span>Ítems de carta</span>
-            <strong>{datos.resumen.total_items}</strong>
-          </div>
-        </article>
-
-        <article className="menu-categories-summary-card">
-          <span className="menu-categories-summary-card__icon menu-categories-summary-card__icon--presentations">
-            <Hash aria-hidden="true" />
-          </span>
-          <div>
-            <span>Presentaciones</span>
-            <strong>{datos.resumen.total_presentaciones}</strong>
-          </div>
-        </article>
       </div>
 
       {error && (
@@ -299,16 +262,8 @@ export function MenuCategoriesPage() {
         </div>
       )}
 
-      <section className="menu-categories-content">
+      <section className="menu-categories-content" title="Para editar o desactivar una categoría con artículos, primero reasígnalos a otra categoría.">
         {mensaje && <p role="status">{mensaje}</p>}
-        {administrador && <p className="menu-categories-results">Para editar o desactivar una categoría con artículos, primero reasígnalos a otra categoría.</p>}
-        <div className="menu-categories-content__heading">
-          <div>
-            <span>CLASIFICACIÓN DE LA CARTA</span>
-            <h2>Listado de categorías</h2>
-          </div>
-          <p>Códigos e información asociada.</p>
-        </div>
 
         <div className="menu-categories-filters">
           <label className="menu-categories-search">
@@ -324,20 +279,6 @@ export function MenuCategoriesPage() {
             />
           </label>
 
-          <select
-            value={estado}
-            onChange={(evento) =>
-              setEstado(
-                evento.target.value as FiltroEstado,
-              )
-            }
-            aria-label="Filtrar por estado"
-          >
-            <option value="todas">Todos los estados</option>
-            <option value="activas">Activas</option>
-            <option value="inactivas">Inactivas</option>
-          </select>
-
           <button
             className="menu-categories-clear"
             type="button"
@@ -347,13 +288,6 @@ export function MenuCategoriesPage() {
             Limpiar
           </button>
         </div>
-
-        <p className="menu-categories-results">
-          Mostrando{' '}
-          <strong>{categoriasFiltradas.length}</strong>{' '}
-          de <strong>{datos.categorias.length}</strong>{' '}
-          categorías
-        </p>
 
         <div className="menu-categories-table-wrap" role="region" aria-label="Listado de categorías de carta" tabIndex={0}>
           <table className="menu-categories-table">

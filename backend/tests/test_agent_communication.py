@@ -60,7 +60,8 @@ class AgentCommunicationTests(unittest.TestCase):
              patch('app.modules.asistente_ia.tools.execute') as execute:
             result = coordinator.resume({}, initial['continuacion'], 'draft-id')
         self.assertEqual(result['agente'], 'recetas')
-        self.assertNotIn('continuacion', result)
+        self.assertNotIn('tarea_pendiente', result)
+        self.assertEqual(coordinator.load(result['continuacion'])['pila'], [])
         self.assertIn('77', model.call_args.args[0][1]['content'])
         self.assertIn('25', model.call_args.args[0][1]['content'])
         execute.assert_not_called()
@@ -103,6 +104,68 @@ class AgentCommunicationTests(unittest.TestCase):
     def test_unrelated_handoff_is_rejected(self):
         with self.assertRaises(AssistantError):
             coordinator.coordinate({}, handoff('recetas', 'menajes'), 'Crear receta')
+
+    def test_clarification_keeps_confirmed_nested_result_and_original_task(self):
+        from app.modules.asistente_ia import routes
+        self.app.config['JWT_SECRET_KEY'] = 'communication-api-secret-at-least-32-characters'
+        routes._attempts.clear()
+        auth = create_access_token(identity='1', additional_claims={'id_perfil': 1, 'id_local': 1})
+        first = self.start()
+        state = coordinator.load(first['continuacion'])
+        original_task = state['actual']['instruccion']
+        second = coordinator.coordinate({}, handoff('presentaciones', 'menajes'), original_task, state=state)
+        plan = {'recurso': 'menajes', 'accion': 'crear', 'datos': {'nombre': 'Plato grande'}}
+        coordinator.bind_plan(coordinator.load(second['continuacion']), plan)
+        with patch.object(coordinator.drafts, 'load', return_value={
+            'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_menaje': 987654}}), \
+             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+            resumed = coordinator.resume({}, second['continuacion'], 'draft-id')
+        with patch.object(routes, 'obtener_sesion_actual', return_value=({}, 200)), \
+             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER) as model:
+            response = self.app.test_client().post('/api/asistente-ia/preparar',
+                headers={'Authorization': 'Bearer ' + auth}, json={
+                    'instruccion': 'Precio 25', 'borrador_previo': '¿Cuál será el precio?',
+                    'contexto_previo': 'El menaje se creó. Falta el precio.',
+                    'continuacion': resumed['continuacion']})
+        self.assertEqual(response.status_code, 200)
+        model_input = json.loads(model.call_args.args[0][1]['content'])
+        self.assertIn('987654', model_input['contexto_previo'])
+        self.assertIn(original_task, model_input['contexto_previo'])
+        updated = coordinator.load(response.json['continuacion'])
+        self.assertEqual(updated['actual']['instruccion'], original_task)
+        self.assertIn('987654', json.dumps(updated['actual']))
+
+    def test_final_parent_keeps_continuation_until_its_own_task_is_done(self):
+        initial = self.start()
+        plan = {'recurso': 'presentaciones', 'accion': 'crear', 'datos': {'nombre_item': 'Hamburguesa'}}
+        coordinator.bind_plan(coordinator.load(initial['continuacion']), plan)
+        with patch.object(coordinator.drafts, 'load', return_value={
+            'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_presentacion_venta': 77}}), \
+             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+            result = coordinator.resume({}, initial['continuacion'], 'draft-id')
+        self.assertIn('continuacion', result)
+        self.assertNotIn('tarea_pendiente', result)
+        state = coordinator.load(result['continuacion'])
+        self.assertEqual(state['actual']['instruccion'], 'Crear receta de hamburguesa')
+        self.assertEqual(state['pila'], [])
+
+    def test_return_does_not_reset_the_parents_latest_review(self):
+        first = self.start()
+        state = coordinator.load(first['continuacion'])
+        original_task = state['actual']['instruccion']
+        review = 'Precio corregido: 29.90, contenido: 12 unidades'
+        history = 'El usuario corrigió el precio antes de crear el menaje.'
+        second = coordinator.coordinate({}, handoff('presentaciones', 'menajes'),
+                                        original_task, review, history, state)
+        plan = {'recurso': 'menajes', 'accion': 'crear', 'datos': {'nombre': 'Plato'}}
+        coordinator.bind_plan(coordinator.load(second['continuacion']), plan)
+        with patch.object(coordinator.drafts, 'load', return_value={
+            'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_menaje': 9}}), \
+             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+            result = coordinator.resume({}, second['continuacion'], 'draft-id')
+        parent = coordinator.load(result['continuacion'])['actual']
+        self.assertEqual(parent['borrador_actual'], review)
+        self.assertEqual(parent['historial_cliente'], history)
 
     def test_runtime_exposes_only_authorized_dependency_handoffs(self):
         call = {'type': 'function_call', 'call_id': 'handoff', 'name': 'solicitar_especialista',
@@ -154,7 +217,8 @@ class AgentCommunicationTests(unittest.TestCase):
             resumed = client.post('/api/asistente-ia/continuar', headers=headers, json=args)
             self.assertEqual(resumed.status_code, 200)
             self.assertEqual(resumed.json['agente'], 'recetas')
-            self.assertNotIn('continuacion', resumed.json)
+            self.assertNotIn('tarea_pendiente', resumed.json)
+            self.assertEqual(coordinator.load(resumed.json['continuacion'])['pila'], [])
 
     def test_missing_requirement_does_not_bypass_specialist_with_direct_form_shortcut(self):
         from app.modules.asistente_ia import routes

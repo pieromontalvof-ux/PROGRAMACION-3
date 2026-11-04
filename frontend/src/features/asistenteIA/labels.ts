@@ -1,6 +1,9 @@
 import { revisionVisible } from './reviewDisplay'
 
 const labels: Record<string, string> = {
+  demanda_rotacion: 'Demanda y rotación', consumo_ventas: 'Consumo por ventas',
+  consumo_diario: 'Consumo diario estimado', cobertura_dias: 'Cobertura estimada en días',
+  ventas_diarias: 'Ventas diarias', dias_calendario: 'Días calendario',
   stock: 'Stock actual', conteos: 'Conteos del equipo', asignaciones_conteo: 'Asignación por puesto',
   revision_conteo: 'Revisión del conteo', diferencias_conteo: 'Diferencias de inventario',
   jornadas: 'Jornadas operativas', mix_ventas: 'Mix de ventas', operacion: 'Operación',

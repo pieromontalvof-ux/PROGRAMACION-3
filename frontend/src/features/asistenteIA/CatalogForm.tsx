@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ClipboardList, RefreshCw, Plus } from 'lucide-react'
 import type { FormularioCatalogo, RecursoFormulario } from './service'
 import './CatalogForm.css'
@@ -7,13 +7,14 @@ interface Props {
   form: FormularioCatalogo
   disabled: boolean
   onChange: () => void
+  onValuesChange?: (values: FormValues) => void
   onReview: (datos: Record<string, unknown>) => void
   initialValues?: FormValues
   onDependency: (resource: RecursoFormulario, values: FormValues, seed?: FormValues) => void
 }
 export type FormValues = { nombre?: string; prefijo?: string; categorias?: number[]; proveedor?: string; categoria?: string; unidad?: string; contenido?: string; item?: string; tipo?: string; menaje?: string; precio?: string }
 
-export function CatalogForm({ form, disabled, onChange, onReview, initialValues = {}, onDependency }: Props) {
+export function CatalogForm({ form, disabled, onChange, onValuesChange, onReview, initialValues = {}, onDependency }: Props) {
   const [nombre, setNombre] = useState(initialValues.nombre ?? '')
   const [prefijo, setPrefijo] = useState(initialValues.prefijo ?? '')
   const [categorias, setCategorias] = useState<number[]>(initialValues.categorias ?? [])
@@ -36,6 +37,10 @@ export function CatalogForm({ form, disabled, onChange, onReview, initialValues 
   const symbol = form.unidades_medida.find(u => u.codigo === unidad)?.simbolo ?? ''
   const duplicate = categoryForm && form.categorias.some(c => c.nombre.trim().toLocaleLowerCase() === nombre.trim().toLocaleLowerCase() || (prefijo && c.prefijo.toUpperCase() === prefijo.toUpperCase()))
   const values = { nombre, prefijo, categorias, proveedor, categoria, unidad, contenido, item, tipo, menaje, precio }
+  const snapshot = JSON.stringify(values)
+  const valueCallback = useRef(onValuesChange)
+  useEffect(() => { valueCallback.current = onValuesChange }, [onValuesChange])
+  useEffect(() => { valueCallback.current?.(JSON.parse(snapshot)) }, [snapshot])
   function dependency(resource: RecursoFormulario, label: string, seed?: FormValues) {
     return form.dependencias_creables?.includes(resource) ? <button type="button" className="assistant-dependency-link" onClick={() => onDependency(resource, values, seed)}><Plus size={14} />{label}</button> : null
   }

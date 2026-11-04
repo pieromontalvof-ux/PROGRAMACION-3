@@ -14,6 +14,8 @@ export interface ProductoCompra {
 
 export interface ProductoSugerido extends ProductoCompra {
   cantidad_sugerida: number
+  cantidad_sin_redondear: number
+  paquetes_sugeridos: number
 }
 
 export interface RespuestaFormularioOrden {

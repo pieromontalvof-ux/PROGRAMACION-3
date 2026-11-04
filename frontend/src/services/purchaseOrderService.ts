@@ -38,9 +38,9 @@ export async function obtenerFormularioOrden(token: string) {
   )
 }
 
-export async function obtenerPedidoSugerido(token: string) {
+export async function obtenerPedidoSugerido(token: string, porcentaje: number) {
   return procesar<RespuestaPedidoSugerido>(
-    await fetch(`${API_URL}/ordenes-compra/pedido-sugerido`, {
+    await fetch(`${API_URL}/ordenes-compra/pedido-sugerido?porcentaje=${encodeURIComponent(porcentaje)}`, {
       headers: autorizacion(token),
     }),
   )

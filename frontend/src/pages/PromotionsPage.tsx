@@ -1,16 +1,14 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  CheckCircle2,
   ChevronDown,
-  CircleOff,
   Clock3,
   RefreshCw,
   Repeat2,
   Search,
   Tags,
-  TicketPercent,
 } from 'lucide-react'
 import {
   Fragment,
@@ -192,15 +190,23 @@ export function PromotionsPage() {
       <header className="promotions-header">
         <div>
           <span>PROMOCIONES COMERCIALES</span>
-          <h1>Promociones</h1>
+          <h1>Promociones <span className="catalog-title-count">{datos.resumen.total_promociones} promociones</span></h1>
           <p>
             Consulta precios, horarios y artículos
             disponibles dentro de cada promoción.
           </p>
         </div>
 
-        <div className="production-header-actions">
-        {permisos.crear && <button type="button" onClick={() => { setSeleccionada(null); setEditor(true) }}>Nueva promoción</button>}
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todas', count: datos.resumen.total_promociones },
+          { value: 'activos', label: 'Activas', count: datos.resumen.promociones_activas },
+          { value: 'inactivos', label: 'Inactivas', count: datos.resumen.promociones_inactivas },
+        ]} />
+        <div className="catalog-admin-actions">
+        {permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => { setSeleccionada(null); setEditor(true) }}>Nueva promoción</button>}
         <button
           type="button"
           disabled={actualizando}
@@ -214,62 +220,11 @@ export function PromotionsPage() {
           {actualizando ? 'Actualizando...' : 'Actualizar'}
         </button>
         </div>
-      </header>
-
-      <div className="promotions-summary">
-        <article>
-          <span><TicketPercent /></span>
-          <div>
-            <small>Total de promociones</small>
-            <strong>
-              {datos.resumen.total_promociones}
-            </strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="green"><CheckCircle2 /></span>
-          <div>
-            <small>Promociones activas</small>
-            <strong>
-              {datos.resumen.promociones_activas}
-            </strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="red"><CircleOff /></span>
-          <div>
-            <small>Promociones inactivas</small>
-            <strong>
-              {datos.resumen.promociones_inactivas}
-            </strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="yellow"><Clock3 /></span>
-          <div>
-            <small>Con horario definido</small>
-            <strong>
-              {datos.resumen.promociones_con_horario}
-            </strong>
-          </div>
-        </article>
       </div>
 
       <section className="promotions-content">
         {mensaje && <p role="status" className="production-feedback">{mensaje}</p>}
         {error && <p role="alert" className="production-feedback production-feedback--error">{error}</p>}
-        <div className="promotions-title">
-          <div>
-            <span>LISTADO GENERAL</span>
-            <h2>Promociones registradas</h2>
-          </div>
-          <p>
-            Despliega una promoción para revisar sus opciones.
-          </p>
-        </div>
 
         <div className="promotions-filters">
           <label>
@@ -296,29 +251,10 @@ export function PromotionsPage() {
             <option value="permanentes">Sin horario</option>
           </select>
 
-          <select
-            value={estado}
-            onChange={(evento) =>
-              setEstado(
-                evento.target.value as EstadoFiltro,
-              )
-            }
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="activos">Activas</option>
-            <option value="inactivos">Inactivas</option>
-          </select>
-
           <button type="button" onClick={limpiar}>
             Limpiar
           </button>
         </div>
-
-        <p className="promotions-results">
-          Mostrando{' '}
-          <strong>{promocionesFiltradas.length}</strong>{' '}
-          de <strong>{datos.promociones.length}</strong>
-        </p>
 
         <div className="promotions-table-wrap">
           <table className="promotions-table">

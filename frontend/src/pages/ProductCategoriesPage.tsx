@@ -1,9 +1,7 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  Boxes,
-  CheckCircle2,
-  CircleOff,
   RefreshCw,
   Search,
   Tags,
@@ -410,7 +408,7 @@ export function ProductCategoriesPage() {
             CATÁLOGO DE INVENTARIO
           </span>
 
-          <h1>Categorías de productos</h1>
+          <h1>Categorías de productos <span className="catalog-title-count">{datos.resumen.total_categorias} categorías</span></h1>
 
           <p>
             Consulta la clasificación utilizada para
@@ -418,6 +416,14 @@ export function ProductCategoriesPage() {
           </p>
         </div>
 
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todas', label: 'Todas', count: datos.resumen.total_categorias },
+          { value: 'activas', label: 'Activas', count: datos.resumen.categorias_activas },
+          { value: 'inactivas', label: 'Inactivas', count: datos.resumen.categorias_inactivas },
+        ]} />
         <div className="catalog-admin-actions">
           {permisos.crear && (
             <button
@@ -447,63 +453,6 @@ export function ProductCategoriesPage() {
             : 'Actualizar categorías'}
           </button>
         </div>
-      </header>
-
-      <div className="categories-summary">
-        <article className="categories-summary-card">
-          <span className="categories-summary-card__icon">
-            <Tags aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Total de categorías</span>
-            <strong>
-              {datos.resumen.total_categorias}
-            </strong>
-          </div>
-        </article>
-
-        <article className="categories-summary-card">
-          <span className="categories-summary-card__icon categories-summary-card__icon--active">
-            <CheckCircle2 aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Categorías activas</span>
-            <strong>
-              {datos.resumen.categorias_activas}
-            </strong>
-          </div>
-        </article>
-
-        <article className="categories-summary-card">
-          <span className="categories-summary-card__icon categories-summary-card__icon--inactive">
-            <CircleOff aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Categorías inactivas</span>
-            <strong>
-              {datos.resumen.categorias_inactivas}
-            </strong>
-          </div>
-        </article>
-
-        <article className="categories-summary-card">
-          <span className="categories-summary-card__icon categories-summary-card__icon--products">
-            <Boxes aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Productos asociados</span>
-            <strong>
-              {
-                datos.resumen
-                  .total_productos_asociados
-              }
-            </strong>
-          </div>
-        </article>
       </div>
 
       {error && (
@@ -514,16 +463,6 @@ export function ProductCategoriesPage() {
       )}
 
       <section className="categories-content">
-        <div className="categories-content__heading">
-          <div>
-            <span>CLASIFICACIÓN</span>
-            <h2>Listado de categorías</h2>
-          </div>
-
-          <p>
-            Cada prefijo permite generar códigos únicos.
-          </p>
-        </div>
 
         <div className="categories-filters">
           <label className="categories-search">
@@ -540,23 +479,7 @@ export function ProductCategoriesPage() {
             />
           </label>
 
-          <select
-            value={estado}
-            onChange={(evento) =>
-              setEstado(
-                evento.target.value as FiltroEstado,
-              )
-            }
-            aria-label="Filtrar por estado"
-          >
-            <option value="todas">
-              Todos los estados
-            </option>
-            <option value="activas">Activas</option>
-            <option value="inactivas">Inactivas</option>
-          </select>
-
-          <button
+<button
             className="categories-clear"
             type="button"
             disabled={!hayFiltros}
@@ -565,13 +488,6 @@ export function ProductCategoriesPage() {
             Limpiar
           </button>
         </div>
-
-        <p className="categories-results">
-          Mostrando{' '}
-          <strong>{categoriasFiltradas.length}</strong>{' '}
-          de <strong>{datos.categorias.length}</strong>{' '}
-          categorías
-        </p>
 
         <div className="categories-table-container" role="region" aria-label="Listado de categorías" tabIndex={0}>
           <table className="categories-table">
@@ -659,6 +575,7 @@ export function ProductCategoriesPage() {
       </section>
 
       <CatalogDialog
+        error={error}
         titulo={
           categoriaEditada
             ? 'Editar categoría'

@@ -1,5 +1,5 @@
 import { formatearUnidad } from '../utils/unitHelpers'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { obtenerLimitesStock, guardarLimitesStock, type ProductoLimitesStock } from '../services/catalogService'
@@ -24,6 +24,18 @@ function StockLimitsContent() {
   const [maximo, setMaximo] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [revision, setRevision] = useState(0)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const disparador = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const elemento = dialog.current
+    if (!editando || !elemento) return
+    elemento.showModal()
+    return () => {
+      elemento.close()
+      if (disparador.current?.isConnected) disparador.current.focus()
+    }
+  }, [editando])
 
   useEffect(() => {
     if (!token || !autorizado) return
@@ -41,7 +53,8 @@ function StockLimitsContent() {
 
   if (!autorizado) return <Navigate to="/home" replace />
 
-  function abrir(producto: ProductoLimitesStock) {
+  function abrir(producto: ProductoLimitesStock, boton: HTMLButtonElement) {
+    disparador.current = boton
     setEditando(producto)
     setMinimo(String(producto.stock_minimo))
     setMaximo(producto.stock_maximo === null ? '' : String(producto.stock_maximo))
@@ -55,8 +68,9 @@ function StockLimitsContent() {
     const min = Number(minimo)
     const max = Number(maximo)
     if (!minimo.trim() || !maximo.trim() || !Number.isFinite(min) ||
-        !Number.isFinite(max) || min < 0 || max <= min) {
-      setError('Ingresa un mínimo no negativo y un máximo mayor al mínimo. No pueden ser iguales.')
+        !Number.isFinite(max) || min < 0 || max <= min || max > 999999999.999 ||
+        min !== Number(min.toFixed(3)) || max !== Number(max.toFixed(3))) {
+      setError('Ingresa un mínimo no negativo y un máximo mayor al mínimo. No pueden ser iguales. Usa hasta 3 decimales y valores de hasta 999999999.999.')
       return
     }
     setGuardando(true)
@@ -80,7 +94,7 @@ function StockLimitsContent() {
       <h1>Límites de stock</h1>
       <p>Local: <strong>{localActivo?.nombre}</strong>. Define el mínimo y máximo de cada producto para esta tienda.</p>
     </header>
-    {error && <p className="stock-limits__error" role="alert">{error}</p>}
+    {error && !editando && <p className="stock-limits__error" role="alert">{error}</p>}
     {mensaje && <p className="stock-limits__success" role="status">{mensaje}</p>}
     <div className="stock-limits__card">
       <div className="stock-limits__tools">
@@ -92,25 +106,30 @@ function StockLimitsContent() {
           <tbody>{filtrados.map((p) => <tr key={p.id_producto}>
             <td>{p.codigo}</td><td><strong>{p.nombre}</strong></td><td>{p.categoria}</td><td>{formatearUnidad(p.unidad)}</td>
             <td>{p.stock_minimo}</td><td>{p.stock_maximo ?? 'Sin definir'}</td><td>{p.activo ? 'Activo' : 'Inactivo'}</td>
-            <td>{permiso?.configurar && <button type="button" onClick={() => abrir(p)}>Configurar</button>}</td>
+            <td>{permiso?.configurar && <button type="button" onClick={(e) => abrir(p, e.currentTarget)}>Configurar</button>}</td>
           </tr>)}{!filtrados.length && <tr><td colSpan={8}>No se encontraron productos.</td></tr>}</tbody>
         </table>
       </div>}
     </div>
-    {editando && <div className="stock-limits__backdrop">
-      <form className="stock-limits__dialog" role="dialog" aria-modal="true" aria-labelledby="limits-title" onSubmit={(e) => void guardar(e)}>
+    {editando && <dialog ref={dialog} className="stock-limits__dialog" aria-labelledby="limits-title"
+      onCancel={(e) => { if (guardando) e.preventDefault(); else setEditando(null) }}>
+      <form noValidate onSubmit={(e) => void guardar(e)}>
         <h2 id="limits-title">Configurar límites</h2>
         <p>{editando.codigo} · {editando.nombre} ({formatearUnidad(editando.unidad)})</p>
-        {error && <p className="stock-limits__error" role="alert">{error}</p>}
+        {error && <p id="limits-error" className="stock-limits__error" role="alert">{error}</p>}
         <fieldset disabled={guardando}>
-          <label>Stock mínimo<input autoFocus type="number" min="0" max="999999999.999" step="0.001" required value={minimo} onChange={(e) => setMinimo(e.target.value)} /></label>
-          <label>Stock máximo<input type="number" min={Number.isFinite(Number(minimo)) ? (Number(minimo) + 0.001).toFixed(3) : '0.001'} max="999999999.999" step="0.001" required value={maximo} onChange={(e) => setMaximo(e.target.value)} /></label>
+          <label>Stock mínimo<input autoFocus type="number" min="0" max="999999999.999" step="0.001" required value={minimo}
+            aria-invalid={error ? true : undefined} aria-describedby={error ? 'limits-error' : undefined}
+            onChange={(e) => { setMinimo(e.target.value); setError('') }} /></label>
+          <label>Stock máximo<input type="number" min={Number.isFinite(Number(minimo)) ? (Number(minimo) + 0.001).toFixed(3) : '0.001'} max="999999999.999" step="0.001" required value={maximo}
+            aria-invalid={error ? true : undefined} aria-describedby={error ? 'limits-error' : undefined}
+            onChange={(e) => { setMaximo(e.target.value); setError('') }} /></label>
         </fieldset>
         <div className="stock-limits__tools">
           <button type="button" disabled={guardando} onClick={() => setEditando(null)}>Cancelar</button>
           <button disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar límites'}</button>
         </div>
       </form>
-    </div>}
+    </dialog>}
   </section>
 }

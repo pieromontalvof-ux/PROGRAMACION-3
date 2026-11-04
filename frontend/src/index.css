@@ -3,8 +3,8 @@
     Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
 
-  color: #0b0e0c;
-  background: #f3f1ea;
+  color: var(--ui-text);
+  background: var(--ui-surface);
 
   --color-verde-oscuro: #063d2a;
   --color-verde-profundo: #022a1e;

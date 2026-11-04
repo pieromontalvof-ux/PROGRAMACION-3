@@ -6,6 +6,8 @@ from app.modules.auth.salon_layout import salon_layout_bp
 from app.modules.auth.salon_orders import salon_orders_bp
 from app.modules.auth.salon import salon_bp
 from flask import Flask, jsonify
+import os
+from pathlib import Path
 from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -32,7 +34,8 @@ from app.modules.usuarios.locales import locales_bp
 
 
 def create_app():
-    app = Flask(__name__)
+    instance = os.getenv('APP_DATA_DIR')
+    app = Flask(__name__, **({'instance_path': str(Path(instance).resolve())} if instance else {}))
     app.config.from_object(Config)
     registrar_medidas_api(app)
 
@@ -50,7 +53,7 @@ def create_app():
         app,
         resources={
             r"/api/*": {
-                "origins": "*",
+                "origins": app.config['CORS_ORIGINS'],
                 "allow_headers": [
                     "Content-Type",
                     "Authorization",
@@ -130,4 +133,6 @@ def create_app():
         url_prefix="/api/recetas",
     )
 
+    from app.core.production import register_frontend
+    register_frontend(app)
     return app

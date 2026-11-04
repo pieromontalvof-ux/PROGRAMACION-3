@@ -1,10 +1,8 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  Boxes,
-  CheckCircle2,
   ChevronDown,
-  CircleOff,
   Layers3,
   RefreshCw,
   Search,
@@ -64,7 +62,7 @@ export function SuppliersPage() {
   const [cargando, setCargando] = useState(true)
   const [actualizando, setActualizando] = useState(false)
   const [error, setError] = useState('')
-  
+
   const [proveedorAbierto, setProveedorAbierto] =
   useState<number | null>(null)
 
@@ -393,7 +391,7 @@ export function SuppliersPage() {
             CATÁLOGO DE INVENTARIO
           </span>
 
-          <h1>Proveedores</h1>
+          <h1>Proveedores <span className="catalog-title-count">{datos.resumen.total_proveedores} proveedores</span></h1>
 
           <p>
             Consulta los proveedores vinculados a los
@@ -401,6 +399,14 @@ export function SuppliersPage() {
           </p>
         </div>
 
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todos', count: datos.resumen.total_proveedores },
+          { value: 'activos', label: 'Activos', count: datos.resumen.proveedores_activos },
+          { value: 'inactivos', label: 'Inactivos', count: datos.resumen.proveedores_inactivos },
+        ]} />
         <div className="catalog-admin-actions">
           {(administrador || permisos.crear) && (
             <button
@@ -430,63 +436,6 @@ export function SuppliersPage() {
             : 'Actualizar proveedores'}
           </button>
         </div>
-      </header>
-
-      <div className="suppliers-summary">
-        <article className="suppliers-summary-card">
-          <span className="suppliers-summary-card__icon">
-            <Truck aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Total de proveedores</span>
-            <strong>
-              {datos.resumen.total_proveedores}
-            </strong>
-          </div>
-        </article>
-
-        <article className="suppliers-summary-card">
-          <span className="suppliers-summary-card__icon suppliers-summary-card__icon--active">
-            <CheckCircle2 aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Proveedores activos</span>
-            <strong>
-              {datos.resumen.proveedores_activos}
-            </strong>
-          </div>
-        </article>
-
-        <article className="suppliers-summary-card">
-          <span className="suppliers-summary-card__icon suppliers-summary-card__icon--inactive">
-            <CircleOff aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Proveedores inactivos</span>
-            <strong>
-              {datos.resumen.proveedores_inactivos}
-            </strong>
-          </div>
-        </article>
-
-        <article className="suppliers-summary-card">
-          <span className="suppliers-summary-card__icon suppliers-summary-card__icon--products">
-            <Boxes aria-hidden="true" />
-          </span>
-
-          <div>
-            <span>Productos asociados</span>
-            <strong>
-              {
-                datos.resumen
-                  .total_productos_asociados
-              }
-            </strong>
-          </div>
-        </article>
       </div>
 
       {!datos.categorias_proveedor_configurables && (
@@ -504,16 +453,6 @@ export function SuppliersPage() {
       )}
 
       <section className="suppliers-content">
-        <div className="suppliers-content__heading">
-          <div>
-            <span>ABASTECIMIENTO</span>
-            <h2>Listado de proveedores</h2>
-          </div>
-
-          <p>
-            Productos asociados por proveedor.
-          </p>
-        </div>
 
         <div className="suppliers-filters">
           <label className="suppliers-search">
@@ -530,23 +469,7 @@ export function SuppliersPage() {
             />
           </label>
 
-          <select
-            value={estado}
-            onChange={(evento) =>
-              setEstado(
-                evento.target.value as FiltroEstado,
-              )
-            }
-            aria-label="Filtrar por estado"
-          >
-            <option value="todos">
-              Todos los estados
-            </option>
-            <option value="activos">Activos</option>
-            <option value="inactivos">Inactivos</option>
-          </select>
-
-          <button
+<button
             className="suppliers-clear"
             type="button"
             disabled={!hayFiltros}
@@ -555,13 +478,6 @@ export function SuppliersPage() {
             Limpiar
           </button>
         </div>
-
-        <p className="suppliers-results">
-          Mostrando{' '}
-          <strong>{proveedoresFiltrados.length}</strong>{' '}
-          de <strong>{datos.proveedores.length}</strong>{' '}
-          proveedores
-        </p>
 
         <div className="suppliers-table-container">
           <table className="suppliers-table">
@@ -746,6 +662,7 @@ export function SuppliersPage() {
       </section>
 
       <CatalogDialog
+        error={error}
         titulo={
           proveedorEditado
             ? 'Editar proveedor'

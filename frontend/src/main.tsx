@@ -5,6 +5,10 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import './index.css'
+import './theme.css'
+import './brand.css'
+import './module-banners.css'
+import './catalog-layout.css'
 
 
 createRoot(document.getElementById('root')!).render(

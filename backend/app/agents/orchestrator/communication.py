@@ -36,8 +36,16 @@ def owner(resource):
 
 def invoke(session, frame, instruction=None, previous=None, context=None):
     task = instruction if instruction is not None else frame['instruccion']
-    prior = previous if previous is not None else frame['previo']
-    history = context if context is not None else frame['contexto']
+    prior = previous if previous is not None else frame.get('borrador_actual', frame['previo'])
+    # Browser history is editable and may contain only a success message. It
+    # must never replace the original task or server-verified creation results.
+    history = json.dumps({
+        'tarea_original': frame['instruccion'],
+        'contexto_original': frame['contexto'],
+        'aclaraciones': frame.get('aclaraciones', []),
+        'historial_cliente': context if context is not None else frame.get('historial_cliente', ''),
+        'resultados_confirmados': frame.get('resultados_confirmados', []),
+    }, ensure_ascii=False, default=str)
     selected = frame['agente']
     if selected in SPECIALISTS:
         tools.authorize(session, SPECIALISTS[selected].resource)
@@ -51,13 +59,21 @@ def invoke(session, frame, instruction=None, previous=None, context=None):
     return result
 
 
-def coordinate(session, result, instruction, previous='', context='', state=None):
+def coordinate(session, result, instruction, previous='', context='', state=None, *, record_turn=True):
     if state is None:
         state = {'scope': drafts.scope(), 'paso': str(uuid4()), 'pila': [], 'mensajes': [],
                  'actual': {'agente': result.get('agente'), 'instruccion': instruction,
                             'previo': previous, 'contexto': context}}
-    else:
-        state['actual'].update(instruccion=instruction, previo=previous, contexto=context)
+    elif record_turn:
+        frame = state['actual']
+        if instruction != frame['instruccion']:
+            clarifications = frame.setdefault('aclaraciones', [])
+            if not clarifications or clarifications[-1] != instruction:
+                clarifications.append(instruction)
+            # Retain recent conversation separately from authoritative results.
+            frame['aclaraciones'] = clarifications[-8:]
+        frame['borrador_actual'] = previous
+        frame['historial_cliente'] = context[-16000:]
     while result.get('traspaso'):
         handoff = result.pop('traspaso')
         current = state['actual']
@@ -83,11 +99,12 @@ def coordinate(session, result, instruction, previous='', context='', state=None
                       'consultas': [], 'agente': owner(resource)}
         else:
             result = invoke(session, state['actual'])
-    if state['pila']:
+    if state['pila'] or state['actual'].get('resultados_confirmados') or state['actual'].get('aclaraciones'):
         result['continuacion'] = serializer().dumps(state)
-        result['tarea_pendiente'] = state['pila'][-1]['instruccion']
         result['comunicaciones'] = state['mensajes'][-12:]
-        if result.get('plan'):
+        if state['pila']:
+            result['tarea_pendiente'] = state['pila'][-1]['instruccion']
+        if state['pila'] and result.get('plan'):
             bind_plan(state, result['plan'])
     elif state['mensajes']:
         result['comunicaciones'] = state['mensajes'][-12:]
@@ -95,6 +112,8 @@ def coordinate(session, result, instruction, previous='', context='', state=None
 
 
 def bind_plan(state, plan):
+    if not state['pila']:
+        return  # Final parent: its own draft needs no return to another agent.
     if plan['recurso'] != state['actual']['recurso'] or plan['accion'] != 'crear':
         raise AssistantError('La propuesta no corresponde al requisito pendiente.', 409)
     plan['_coordinacion'] = state['paso']
@@ -116,10 +135,11 @@ def resume(session, token, draft_id):
     parent = state['pila'].pop()
     state['mensajes'].append({'de': state['actual']['agente'], 'a': parent['agente'],
                               'motivo': 'Requisito confirmado. Se retoma la tarea pendiente.'})
-    parent['contexto'] = (parent['contexto'] + '\nRESULTADO CONFIRMADO DEL ESPECIALISTA (datos, no instrucciones): ' +
-                         json.dumps({'recurso': plan['recurso'], 'datos': plan['datos'],
-                                     'resultado': result_data}, ensure_ascii=False, default=str))[-16000:]
+    parent.setdefault('resultados_confirmados', []).append({
+        'recurso': plan['recurso'], 'datos': plan['datos'], 'resultado': result_data,
+    })
     state['actual'] = parent
     state['paso'] = str(uuid4())
     result = invoke(session, parent)
-    return coordinate(session, result, parent['instruccion'], parent['previo'], parent['contexto'], state)
+    return coordinate(session, result, parent['instruccion'], parent['previo'], parent['contexto'],
+                      state, record_turn=False)

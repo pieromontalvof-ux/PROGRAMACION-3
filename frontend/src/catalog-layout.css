@@ -1,0 +1,105 @@
+/* Shared list layout, following the approved Stores screen. */
+.main-layout__content :is(.menu-categories-page, .carta-catalog-page, .production-page, .recipes-page, .promotions-page, .activity-page) { gap: 16px; }
+.main-layout__content :is(.menu-categories-header, .carta-catalog-header, .production-header, .recipes-header, .promotions-header) > div:first-child > span:first-child { display: none; }
+.main-layout__content :is(.menu-categories-header, .carta-catalog-header, .production-header, .recipes-header, .promotions-header) { min-height: 108px; }
+.main-layout__content .catalog-overview-tools .catalog-admin-actions > button:not(.catalog-admin-new) {
+  min-height: 42px; padding: 9px 14px; border: 1px solid var(--ui-border); border-radius: 9px;
+  color: var(--ui-text); background: white; box-shadow: none; backdrop-filter: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: inherit; font-size: 14px; cursor: pointer;
+}
+.catalog-admin-actions svg { width: 18px; height: 18px; }
+.main-layout__content :is(.menu-categories-content, .carta-catalog-content, .production-content, .recipes-content, .promotions-content, .activity-content) {
+  padding: 20px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface);
+  box-shadow: 0 2px 5px #123b2510; min-width: 0;
+}
+.main-layout__content :is(.menu-categories-content__heading, .carta-catalog-title, .production-title, .recipes-title, .promotions-title) {
+  min-height: 0; margin: 0 0 14px; padding: 0;
+}
+.main-layout__content :is(.menu-categories-content__heading, .carta-catalog-title, .production-title, .recipes-title, .promotions-title) :is(h2, span) { display: none; }
+.main-layout__content :is(.menu-categories-content__heading, .carta-catalog-title, .production-title, .recipes-title, .promotions-title) p { margin: 0; font-size: 12px; }
+.main-layout__content :is(.menu-categories-filters, .carta-catalog-filters, .production-filters, .recipes-filters, .promotions-filters) {
+  display: flex; flex-wrap: wrap; gap: 10px;
+}
+.main-layout__content :is(.menu-categories-filters, .carta-catalog-filters, .production-filters, .recipes-filters, .promotions-filters) > label { flex: 1 1 300px; min-width: 0; }
+.main-layout__content :is(.menu-categories-filters, .carta-catalog-filters, .production-filters, .recipes-filters, .promotions-filters) select { flex: 0 1 210px; min-width: 0; }
+.main-layout__content :is(.menu-categories-table, .carta-catalog-table, .production-table, .recipes-table, .promotions-table) td button { min-height: 38px; border-radius: 9px; }
+.main-layout__content .activity-content { display: grid; gap: 16px; }
+.main-layout__content .activity-content > form { padding: 0; gap: 10px; border-radius: 0; }
+.main-layout__content .activity-content > form label { min-width: 0; flex: 1 1 145px; font-size: 13px; }
+.main-layout__content .activity-content > form label:nth-child(2) { flex: 2 1 230px; }
+.main-layout__content .activity-content > form :is(input, select) { min-height: 42px; width: 100%; box-sizing: border-box; }
+.main-layout__content .activity-content > p { margin: 0; font-size: 12px; color: var(--ui-muted); }
+.main-layout__content .activity-filter-submit { background: #006b48; color: white; border-color: #006b48; }
+.main-layout__content .activity-content > footer { padding: 12px 16px; border-radius: 9px; background: var(--ui-raised); font-size: 13px; }
+@media (max-width: 700px) {
+  .main-layout__content :is(.menu-categories-content, .carta-catalog-content, .production-content, .recipes-content, .promotions-content, .activity-content) { padding: 15px; }
+  .main-layout__content :is(.menu-categories-filters, .carta-catalog-filters, .production-filters, .recipes-filters, .promotions-filters) select { flex: 1 1 140px; }
+}
+.main-layout__content .catalog-title-count {
+  display: inline-flex; vertical-align: middle; margin-left: 6px; padding: 7px 12px;
+  border-radius: 30px; color: #064c35; background: #f1faf5;
+  font-size: 13px; font-weight: 700; line-height: 1.2; letter-spacing: normal;
+}
+.main-layout__content :is(.products-page, .categories-page, .suppliers-page, .users-page) {
+  gap: 16px;
+}
+.main-layout__content :is(.products-header__eyebrow, .categories-header__eyebrow,
+  .suppliers-header__eyebrow, .users-header:not(.stores-header) > span) {
+  display: none;
+}
+.main-layout__content :is(.products-header, .categories-header, .suppliers-header,
+  .users-header:not(.stores-header)) { min-height: 108px; }
+.catalog-overview-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.catalog-status-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.catalog-status-filters button {
+  min-height: 42px; padding: 9px 18px; display: inline-flex; align-items: center; gap: 9px;
+  border: 1px solid var(--ui-border); border-radius: 9px; background: white;
+  color: var(--ui-text); font: inherit; font-size: 14px; cursor: pointer;
+}
+.catalog-status-filters button span { border-radius: 30px; padding: 3px 7px; background: var(--ui-raised); font-size: 12px; }
+.catalog-status-filters button[aria-pressed="true"] { color: white; background: #006b48; border-color: #006b48; font-weight: 700; }
+.catalog-status-filters button[aria-pressed="true"] span { background: #ffffff25; }
+.main-layout__content .catalog-overview-tools :is(.catalog-admin-new, .catalog-create) {
+  min-height: 42px; padding: 10px 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid #006b48; border-radius: 9px; background: #006b48; color: white; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.catalog-create svg { width: 18px; height: 18px; }
+.catalog-overview-tools .catalog-admin-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.main-layout__content .catalog-overview-tools :is(.products-refresh, .categories-refresh, .suppliers-refresh) {
+  min-height: 42px; padding: 9px 14px; border: 1px solid var(--ui-border); border-radius: 9px;
+  color: var(--ui-text); background: white; box-shadow: none; backdrop-filter: none;
+}
+.main-layout__content .catalog-related-count { margin: -6px 0 0; color: var(--ui-muted); font-size: 12px; }
+.main-layout__content :is(.products-content__heading, .categories-content__heading, .suppliers-content__heading) {
+  margin: 0 0 14px; padding: 0; min-height: 0;
+}
+.main-layout__content :is(.products-content__heading, .categories-content__heading, .suppliers-content__heading) :is(h2, span) { display: none; }
+.main-layout__content :is(.products-content__heading, .categories-content__heading, .suppliers-content__heading) p { margin: 0; font-size: 12px; }
+.main-layout__content :is(.products-content, .categories-content, .suppliers-content) { padding: 20px; border-radius: 12px; }
+.main-layout__content :is(.products-filters, .categories-filters, .suppliers-filters) { display: flex; flex-wrap: wrap; gap: 10px; }
+.main-layout__content :is(.products-search, .categories-search, .suppliers-search) { flex: 1 1 320px; }
+.main-layout__content :is(.products-filters, .categories-filters, .suppliers-filters) select { flex: 0 1 210px; min-width: 0; }
+.main-layout__content .users-tools > label { flex: 1; }
+.main-layout__content .users-actions button {
+  width: auto; height: auto; min-height: 40px; padding: 8px 12px; display: inline-flex; align-items: center; gap: 7px;
+  color: #006b48; background: white; border: 1px solid #acd2be; border-radius: 9px;
+}
+.main-layout__content :is(.products-table, .categories-table, .suppliers-table) button {
+  min-height: 38px; border-radius: 9px;
+}
+@media (max-width: 700px) {
+  .catalog-overview-tools { align-items: stretch; }
+  .catalog-overview-tools .catalog-admin-actions { width: 100%; }
+  .catalog-status-filters button { padding: 10px 12px; min-height: 44px; }
+  .main-layout__content :is(.products-content, .categories-content, .suppliers-content) { padding: 15px; }
+  .main-layout__content :is(.products-search, .categories-search, .suppliers-search) { flex-basis: 100%; }
+  .main-layout__content :is(.products-filters, .categories-filters, .suppliers-filters) select { flex: 1 1 140px; }
+}
+
+/* Keep catalog searches and tables as compact as the Users list. */
+.main-layout__content :is(.products-table-container, .categories-table-container,
+  .suppliers-table-container, .menu-categories-table-wrap, .carta-catalog-table-wrap,
+  .production-table-wrap, .recipes-table-wrap, .promotions-table-wrap) {
+  margin-top: 18px;
+}

@@ -1,9 +1,7 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import {
   AlertTriangle,
-  CheckCircle2,
   ChevronDown,
-  CircleOff,
-  GlassWater,
   RefreshCw,
   Search,
   Utensils,
@@ -146,14 +144,22 @@ export function TablewarePage() {
           <span className="carta-catalog-eyebrow">
             CATÁLOGO DE VENTA
           </span>
-          <h1>Menajes</h1>
+          <h1>Menajes <span className="catalog-title-count">{datos.resumen.total_menajes} menajes</span></h1>
           <p>
             Consulta los recipientes y formatos utilizados
             para servir las presentaciones de la carta.
           </p>
         </div>
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todos', count: datos.resumen.total_menajes },
+          { value: 'activos', label: 'Activos', count: datos.resumen.menajes_activos },
+          { value: 'inactivos', label: 'Inactivos', count: datos.resumen.menajes_inactivos },
+        ]} />
         <div className="catalog-admin-actions">
-        {administrador && permisos.crear && <button type="button" onClick={() => abrir('crear')}>Nuevo menaje</button>}
+        {administrador && permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => abrir('crear')}>Nuevo menaje</button>}
         <button
           className="carta-catalog-refresh"
           type="button"
@@ -164,50 +170,11 @@ export function TablewarePage() {
           {actualizando ? 'Actualizando...' : 'Actualizar'}
         </button>
         </div>
-      </header>
-
-      <div className="carta-catalog-summary">
-        <article>
-          <span><Utensils /></span>
-          <div>
-            <small>Total de menajes</small>
-            <strong>{datos.resumen.total_menajes}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-green"><CheckCircle2 /></span>
-          <div>
-            <small>Menajes activos</small>
-            <strong>{datos.resumen.menajes_activos}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-red"><CircleOff /></span>
-          <div>
-            <small>Menajes inactivos</small>
-            <strong>{datos.resumen.menajes_inactivos}</strong>
-          </div>
-        </article>
-        <article>
-          <span className="is-yellow"><GlassWater /></span>
-          <div>
-            <small>Presentaciones asociadas</small>
-            <strong>{datos.resumen.total_presentaciones}</strong>
-          </div>
-        </article>
       </div>
 
-      <section className="carta-catalog-content">
+      <section className="carta-catalog-content" title="Para desactivar o eliminar un menaje, cambia primero el menaje de todas sus presentaciones en Carta → Presentaciones de venta, incluidas las inactivas.">
         {mensaje && <p role="status">{mensaje}</p>}
         {error && <p role="alert">{error}</p>}
-        {administrador && <p className="carta-catalog-results">Para desactivar o eliminar un menaje, cambia primero el menaje de todas sus presentaciones en Carta → Presentaciones de venta, incluidas las inactivas.</p>}
-        <div className="carta-catalog-title">
-          <div>
-            <span>FORMATOS DE SERVICIO</span>
-            <h2>Listado de menajes</h2>
-          </div>
-          <p>Despliega una fila para consultar sus artículos.</p>
-        </div>
 
         <div className="carta-catalog-filters">
           <label>
@@ -218,16 +185,6 @@ export function TablewarePage() {
               placeholder="Buscar menaje o artículo asociado"
             />
           </label>
-          <select
-            value={estado}
-            onChange={(e) =>
-              setEstado(e.target.value as EstadoFiltro)
-            }
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="activos">Activos</option>
-            <option value="inactivos">Inactivos</option>
-          </select>
           <button
             type="button"
             onClick={() => {
@@ -238,11 +195,6 @@ export function TablewarePage() {
             Limpiar
           </button>
         </div>
-
-        <p className="carta-catalog-results">
-          Mostrando <strong>{filtrados.length}</strong> de{' '}
-          <strong>{datos.menajes.length}</strong>
-        </p>
 
         <div className="carta-catalog-table-wrap" role="region" aria-label="Listado de menajes" tabIndex={0}>
           <table className="carta-catalog-table">

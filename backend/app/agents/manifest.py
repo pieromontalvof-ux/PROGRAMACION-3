@@ -3,7 +3,13 @@ from pathlib import Path
 from app.agents.carta_recetas import agent as catalog_agent
 from app.agents.inventario import agent as inventory_agent
 from app.agents.compras import agent as purchase_agent
-from app.agents.orchestrator.router import CATALOG_HINTS, INVENTORY_HINTS, SPECIALIST_HINTS
+from app.agents.eventos import agent as event_agent
+from app.agents.recepcion import agent as reception_agent
+from app.agents.demanda import agent as demand_agent
+from app.agents.actualizador_skills import agent as skill_updater
+from app.agents.configuracion import agent as skill_validator
+from app.agents.orchestrator.router import (CATALOG_HINTS, INVENTORY_HINTS, PURCHASE_HINTS,
+                                            EVENT_HINTS, RECEPTION_HINTS, SPECIALIST_HINTS, DEMAND_HINTS)
 from app.agents.catalog_specialists import SPECIALISTS
 
 
@@ -16,28 +22,77 @@ def _skills(paths, labels):
 
 
 def catalog():
+    identities = ['carta_recetas', 'inventario', 'compras', 'eventos', 'recepcion', 'demanda', *SPECIALISTS]
+    owners = {resource: 'carta_recetas' for resource in catalog_agent.RESOURCES}
+    owners.update({specialist.resource: specialist.identity for specialist in SPECIALISTS.values()})
+    connections = [
+        {'origen': 'orquestador', 'destino': identity, 'tipo': 'coordinacion'}
+        for identity in identities
+    ]
+    connections.extend(
+        {'origen': specialist.identity, 'destino': owner, 'tipo': 'dependencia'}
+        for specialist in SPECIALISTS.values()
+        for owner in dict.fromkeys(owners[resource] for resource in specialist.dependencies if resource in owners)
+        if owner != specialist.identity
+    )
+    connections.append({'origen': 'compras', 'destino': 'demanda', 'tipo': 'dependencia'})
+    connections.append({'origen': 'compras', 'destino': 'eventos', 'tipo': 'dependencia'})
     return {
+        'conexiones': connections,
         'coordinador': {
             'id': 'orquestador',
             'nombre': 'Coordinador',
-            'descripcion': 'Selecciona especialistas, delega requisitos faltantes y retoma la tarea original con resultados confirmados. Cada cambio requiere confirmación humana.',
-            'relaciones': ['carta_recetas', 'inventario', 'compras', *SPECIALISTS],
-            'skills': [],
+            'descripcion': 'Guía pedidos por eventos, análisis opcionales y porcentaje elegido; coordina especialistas y requisitos faltantes. Cada cambio requiere confirmación humana.',
+            'relaciones': identities,
+            'skills': _skills((Path(__file__).parents[1] / 'modules' / 'asistente_ia' / 'skills' / 'pedido_guiado' / 'SKILL.md',), ['Pedido guiado']),
             'reglas_ruta': {
                 'inventario': list(INVENTORY_HINTS),
+                'compras': list(PURCHASE_HINTS),
+                'eventos': list(EVENT_HINTS),
+                'recepcion': list(RECEPTION_HINTS),
+                'demanda': list(DEMAND_HINTS),
                 'carta_recetas': list(CATALOG_HINTS),
                 **{key: list(value) for key, value in SPECIALIST_HINTS.items()},
             },
         },
         'agentes': [
             {
-                'id': 'compras', 'nombre': 'Compras y eventos cercanos',
-                'descripcion': 'Revisa eventos de los próximos siete días y prepara una compra con los aumentos indicados por el usuario.',
-                'relaciones': ['orquestador'],
-                'herramientas': ['consultar', 'formulario', 'preparar_cambio', 'web_search'],
-                'recursos': ['ordenes_compra', 'pedido_sugerido', 'presentaciones', 'recetas', 'subproductos'],
+                'id': 'demanda', 'nombre': 'Demanda y rotación',
+                'descripcion': 'Analiza ventas de carta, consumo de todos los insumos y cobertura estimada por local.',
+                'relaciones': ['orquestador', 'compras'],
+                'herramientas': ['analizar_demanda', 'consultar'],
+                'recursos': list(demand_agent.RESOURCES), 'recursos_modificables': [],
+                'recursos_solo_consulta': list(demand_agent.RESOURCES),
+                'instrucciones': demand_agent.INSTRUCTIONS,
+                'skills': _skills(demand_agent.SKILLS, ['Demanda y rotación']),
+            },
+            {
+                'id': 'compras', 'nombre': 'Compras y reposición',
+                'descripcion': 'Participa en el flujo guiado: eventos, análisis opcionales, consultas y margen elegido antes de preparar el pedido.',
+                'relaciones': ['orquestador', 'demanda', 'eventos'],
+                'herramientas': ['consultar', 'formulario', 'preparar_cambio', 'analizar_demanda'],
+                'recursos': list(purchase_agent.RESOURCES),
                 'instrucciones': purchase_agent.INSTRUCTIONS,
-                'skills': _skills(purchase_agent.SKILLS, ['Compras y eventos por restaurante']),
+                'skills': _skills(purchase_agent.SKILLS, ['Compras y reposición']),
+                'recursos_modificables': ['ordenes_compra'],
+            },
+            {
+                'id': 'eventos', 'nombre': 'Eventos cercanos',
+                'descripcion': 'Consulta eventos de los próximos siete días con fuentes verificadas; no modifica pedidos ni stock.',
+                'relaciones': ['orquestador'], 'herramientas': ['web_search'],
+                'recursos': ['eventos_cercanos'], 'recursos_modificables': [],
+                'instrucciones': event_agent.INSTRUCTIONS,
+                'skills': _skills(event_agent.SKILLS, ['Eventos por restaurante']),
+            },
+            {
+                'id': 'recepcion', 'nombre': 'Recepción',
+                'descripcion': 'Compara pendientes con cantidades verificadas por la persona y prepara una recepción para revisión.',
+                'relaciones': ['orquestador'], 'herramientas': ['consultar', 'preparar_cambio'],
+                'recursos': list(reception_agent.RESOURCES),
+                'recursos_modificables': ['recepciones'],
+                'recursos_solo_consulta': ['historial_recepciones'],
+                'instrucciones': reception_agent.INSTRUCTIONS,
+                'skills': _skills(reception_agent.SKILLS, ['Recepción de productos']),
             },
             {
                 'id': 'carta_recetas',
@@ -73,6 +128,18 @@ def catalog():
                 'instrucciones': inventory_agent.INSTRUCTIONS,
                 'skills': _skills(inventory_agent.SKILLS, ['Operaciones de inventario']),
             },
+        ],
+        'administracion': [
+            {'id': identity, 'nombre': name, 'descripcion': description,
+             'relaciones': [], 'herramientas': [], 'recursos': [], 'recursos_modificables': [],
+             'instrucciones': module.SKILL.read_text(encoding='utf-8'),
+             'skills': _skills((module.SKILL,), [name])}
+            for identity, name, description, module in (
+                ('actualizador_skills', 'Actualizador de skills',
+                 'Lee la skill y los archivos seleccionados; propone texto editable. No guarda ni concede permisos.', skill_updater),
+                ('validador_skills', 'Validador de skills',
+                 'Revisa independientemente la propuesta. Indica conflictos, datos y permisos necesarios; no modifica ni concede accesos.', skill_validator),
+            )
         ],
         'limite_salon': 'Los pedidos de Salón no están conectados al asistente: usan sesión y autorización PIN separadas.',
         'regla_ejecucion': 'Los agentes solo preparan borradores. El backend revalida perfil y local; una persona debe confirmar para ejecutar.',

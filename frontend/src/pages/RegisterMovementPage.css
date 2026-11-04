@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  color: #063d2a;
+  color: var(--ui-text);
 }
 
 .movement-header {
@@ -47,7 +47,7 @@
 
 .movement-header__label,
 .movement-section-title span {
-  color: #28d978;
+  color: var(--ui-accent);
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.18em;
@@ -62,7 +62,7 @@
 
 .movement-header p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.76);
+  color: var(--ui-muted);
 }
 
 .movement-header__badge {
@@ -74,12 +74,12 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 17px;
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--ui-surface) 10.0%, transparent);
 }
 
 .movement-header__badge > svg {
   width: 29px;
-  color: #28d978;
+  color: var(--ui-accent);
 }
 
 .movement-header__badge div {
@@ -89,7 +89,7 @@
 }
 
 .movement-header__badge small {
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--ui-muted);
   font-size: 10px;
   font-weight: 900;
 }
@@ -106,15 +106,15 @@
 .movement-alert svg { width: 19px; }
 
 .movement-alert.success {
-  border: 1px solid #96e5bd;
-  color: #087641;
-  background: #e5f9ef;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-accent);
+  background: var(--ui-raised);
 }
 
 .movement-alert.error {
-  border: 1px solid #f2b5b5;
-  color: #b62929;
-  background: #fff0f0;
+  border: 1px solid var(--ui-danger-border);
+  color: var(--ui-danger);
+  background: var(--ui-surface);
 }
 
 .movement-form-card,
@@ -122,7 +122,7 @@
   padding: 25px;
   border: 1px solid rgba(5, 61, 42, 0.08);
   border-radius: 21px;
-  background: #fff;
+  background: var(--ui-surface);
 }
 
 .movement-section-title {
@@ -138,7 +138,7 @@
 
 .movement-section-title p {
   margin: 0;
-  color: #7e8b84;
+  color: var(--ui-muted);
   font-size: 12px;
 }
 
@@ -155,13 +155,13 @@
 .movement-type svg { width: 16px; }
 
 .movement-type.entry {
-  color: #08713f;
-  background: #dcf8e9;
+  color: var(--ui-accent);
+  background: var(--ui-raised);
 }
 
 .movement-type.exit {
-  color: #a52d2d;
-  background: #ffe1e1;
+  color: var(--ui-danger);
+  background: var(--ui-danger-bg);
 }
 
 .movement-fields {
@@ -176,7 +176,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  color: #47564e;
+  color: var(--ui-muted);
   font-size: 11px;
   font-weight: 800;
 }
@@ -188,10 +188,10 @@
 .movement-selected-row input {
   min-height: 44px;
   padding: 0 12px;
-  border: 1px solid #d5ded9;
+  border: 1px solid var(--ui-border);
   border-radius: 11px;
   outline: 0;
-  background: #fff;
+  background: var(--ui-surface);
   font: inherit;
 }
 
@@ -200,7 +200,7 @@
 .movement-fields textarea:focus,
 .movement-filters select:focus,
 .movement-selected-row input:focus {
-  border-color: #20bd6c;
+  border-color: var(--ui-border);
   box-shadow: 0 0 0 3px rgba(32, 189, 108, 0.12);
 }
 
@@ -219,7 +219,7 @@
   position: absolute;
   right: 10px;
   bottom: 8px;
-  color: #8c9891;
+  color: var(--ui-muted);
   font-weight: 400;
 }
 
@@ -236,18 +236,18 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid #d5ded9;
+  border: 1px solid var(--ui-border);
   border-radius: 11px;
 }
 
 .movement-search:focus-within {
-  border-color: #20bd6c;
+  border-color: var(--ui-border);
   box-shadow: 0 0 0 3px rgba(32, 189, 108, 0.12);
 }
 
 .movement-search svg {
   width: 19px;
-  color: #89958f;
+  color: var(--ui-muted);
 }
 
 .movement-search input {
@@ -272,22 +272,22 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  border: 1px solid #dfe7e3;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  color: #063d2a;
-  background: #fff;
+  color: var(--ui-text);
+  background: var(--ui-surface);
   text-align: left;
   cursor: pointer;
 }
 
 .movement-catalog > button:hover {
-  border-color: #70d9a2;
-  background: #f2fcf7;
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
 }
 
 .movement-catalog > button > svg {
   width: 18px;
-  color: #14ad61;
+  color: var(--ui-accent);
 }
 
 .movement-product-icon {
@@ -310,7 +310,7 @@
 }
 
 .movement-catalog button b {
-  color: #0aad5b;
+  color: var(--ui-accent);
   font-size: 9px;
 }
 
@@ -322,14 +322,14 @@
 }
 
 .movement-catalog button small {
-  color: #7f8c85;
+  color: var(--ui-muted);
   font-size: 9px;
 }
 
 .movement-selected {
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #e3eae6;
+  border-top: 1px solid var(--ui-border);
 }
 
 .movement-selected h3 { margin: 0 0 13px; }
@@ -341,15 +341,15 @@
   grid-template-columns: 80px minmax(180px, 1fr) 230px 38px;
   align-items: center;
   gap: 13px;
-  border: 1px solid #e0e7e3;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
 }
 
 .movement-selected-row > b {
   padding: 6px 8px;
   border-radius: 7px;
-  color: #08713f;
-  background: #dff7ea;
+  color: var(--ui-accent);
+  background: var(--ui-raised);
   font-size: 10px;
   text-align: center;
 }
@@ -361,13 +361,13 @@
 }
 
 .movement-selected-row > div small {
-  color: #85918b;
+  color: var(--ui-muted);
 }
 
 .movement-selected-row label span {
   display: flex;
   align-items: center;
-  border: 1px solid #d5ded9;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
 }
 
@@ -380,7 +380,7 @@
 
 .movement-selected-row label span b {
   padding-right: 11px;
-  color: #75827b;
+  color: var(--ui-muted);
   font-size: 10px;
 }
 
@@ -391,8 +391,8 @@
   place-items: center;
   border: 0;
   border-radius: 9px;
-  color: #b13232;
-  background: #ffe8e8;
+  color: var(--ui-danger);
+  background: var(--ui-danger-bg);
   cursor: pointer;
 }
 
@@ -401,12 +401,12 @@
 .movement-empty {
   grid-column: 1 / -1;
   padding: 25px;
-  color: #839089;
+  color: var(--ui-muted);
   text-align: center;
 }
 
 .selected-empty {
-  border: 1px dashed #cfdbd5;
+  border: 1px dashed var(--ui-border);
   border-radius: 12px;
 }
 
@@ -416,7 +416,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid #e3eae6;
+  border-top: 1px solid var(--ui-border);
 }
 
 .movement-actions > div {
@@ -425,7 +425,7 @@
   gap: 4px;
 }
 
-.movement-actions small { color: #849089; }
+.movement-actions small { color: var(--ui-muted); }
 
 .movement-actions > button {
   min-height: 48px;
@@ -455,8 +455,8 @@
   justify-content: center;
   gap: 12px;
   border-radius: 18px;
-  color: #68766f;
-  background: #fff;
+  color: var(--ui-muted);
+  background: var(--ui-surface);
 }
 
 .movement-spin {

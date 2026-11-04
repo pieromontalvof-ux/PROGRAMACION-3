@@ -1,13 +1,10 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  BookOpen,
-  CheckCircle2,
   ChevronDown,
-  CircleOff,
   CookingPot,
-  Layers3,
   RefreshCw,
   Search,
   UtensilsCrossed,
@@ -140,15 +137,23 @@ export function RecipesPage() {
       <header className="recipes-header">
         <div>
           <span>RECETARIO Y PRODUCCIÓN</span>
-          <h1>Recetas de la carta</h1>
+          <h1>Recetas de la carta <span className="catalog-title-count">{datos.resumen.total_recetas} recetas</span></h1>
           <p>
             Consulta la composición detallada, componentes e instrucciones de
             preparación de los ítems de la carta.
           </p>
         </div>
 
-        <div className="recipes-header-actions">
-        {permisos.crear && <button type="button" onClick={() => { setEditando(null); setEditor(true); setMensaje('') }}>Nueva receta</button>}
+      </header>
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todas', count: datos.resumen.total_recetas },
+          { value: 'activos', label: 'Activas', count: datos.resumen.recetas_activas },
+          { value: 'inactivos', label: 'Inactivas', count: datos.resumen.recetas_inactivas },
+        ]} />
+        <div className="catalog-admin-actions">
+        {permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => { setEditando(null); setEditor(true); setMensaje('') }}>Nueva receta</button>}
         <button
           type="button"
           disabled={actualizando}
@@ -158,52 +163,11 @@ export function RecipesPage() {
           {actualizando ? 'Actualizando...' : 'Actualizar'}
         </button>
         </div>
-      </header>
-
-      <div className="recipes-summary">
-        <article>
-          <span><BookOpen /></span>
-          <div>
-            <small>Total de recetas</small>
-            <strong>{datos.resumen.total_recetas}</strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="green"><CheckCircle2 /></span>
-          <div>
-            <small>Recetas activas</small>
-            <strong>{datos.resumen.recetas_activas}</strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="red"><CircleOff /></span>
-          <div>
-            <small>Recetas inactivas</small>
-            <strong>{datos.resumen.recetas_inactivas}</strong>
-          </div>
-        </article>
-
-        <article>
-          <span className="yellow"><Layers3 /></span>
-          <div>
-            <small>Categorías en carta</small>
-            <strong>{datos.resumen.total_categorias}</strong>
-          </div>
-        </article>
       </div>
 
       {error && <p className="recipe-editor__error" role="alert">{error}</p>}
       {mensaje && <p className="recipes-success" role="status">{mensaje}</p>}
       <section className="recipes-content">
-        <div className="recipes-title">
-          <div>
-            <span>LISTADO GENERAL</span>
-            <h2>Ítems con receta configurada</h2>
-          </div>
-          <p>Despliega un plato para ver sus ingredientes e instrucciones.</p>
-        </div>
 
         <div className="recipes-filters">
           <label>
@@ -227,24 +191,10 @@ export function RecipesPage() {
             ))}
           </select>
 
-          <select
-            value={estado}
-            onChange={(e) => setEstado(e.target.value as EstadoFiltro)}
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="activos">Activas</option>
-            <option value="inactivos">Inactivas</option>
-          </select>
-
           <button type="button" onClick={limpiar}>
             Limpiar
           </button>
         </div>
-
-        <p className="recipes-results">
-          Mostrando <strong>{recetasFiltradas.length}</strong> de{' '}
-          <strong>{datos.recetas.length}</strong> recetas
-        </p>
 
         <div className="recipes-table-wrap">
           <table className="recipes-table">

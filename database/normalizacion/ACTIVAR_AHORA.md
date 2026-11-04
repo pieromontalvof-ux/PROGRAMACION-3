@@ -31,6 +31,6 @@ Antes de aplicar el 03, las pantallas operativas muestran un mensaje HTTP 409 qu
 
 Desde `backend`: `.venv/Scripts/python.exe tests/run_local_scope_integration.py`.
 
-El runner inicia PostgreSQL 18 temporal en otro puerto, exporta únicamente la estructura y crea datos ficticios. Aplica el 03 en esa base, ejecuta **40 pruebas correctas** (31 anteriores y 9 de integración) y detiene el servidor temporal. No copia registros reales ni ejecuta migraciones en la conexión habitual. Evidencia: `VALIDACION_LOCAL_20260922.txt`.
+El runner inicia PostgreSQL 18 temporal en otro puerto, exporta únicamente la estructura y crea datos ficticios. Aplica el 03 en esa base, ejecuta **40 pruebas correctas** (31 anteriores y 9 de integración) y detiene el servidor temporal. No copia registros reales ni ejecuta migraciones en la conexión habitual.
 
 Se probaron consultas y bloqueos de los cuatro módulos, tienda vacía, IDs ajenos, altas con local, inventarios de tiendas diferentes en la misma fecha, proveedor histórico, administrador global, asignación revocada y respuestas JSON 404/409. Estas pruebas no constituyen una prueba de carga concurrente ni validan la etapa 04.

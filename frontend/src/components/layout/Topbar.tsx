@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Building2,
+  House,
+  ChevronRight,
   ChevronDown,
   LogOut,
   Menu,
@@ -17,8 +19,10 @@ interface TopbarProps {
 
 export function Topbar({ abrirMenu }: TopbarProps) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const {
     usuario,
+    menu,
     perfilActivo,
     perfilesDisponibles,
     puestoActivo,
@@ -34,7 +38,9 @@ export function Topbar({ abrirMenu }: TopbarProps) {
 
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
   const [errorCambio, setErrorCambio] = useState('')
+  const [perfilPendiente, setPerfilPendiente] = useState<number | null>(null)
   const contenedorUsuario = useRef<HTMLDivElement>(null)
+  const cuentaButton = useRef<HTMLButtonElement>(null)
 
   const nombres = usuario?.nombres ?? ''
   const apellido = usuario?.apellido_paterno ?? ''
@@ -42,6 +48,14 @@ export function Topbar({ abrirMenu }: TopbarProps) {
   const iniciales = `${nombres.charAt(0)}${apellido.charAt(0)}`
     .toUpperCase()
     .trim()
+  const activeOption = [...menu].filter(option => option.url_menu && (pathname === option.url_menu || pathname.startsWith(option.url_menu + '/')))
+    .sort((a, b) => (b.url_menu?.length ?? 0) - (a.url_menu?.length ?? 0))[0]
+  const pageName = pathname === '/home/tiendas' ? 'Tiendas' : pathname === '/home/asistente-ia' ? 'Conversación'
+    : pathname === '/home/asistente-ia/agentes' ? 'Mapa de agentes' : pathname === '/home/asistente-ia/archivos' ? 'Archivos de agentes'
+    : pathname === '/home/asistente-ia/permisos' ? 'Permisos de agentes'
+    : pathname === '/home/opciones-salon' ? 'Opciones de salón' : activeOption?.nombre ?? 'Inicio'
+  const parentName = pathname.startsWith('/home/asistente-ia') ? 'Asistente IA' : pathname === '/home/tiendas' || pathname === '/home/usuarios' ? 'Organización'
+    : menu.find(option => option.id_opcion_menu === activeOption?.id_padre)?.nombre
 
   useEffect(() => {
     const cerrarAlPulsarFuera = (evento: MouseEvent) => {
@@ -56,6 +70,14 @@ export function Topbar({ abrirMenu }: TopbarProps) {
     document.addEventListener('mousedown', cerrarAlPulsarFuera)
     return () => document.removeEventListener('mousedown', cerrarAlPulsarFuera)
   }, [])
+  useEffect(() => {
+    if (!menuUsuarioAbierto) return
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setMenuUsuarioAbierto(false); cuentaButton.current?.focus() }
+    }
+    document.addEventListener('keydown', keyboard)
+    return () => document.removeEventListener('keydown', keyboard)
+  }, [menuUsuarioAbierto])
 
   const seleccionarOtroPerfil = async (
     idPerfil: number,
@@ -64,6 +86,7 @@ export function Topbar({ abrirMenu }: TopbarProps) {
     try {
       setErrorCambio('')
       await cambiarPerfil(idPerfil, idPuestoLaboral)
+      setPerfilPendiente(null)
       setMenuUsuarioAbierto(false)
       navigate('/home', { replace: true })
     } catch (errorDesconocido) {
@@ -106,65 +129,42 @@ export function Topbar({ abrirMenu }: TopbarProps) {
           type="button"
           onClick={abrirMenu}
           aria-label="Abrir menú principal"
+          aria-controls="main-sidebar"
         >
           <Menu aria-hidden="true" />
         </button>
 
-        <div className="topbar__title">
-          <span>Sistema de gestión e inventario</span>
-        </div>
+        <nav className="topbar-breadcrumb" aria-label="Ubicación actual">
+          <Link to="/home" aria-label="Inicio"><House size={20} aria-hidden="true" /></Link>
+          {parentName && <><ChevronRight size={15} aria-hidden="true" /><span>{parentName}</span></>}
+          {pathname !== '/home' && <><span aria-hidden="true">/</span><strong aria-current="page">{pageName}</strong></>}
+          {pathname === '/home' && <strong aria-current="page">Inicio</strong>}
+        </nav>
       </div>
 
-      {perfilesDisponibles.length > 1 && (
-        <div className="topbar-role-tabs" aria-label="Perfil de trabajo">
-          {perfilesDisponibles.map((opcion) => {
-            const activo = opcion.id_perfil === perfilActivo?.id_perfil
-
-            if (opcion.id_perfil === 4) {
-              return (
-                <label
-                  key={opcion.id_perfil}
-                  className={`topbar-role-tabs__member ${
-                    activo ? 'is-active' : ''
-                  }`}
-                >
-                  <span>Miembro</span>
-                  <select
-                    value={activo ? puestoActivo?.id_puesto_laboral ?? '' : ''}
-                    disabled={cambiandoPerfil || cambiandoLocal}
-                    onChange={(evento) => {
-                      const idPuesto = Number(evento.target.value)
-                      if (idPuesto) void seleccionarOtroPerfil(4, idPuesto)
-                    }}
-                  >
-                    <option value="">Elegir puesto</option>
-                    {puestosDisponibles.map((puesto) => (
-                      <option
-                        key={puesto.id_puesto_laboral}
-                        value={puesto.id_puesto_laboral}
-                      >
-                        {puesto.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )
-            }
-
-            return (
-              <button
-                key={opcion.id_perfil}
-                type="button"
-                className={activo ? 'is-active' : ''}
-                disabled={cambiandoPerfil || cambiandoLocal || activo}
-                onClick={() => void seleccionarOtroPerfil(opcion.id_perfil)}
-              >
-                {opcion.nombre}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      <div className="topbar-workspace-selectors">
+        {perfilesDisponibles.length > 1 && <label className="topbar-role-select">
+          <span>Rol:</span>
+          <select aria-label="Rol de trabajo" value={perfilPendiente ?? perfilActivo?.id_perfil ?? ''}
+            disabled={cambiandoPerfil || cambiandoLocal} onChange={event => {
+              const id = Number(event.target.value)
+              if (id === 4) setPerfilPendiente(4)
+              else { setPerfilPendiente(null); void seleccionarOtroPerfil(id) }
+            }}>
+            {perfilesDisponibles.map(option => <option key={option.id_perfil} value={option.id_perfil}>{option.nombre}</option>)}
+          </select>
+        </label>}
+        {(perfilPendiente === 4 || perfilActivo?.id_perfil === 4) && <label className="topbar-position-select">
+          <span>Puesto:</span>
+          <select aria-label="Puesto del miembro" value={perfilActivo?.id_perfil === 4 ? puestoActivo?.id_puesto_laboral ?? '' : ''}
+            disabled={cambiandoPerfil || cambiandoLocal} onChange={event => {
+              if (event.target.value) void seleccionarOtroPerfil(4, Number(event.target.value))
+            }}>
+            <option value="">Elegir puesto</option>
+            {puestosDisponibles.map(position => <option key={position.id_puesto_laboral} value={position.id_puesto_laboral}>{position.nombre}</option>)}
+          </select>
+        </label>}
+      </div>
 
       {[1, 2, 3, 4].includes(perfilActivo?.id_perfil ?? 0) && <label className="topbar-local-selector">
         <Building2 aria-hidden="true" />
@@ -194,11 +194,13 @@ export function Topbar({ abrirMenu }: TopbarProps) {
 
       <div className="topbar-user" ref={contenedorUsuario}>
         <button
+          ref={cuentaButton}
           className="topbar-user__button"
           type="button"
           onClick={() => setMenuUsuarioAbierto((estado) => !estado)}
           aria-expanded={menuUsuarioAbierto}
-          aria-haspopup="menu"
+          aria-controls="user-options"
+          aria-label={`Cuenta de ${nombres} ${apellido}`}
         >
           <div className="topbar-user__information">
             <strong>{nombres} {apellido}</strong>
@@ -221,7 +223,7 @@ export function Topbar({ abrirMenu }: TopbarProps) {
         </button>
 
         {menuUsuarioAbierto && (
-          <div className="topbar-user__dropdown" role="menu">
+          <div className="topbar-user__dropdown" id="user-options" role="region" aria-label="Opciones de usuario">
             <div className="topbar-user__summary">
               <div className="topbar-user__avatar topbar-user__avatar--large">
                 {iniciales || <UserRound aria-hidden="true" />}
@@ -240,10 +242,30 @@ export function Topbar({ abrirMenu }: TopbarProps) {
             )}
 
             <div className="topbar-user__separator" />
+            {perfilesDisponibles.length > 1 && <div className="topbar-compact-profile">
+              <div className="topbar-profile-selector" role="group" aria-label="Cambiar perfil de trabajo">
+                <small>PERFIL DE TRABAJO</small>
+                {perfilesDisponibles.filter(option => option.id_perfil !== 4).map(option =>
+                  <button key={option.id_perfil} type="button" data-profile={option.id_perfil}
+                    className={option.id_perfil === perfilActivo?.id_perfil ? 'is-active' : ''}
+                    disabled={cambiandoPerfil || cambiandoLocal || option.id_perfil === perfilActivo?.id_perfil}
+                    onClick={() => void seleccionarOtroPerfil(option.id_perfil)}>{option.nombre}</button>)}
+                {perfilesDisponibles.some(option => option.id_perfil === 4) && <label>
+                  <span>Miembro · puesto de trabajo</span>
+                  <select aria-label="Puesto de trabajo" value={perfilActivo?.id_perfil === 4 ? puestoActivo?.id_puesto_laboral ?? '' : ''}
+                    disabled={cambiandoPerfil || cambiandoLocal} onChange={event => {
+                      if (event.target.value) void seleccionarOtroPerfil(4, Number(event.target.value))
+                    }}>
+                    <option value="">Elegir puesto</option>
+                    {puestosDisponibles.map(position => <option key={position.id_puesto_laboral} value={position.id_puesto_laboral}>{position.nombre}</option>)}
+                  </select>
+                </label>}
+              </div>
+              <div className="topbar-user__separator" />
+            </div>}
 
             <button
               type="button"
-              role="menuitem"
               onClick={() => {
                 setMenuUsuarioAbierto(false)
                 navigate('/home/configuracion')
@@ -256,7 +278,6 @@ export function Topbar({ abrirMenu }: TopbarProps) {
             <button
               className="topbar-user__logout"
               type="button"
-              role="menuitem"
               onClick={cerrarSesion}
             >
               <LogOut aria-hidden="true" />

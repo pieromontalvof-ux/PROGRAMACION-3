@@ -17,6 +17,7 @@ import './PurchaseOrderPage.css'
 interface DetalleFormulario extends ProductoCompra {
   cantidad_solicitada: string
   origen: 'MANUAL' | 'SUGERIDO'
+  calculo_sugerido?: { sin_redondear: number; cantidad: number; paquetes: number }
 }
 
 export function PurchaseOrderPage() {
@@ -27,6 +28,7 @@ export function PurchaseOrderPage() {
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(true)
   const [calculando, setCalculando] = useState(false)
+  const [porcentaje, setPorcentaje] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
@@ -72,20 +74,26 @@ export function PurchaseOrderPage() {
 
   const cargarSugerido = async () => {
     if (!token) return
+    const margen = Number(porcentaje)
+    if (!porcentaje.trim() || !Number.isFinite(margen) || margen < 0 || margen > 1000) {
+      setError('Indica un porcentaje de incremento entre 0 y 1000. Usa 0 para pedir sin incremento.')
+      return
+    }
     if (detalles.length && !window.confirm(
       'El pedido sugerido reemplazará los productos actuales. ¿Continuar?',
     )) return
     try {
       setCalculando(true)
       setError('')
-      const respuesta = await obtenerPedidoSugerido(token)
+      const respuesta = await obtenerPedidoSugerido(token, margen)
       setDetalles(respuesta.productos.map((p) => ({
         ...p,
         cantidad_solicitada: String(p.cantidad_sugerida),
         origen: 'SUGERIDO',
+        calculo_sugerido: { sin_redondear: p.cantidad_sin_redondear, cantidad: p.cantidad_sugerida, paquetes: p.paquetes_sugeridos },
       })))
       setMensaje(respuesta.productos.length
-        ? 'Pedido sugerido cargado. Puedes modificar las cantidades.'
+        ? `Pedido sugerido cargado con ${margen}% de incremento sobre el consumo. Puedes modificar las cantidades.`
         : 'No hay productos que necesiten reposición.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se calculó el pedido.')
@@ -152,6 +160,10 @@ export function PurchaseOrderPage() {
             ))}
           </select>
           <button onClick={agregar} disabled={!idProducto}><Plus /> Agregar</button>
+          <label className="purchase-margin">
+            <span>Incremento (%)</span>
+            <input aria-label="Porcentaje de incremento" type="number" min="0" max="1000" step="any" placeholder="Ej. 10" value={porcentaje} onChange={(e) => setPorcentaje(e.target.value)} />
+          </label>
           <button className="suggest" onClick={() => void cargarSugerido()} disabled={calculando}>
             <Sparkles /> {calculando ? 'Calculando...' : 'Generar pedido sugerido'}
           </button>
@@ -167,7 +179,12 @@ export function PurchaseOrderPage() {
                   <td>{p.proveedor}</td>
                   <td>{p.stock_actual ?? 'Sin conteo'} {formatearUnidad(p.unidad)}</td>
                   <td>{p.presentacion} {formatearUnidad(p.unidad)}</td>
-                  <td><input type="number" min="0.001" step="any" value={p.cantidad_solicitada} onChange={(e) => setDetalles((actuales) => actuales.map((item) => item.id_producto === p.id_producto ? { ...item, cantidad_solicitada: e.target.value } : item))} /></td>
+                  <td><input type="number" min="0.001" step="any" value={p.cantidad_solicitada} onChange={(e) => setDetalles((actuales) => actuales.map((item) => item.id_producto === p.id_producto ? { ...item, cantidad_solicitada: e.target.value } : item))} />
+                    {p.calculo_sugerido && <small className="purchase-rounding">
+                      Calculado: {p.calculo_sugerido.sin_redondear.toLocaleString('es-PE', { maximumFractionDigits: 3 })} {formatearUnidad(p.unidad)}<br />
+                      Sugerencia: {p.calculo_sugerido.paquetes} paquetes = {p.calculo_sugerido.cantidad} {formatearUnidad(p.unidad)}
+                    </small>}
+                  </td>
                   <td>{p.origen === 'SUGERIDO' ? 'Sugerido' : 'Manual'}</td>
                   <td><button className="remove" onClick={() => setDetalles((actuales) => actuales.filter((item) => item.id_producto !== p.id_producto))}><Trash2 /></button></td>
                 </tr>

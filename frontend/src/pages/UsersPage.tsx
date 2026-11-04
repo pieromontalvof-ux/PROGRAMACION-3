@@ -1,3 +1,4 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import {
   Pencil,
   Plus,
@@ -64,6 +65,7 @@ export function UsersPage() {
     useState<UsuarioGestionable | null>(null)
   const [modal, setModal] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [estado, setEstado] = useState<'todos' | 'activos' | 'inactivos'>('todos')
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -100,7 +102,7 @@ export function UsersPage() {
         .join(' ')
         .toLowerCase()
 
-      return (
+      return (estado === 'todos' || (estado === 'activos' ? usuario.estado_registro === 1 : usuario.estado_registro !== 1)) && (
         !texto ||
         usuario.dni.includes(texto) ||
         usuario.nombres.toLowerCase().includes(texto) ||
@@ -112,7 +114,7 @@ export function UsersPage() {
         )
       )
     })
-  }, [busqueda, datos])
+  }, [busqueda, datos, estado])
 
   const perfilesDisponibles = useMemo(() => {
     const perfiles = datos?.perfiles_permitidos ?? []
@@ -323,26 +325,22 @@ export function UsersPage() {
     <section className="users-page">
       <header className="users-header">
         <span>GESTIÓN DE PERSONAL</span>
-        <h1>Usuarios</h1>
+        <h1>Usuarios <span className="catalog-title-count">{datos?.resumen.total ?? 0} usuarios</span></h1>
         <p>Administra perfiles de acceso, puestos laborales y locales.</p>
       </header>
 
       {error && <div className="users-alert error">{error}</div>}
       {mensaje && <div className="users-alert ok">{mensaje}</div>}
 
-      <div className="users-summary">
-        <article>
-          <b>{datos?.resumen.total ?? 0}</b>
-          <span>Total</span>
-        </article>
-        <article>
-          <b>{datos?.resumen.activos ?? 0}</b>
-          <span>Activos</span>
-        </article>
-        <article>
-          <b>{datos?.resumen.inactivos ?? 0}</b>
-          <span>Inactivos</span>
-        </article>
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todos', count: datos?.resumen.total ?? 0 },
+          { value: 'activos', label: 'Activos', count: datos?.resumen.activos ?? 0 },
+          { value: 'inactivos', label: 'Inactivos', count: datos?.resumen.inactivos ?? 0 },
+        ]} />
+        <button className="catalog-create" type="button" onClick={abrirNuevo} disabled={cargando || !datos}>
+          <Plus aria-hidden="true" /> Nuevo usuario
+        </button>
       </div>
 
       <section className="users-card">
@@ -356,10 +354,7 @@ export function UsersPage() {
             />
           </label>
 
-          <button type="button" onClick={abrirNuevo} disabled={cargando || !datos}>
-            <Plus />
-            Nuevo usuario
-          </button>
+
         </div>
 
         <div className="users-table">
@@ -421,7 +416,7 @@ export function UsersPage() {
                         onClick={() => abrirEditar(usuario)}
                         title="Editar"
                       >
-                        <Pencil />
+                        <Pencil aria-hidden="true" /> Editar
                       </button>
                       <button
                         type="button"

@@ -102,7 +102,7 @@ function LoginPage() {
             </p>
           </header>
 
-          <div className="login-area-selector" aria-label="?rea de trabajo">
+          <div className="login-area-selector" aria-label="Área de trabajo">
             <button type="button" disabled={cargando} aria-pressed={area==='gestion'} onClick={() => {setArea('gestion');setError('')}}>Gestión e inventario</button>
             <button type="button" disabled={cargando} aria-pressed={area==='salon'} onClick={() => {setArea('salon');setError('');setClave('')}}>Salón</button>
           </div>

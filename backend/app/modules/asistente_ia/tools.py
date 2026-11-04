@@ -4,7 +4,7 @@ import unicodedata
 from flask import current_app, request
 from flask_jwt_extended import get_jwt
 from .provider import AssistantError
-from . import inventory, purchases
+from . import inventory, purchases, receptions, demand
 
 # menu permission, native URL, collection, primary key
 RESOURCES = {
@@ -21,6 +21,8 @@ RESOURCES = {
 }
 RESOURCES.update(inventory.RESOURCES)
 RESOURCES.update(purchases.RESOURCES)
+RESOURCES.update(receptions.RESOURCES)
+RESOURCES[demand.RESOURCE[0]] = demand.RESOURCE[1]
 FIELDS = {
     'productos': 'nombre id_categoria id_proveedor unidad presentacion unidad_presentacion motivo',
     'categorias_productos': 'nombre prefijo', 'proveedores': 'nombre ids_categorias',
@@ -34,6 +36,8 @@ REQUIRED = {k: set(v.split()) - {'motivo', 'id_item_carta', 'grupo_salsa', 'unid
 
 
 def allowed(session, resource, action='consultar'):
+    if resource == demand.RESOURCE[0]:return demand.allowed(session, action)
+    if resource in receptions.RESOURCES:return receptions.allowed(session,resource,action)
     if resource in purchases.RESOURCES:return purchases.allowed(session,resource,action)
     if resource in inventory.RESOURCES:return inventory.allowed(session,resource,action)
     if resource not in RESOURCES:
@@ -77,6 +81,7 @@ def normalized(value):
 
 
 def query(session, resource, search='', offset=0):
+    if resource == demand.RESOURCE[0]:return demand.read(session, {'busqueda': search, 'desde_registro': offset})
     if resource in inventory.RESOURCES:return inventory.read(session,resource,{'busqueda':search,'desde_registro':offset})
     if not isinstance(search, str) or len(search) > 200 or type(offset) is not int or offset < 0:
         raise AssistantError('Filtro de consulta inválido.')
@@ -115,6 +120,9 @@ def editable(resource, row):
 
 
 def prepare(session, resource, action, identity, changes):
+    from . import configuration
+    configuration.authorize_owner(resource, action)
+    if resource == 'recepciones':return receptions.prepare(session,action,identity,changes)
     if resource == 'ordenes_compra':return purchases.prepare(session,action,identity,changes)
     if resource in inventory.RESOURCES:return inventory.prepare(session,resource,action,identity,changes)
     if resource not in FIELDS or action not in ('crear', 'editar'):
@@ -138,11 +146,27 @@ def prepare(session, resource, action, identity, changes):
     missing = REQUIRED[resource] - set(payload)
     if missing:
         raise AssistantError('Faltan datos: ' + ', '.join(sorted(missing)))
+    if resource == 'promociones' and previous and previous.get('reposiciones'):
+        # Native promotion edits preserve reposiciones when omitted. The AI may
+        # change groups but cannot remove an option still used for replenishment.
+        groups = payload['grupos']
+        if (not isinstance(groups, list) or any(not isinstance(group, dict)
+                or not isinstance(group.get('opciones'), list)
+                or any(type(option) is not int or option <= 0 for option in group['opciones'])
+                for group in groups)):
+            raise AssistantError('Revisa los grupos y las opciones de la promoción antes de preparar el cambio.')
+        options = {option for group in groups for option in group['opciones']}
+        if not set(previous['reposiciones']).issubset(options):
+            raise AssistantError('Una opción que intentas quitar tiene reposición configurada. '
+                                 'Ajusta primero sus reposiciones en el editor de Promociones.')
     # The service will validate values again. Never allow hidden extra fields.
     return {'recurso': resource, 'accion': action, 'id': identity, 'datos': payload, 'anterior': previous}
 
 
 def execute(session, plan):
+    from . import configuration
+    configuration.authorize_owner(plan['recurso'], plan['accion'])
+    if plan['recurso'] == 'recepciones':return receptions.execute(session,plan)
     if plan['recurso'] == 'ordenes_compra':
         authorize(session, 'ordenes_compra', 'crear')
         authorize(session, 'ordenes_compra')
@@ -160,6 +184,7 @@ def execute(session, plan):
 
 def readable(session, plan):
     """Resolve references for the human review, independently of model prose."""
+    if plan['recurso'] == 'recepciones':return receptions.readable(session,plan)
     if plan['recurso'] == 'ordenes_compra':
         authorize(session, 'ordenes_compra')
         return {'advertencia': plan['advertencia'], 'eventos_cercanos': plan.get('eventos_cercanos'),

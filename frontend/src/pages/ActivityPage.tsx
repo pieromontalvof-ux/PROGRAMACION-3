@@ -38,7 +38,8 @@ export function ActivityPage() {
     return () => controller.abort()
   },[token,consulta,pagina,version])
   return <section className="activity-page">
-    <header><span>TRAZABILIDAD</span><h1>Actividades del sistema</h1><p>Consulta quién realizó cada acción, con qué perfil y en qué local.</p></header>
+    <header><h1>Actividades del sistema</h1><p>Consulta quién realizó cada acción, con qué perfil y en qué local.</p></header>
+    <section className="activity-content" aria-label="Listado de actividades">
     <form onSubmit={e => {e.preventDefault();setConsulta({...filtros});setPagina(1)}}>
       <label>Ámbito<select value={filtros.local} onChange={e => setFiltros({...filtros,local:e.target.value})}>
         <option value="">{datos?.marca_completa ? 'Toda la marca' : 'Mi local'}</option>
@@ -48,7 +49,7 @@ export function ActivityPage() {
       <label>Usuario, acción o módulo<input value={filtros.buscar} onChange={e => setFiltros({...filtros,buscar:e.target.value})} placeholder="Buscar actividad" /></label>
       <label>Desde<input type="date" value={filtros.desde} onChange={e => setFiltros({...filtros,desde:e.target.value})} /></label>
       <label>Hasta<input type="date" min={filtros.desde} value={filtros.hasta} onChange={e => setFiltros({...filtros,hasta:e.target.value})} /></label>
-      <button>Filtrar</button><button type="button" onClick={() => {const vacios={local:'',buscar:'',desde:'',hasta:''};setFiltros(vacios);setConsulta(vacios);setPagina(1)}}>Limpiar</button>
+      <button className="activity-filter-submit">Filtrar</button><button type="button" onClick={() => {const vacios={local:'',buscar:'',desde:'',hasta:''};setFiltros(vacios);setConsulta(vacios);setPagina(1)}}>Limpiar</button>
       <button type="button" onClick={() => setVersion(v => v+1)}>Actualizar</button>
     </form>
     {error && <p role="alert">{error}</p>}
@@ -68,5 +69,6 @@ export function ActivityPage() {
       {!datos?.eventos.length && <p>No hay actividades para estos filtros.</p>}
       <footer><button disabled={pagina===1} onClick={() => setPagina(p => p-1)}>Anterior</button><span>Página {pagina}</span><button disabled={!datos?.hay_mas} onClick={() => setPagina(p => p+1)}>Siguiente</button></footer>
     </>}
+    </section>
   </section>
 }

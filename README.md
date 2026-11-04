@@ -1,22 +1,14 @@
-# PROGRAMACION-3
+﻿# Barbarito
 
-## Respaldo de PostgreSQL
+Aplicación de gestión de Barbarian: usuarios, catálogos, carta, inventario, movimientos, compras, recepción, salón y asistentes especializados.
 
-El respaldo vigente es `database/barbarito_completa_20261010.backup`, generado
-desde la base local `barbarito` con PostgreSQL 18.4. Incluye el esquema y los datos,
-con las migraciones `20261010_unidades_unece.sql` y
-`20261010_proveedor_categorias.sql` ya aplicadas.
+- Frontend: React y TypeScript.
+- Backend: Flask y SQLAlchemy.
+- Base de datos: PostgreSQL 18.
+- Despliegue: Docker con React y API bajo el mismo dominio, PostgreSQL separado y volumen persistente para los documentos de agentes.
 
-Se verificó que el archivo se puede leer completamente con `pg_restore` y que
-contiene el esquema y los datos de `unidad_medida` y `proveedor_categoria`.
-Este archivo reemplaza el respaldo del 30 de septiembre de 2026.
+La configuración y los pasos para Railway están en [DEPLOY.md](DEPLOY.md).
 
-Para restaurarlo en una base vacía con PostgreSQL 18 y los roles `postgres` y
-`multi` creados:
+Los secretos se configuran mediante variables de entorno. Los archivos .env, respaldos, bases locales y documentos privados no se publican. database/schema.sql contiene solo la estructura, sin usuarios ni datos comerciales. Los datos existentes se migran por un canal privado.
 
-```sh
-pg_restore --exit-on-error --host localhost --username postgres --dbname barbarito database/barbarito_completa_20261010.backup
-```
-
-El respaldo no crea los roles de PostgreSQL. Cambia el nombre de la base y la
-conexión según el entorno de destino.
+Para desarrollo local, usar backend/.env.example, instalar backend/requirements.txt y ejecutar python run.py desde backend. En frontend, ejecutar npm ci y npm run dev; su .env.example apunta a la API local.

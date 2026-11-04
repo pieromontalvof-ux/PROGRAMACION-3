@@ -46,7 +46,7 @@ SPECIALISTS = {agent.identity: agent for agent in (
     Specialist('subproductos', 'Subproductos', 'subproductos', ('productos',),
                'Define preparaciones internas con productos, cantidades, rendimiento e instrucciones.'),
     Specialist('recetas', 'Recetas', 'recetas', ('presentaciones', 'productos', 'subproductos'),
-               'Asocia ingredientes y cantidades a una presentación de venta existente.'),
+               'Consulta la preparación registrada, pide elegir entre coincidencias y gestiona ingredientes e instrucciones por presentación.'),
     Specialist('promociones', 'Promociones', 'promociones', ('presentaciones',),
                'Crea y edita promociones con precio, horario y grupos de presentaciones existentes.'),
 )}

@@ -3,7 +3,8 @@ import time
 from functools import wraps
 from threading import Lock
 from uuid import UUID
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
+from io import BytesIO
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app.core.extensions import db
 from app.modules.auth.service import obtener_sesion_actual
@@ -14,6 +15,7 @@ from app.agents.orchestrator import communication
 asistente_ia_bp = Blueprint('asistente_ia', __name__)
 MODULOS = {r[0] for r in tools.RESOURCES.values()}
 _attempts = {}
+_workspace_attempts = {}
 _lock = Lock()
 
 
@@ -45,8 +47,8 @@ def secured(function):
     return wrapped
 
 
-def body():
-    if request.content_length and request.content_length > 100000:
+def body(max_bytes=100000):
+    if request.content_length and request.content_length > max_bytes:
         raise AssistantError('La instrucción es demasiado larga.', 413)
     result = request.get_json(silent=True)
     if not isinstance(result, dict): raise AssistantError('Envía un objeto JSON válido.')
@@ -56,6 +58,47 @@ def body():
 def identity(value):
     try: return str(UUID(value))
     except (ValueError, TypeError, AttributeError): raise AssistantError('Borrador inválido.') from None
+
+
+def workspace_limit():
+    scope, now = drafts.scope(), time.monotonic()
+    key = (scope['usuario'], scope['perfil'], scope['local'])
+    with _lock:
+        for saved_key in list(_workspace_attempts):
+            recent = [stamp for stamp in _workspace_attempts[saved_key] if now - stamp < 60]
+            if recent:
+                _workspace_attempts[saved_key] = recent
+            else:
+                del _workspace_attempts[saved_key]
+        if len(_workspace_attempts.get(key, [])) >= 120:
+            raise AssistantError('Espera un minuto antes de guardar más cambios en la tarea.', 429)
+        _workspace_attempts.setdefault(key, []).append(now)
+
+
+@asistente_ia_bp.get('/workspace')
+@secured
+def workspace_get(session):
+    from . import workspace
+    workspace_limit()
+    return jsonify(workspace.load(session))
+
+
+@asistente_ia_bp.put('/workspace')
+@secured
+def workspace_put(session):
+    from . import workspace
+    workspace_limit()
+    # Autosaves have their own bounded payload; they consume no model quota.
+    if request.content_length and request.content_length > workspace.MAX_BYTES:
+        raise AssistantError('La tarea guardada es demasiado grande.', 413)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'workspace', 'revision'}:
+        raise AssistantError('Envía la tarea y su revisión actual.', 400)
+    try:
+        return jsonify(workspace.save(session, data['workspace'], data['revision']))
+    except workspace.Conflict as error:
+        db.session.rollback()
+        return jsonify(mensaje=str(error), revision=error.revision), 409
 
 @asistente_ia_bp.get('/estado')
 @secured
@@ -78,7 +121,100 @@ def agentes(sesion):
     if int(get_jwt().get('id_perfil', 0)) != 1:
         raise AssistantError('Solo el Administrador del sistema puede ver los agentes.', 403)
     from app.agents.manifest import catalog
-    return jsonify(catalog())
+    from . import configuration
+    return jsonify(configuration.decorate(catalog()))
+
+
+def require_agent_admin():
+    if int(get_jwt().get('id_perfil', 0)) != 1:
+        raise AssistantError('Solo el Administrador del sistema puede administrar agentes.', 403)
+
+
+@asistente_ia_bp.get('/biblioteca')
+@secured
+def biblioteca(session):
+    require_agent_admin()
+    from . import library
+    return jsonify(library.listing())
+
+
+@asistente_ia_bp.route('/biblioteca/<agent_id>', methods=['GET', 'PUT'])
+@secured
+def carpeta_agente(session, agent_id):
+    require_agent_admin()
+    from . import library
+    if request.method == 'GET':
+        return jsonify(library.view(agent_id))
+    raise AssistantError('La edición integral fue retirada. Guarda la skill validada o usa el menú Permisos de agentes.', 410)
+
+
+@asistente_ia_bp.post('/biblioteca/<agent_id>/revisar')
+@secured
+def revisar_configuracion_agente(session, agent_id):
+    require_agent_admin()
+    raise AssistantError('Usa Validar skill en el flujo de skills. Los permisos se administran por separado.', 410)
+
+
+@asistente_ia_bp.post('/biblioteca/<agent_id>/skills/<operation>')
+@secured
+def flujo_skill(session, agent_id, operation):
+    require_agent_admin()
+    from . import configuration
+    data = body(1000000)
+    if operation == 'validar':
+        limit()
+        return jsonify(configuration.review_skills(agent_id, data.get('skills'), data.get('revision')))
+    if operation == 'guardar':
+        return jsonify(configuration.save_skills(agent_id, data.get('skills'), data.get('revision'), data.get('revision_ia')))
+    if operation == 'actualizar':
+        limit()
+        return jsonify(configuration.update_skill(agent_id, data.get('skills'), data.get('archivo_skill'), data.get('documentos'), data.get('revision')))
+    raise AssistantError('Operación no disponible.', 404)
+
+
+@asistente_ia_bp.put('/biblioteca/<agent_id>/accesos')
+@secured
+def permisos_agente(session, agent_id):
+    require_agent_admin()
+    from . import configuration
+    data = body()
+    return jsonify(configuration.save_accesses(agent_id, data.get('accesos'), data.get('revision')))
+
+
+@asistente_ia_bp.get('/biblioteca/<agent_id>/documentos/<document_id>/original')
+@secured
+def original_documento_agente(session, agent_id, document_id):
+    require_agent_admin()
+    from . import library
+    content, mime, filename = library.original(agent_id, document_id)
+    response = send_file(BytesIO(content), mimetype=mime, download_name=filename, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@asistente_ia_bp.post('/biblioteca/<agent_id>/documentos')
+@secured
+def subir_documento_agente(session, agent_id):
+    require_agent_admin()
+    if request.content_length and request.content_length > 2 * 1024 * 1024 + 65536:
+        raise AssistantError('El documento debe pesar como máximo 2 MB.', 413)
+    from . import library
+    try:
+        revision = int(request.form.get('revision', ''))
+    except ValueError:
+        raise AssistantError('Indica la revisión actual de la carpeta.') from None
+    return jsonify(library.upload(agent_id, request.files.get('archivo'), revision)), 201
+
+
+@asistente_ia_bp.route('/biblioteca/<agent_id>/documentos/<document_id>', methods=['GET', 'DELETE'])
+@secured
+def documento_agente(session, agent_id, document_id):
+    require_agent_admin()
+    from . import library
+    if request.method == 'GET':
+        return jsonify(library.document(agent_id, document_id))
+    return jsonify(library.delete(agent_id, document_id, body().get('revision')))
 
 
 @asistente_ia_bp.post('/preparar')
@@ -108,10 +244,11 @@ def preparar(session):
             ('no existe', 'no tengo', 'no hay', 'falta', 'crear primero')):
         resource = None
     if resource == 'categoria_ambigua':
+        from . import configuration
         options = [{'etiqueta': 'Categoría de productos', 'instruccion': 'Crear categoría de productos', 'recurso': 'categorias_productos'},
                    {'etiqueta': 'Categoría de carta', 'instruccion': 'Crear categoría de carta', 'recurso': 'categorias_carta'}]
         options = [{k: v for k, v in option.items() if k != 'recurso'} for option in options
-                   if tools.allowed(session, option['recurso'], 'crear') and tools.allowed(session, option['recurso'])]
+                   if tools.allowed(session, option['recurso'], 'crear') and tools.allowed(session, option['recurso']) and configuration.owner_allows(option['recurso'], 'crear')]
         if not options:
             raise AssistantError('Tu perfil no tiene permiso para crear categorías.', 403)
         return jsonify(respuesta=forms.CATEGORY_QUESTION, opciones=options, consultas=[], borrador=None, agente='orquestador')
@@ -119,7 +256,10 @@ def preparar(session):
         return jsonify(respuesta='Completa el formulario y revisa la propuesta antes de realizar el cambio.',
                        formulario=forms.open_form(session, resource), consultas=[], borrador=None,
                        agente=resource if resource in ('categorias_carta', 'menajes', 'presentaciones') else 'carta_recetas')
-    result = agent.run(session, instruction, previous, context)
+    from app.agents.orchestrator import purchase_flow
+    result = purchase_flow.handle(session, instruction, previous, context, data.get('flujo_compra'))
+    if result is None:
+        result = agent.run(session, instruction, previous, context)
     if result.get('traspaso'):
         result = communication.coordinate(session, result, instruction, previous, context)
     return finish_result(session, result)

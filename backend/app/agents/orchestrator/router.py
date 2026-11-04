@@ -3,6 +3,7 @@ import re
 from app.modules.asistente_ia import inventory, tools
 from app.modules.asistente_ia.provider import AssistantError
 from app.agents.catalog_specialists import SPECIALISTS
+from app.agents.orchestrator import recipe_answers
 
 INVENTORY_HINTS = (
     'inventario', 'stock', 'existencia', 'existencias', 'conteo', 'conteos',
@@ -19,8 +20,15 @@ CATALOG_HINTS = (
     'editar producto', 'editar un producto', 'modificar producto', 'modifica el producto',
     'producto de carta', 'precio de venta',
 )
-PURCHASE_HINTS = ('compra', 'pedido sugerido', 'festividad', 'festividades', 'sheraton', 'estadio nacional',
-                  'eventos cercanos', 'conciertos cercanos', 'eventos cerca')
+PURCHASE_HINTS = ('compra', 'pedido sugerido')
+EVENT_HINTS = ('evento', 'concierto', 'festividad', 'festividades', 'feriado')
+RECEPTION_HINTS = ('recepcion', 'recibir', 'recibido', 'recibi', 'entrega parcial',
+                   'entrega del proveedor', 'llego el pedido', 'llegaron los productos')
+DEMAND_HINTS = ('rotacion', 'demanda', 'mas salida', 'mayor salida', 'mas vendido',
+                'mas se vende', 'se vende mas', 'mas rapido', 'rapido se acaba', 'rapidez',
+                'cuanto durara', 'cuanto dura el stock', 'cobertura', 'aceptacion', 'recibimiento',
+                'analiza las ventas', 'analiza ventas', 'analisis de ventas', 'se esta quedando',
+                'que tanto salio', 'se acaba', 'se agota', 'velocidad de venta')
 
 SPECIALIST_HINTS = {
     'categorias_carta': ('categoria de carta', 'categorias de carta', 'categoria carta', 'categorias carta'),
@@ -52,17 +60,37 @@ def _score(value, hints):
 
 
 def route(instruction, previous=''):
-    explicit = _score(instruction, CATALOG_HINTS) or _score(instruction, INVENTORY_HINTS) or _score(instruction, PURCHASE_HINTS) or re.search(r'\bpedidos?\b', tools.normalized(instruction))
+    if recipe_answers.detect(instruction) is not None:
+        return 'recetas'
+    explicit = (_score(instruction, CATALOG_HINTS) or _score(instruction, INVENTORY_HINTS)
+                or _score(instruction, PURCHASE_HINTS) or _score(instruction, EVENT_HINTS)
+                or _score(instruction, RECEPTION_HINTS) or _score(instruction, DEMAND_HINTS)
+                or re.search(r'\bpedidos?\b', tools.normalized(instruction)))
     request = instruction if explicit else f'{instruction} {previous}'
     normalized = tools.normalized(request)
     # In management, an unspecified pedido refers to purchasing supplies.
     # Explicit table/service orders belong to the separate Salon workflow.
     if re.search(r'\bpedidos?\b', normalized) and re.search(r'\b(salon|mesa|comanda|mesero)\b', normalized):
         return 'salon'
-    if _score(request, PURCHASE_HINTS) or re.search(r'\bpedidos?\b', normalized):
+    if _score(request, RECEPTION_HINTS) and not re.search(r'\brecibimiento\b', normalized):
+        return 'recepcion'
+    purchase_request = _score(request, PURCHASE_HINTS) or re.search(r'\bpedidos?\b', normalized)
+    event_query = re.search(
+        r'\b(busca|buscar|consulta|consultar|reintenta|reintentar|muestra|ver|que|hay)\b'
+        r'(?:\s+\w+){0,4}\s+(eventos?|conciertos?|festividades|feriados?)\b', normalized)
+    skip_events = re.search(
+        r'\b(sin|no)\s+(?:(?:quiero|deseo|necesito|consultar|buscar|revisar|consultes|busques|revises|los|las)\s+)*'
+        r'(eventos?|conciertos?|festividades|feriados?)\b', normalized)
+    if _score(request, EVENT_HINTS) and not skip_events and (not purchase_request or event_query):
+        return 'eventos'
+    if purchase_request:
         return 'compras'
+    if _score(request, DEMAND_HINTS):
+        return 'demanda'
     inventory_score = _score(request, INVENTORY_HINTS)
     catalog_score = _score(request, CATALOG_HINTS)
+    if skip_events and not inventory_score and not catalog_score:
+        return 'orquestador'
     if inventory_score and catalog_score:
         return 'orquestador'
     if inventory_score > catalog_score:
@@ -71,7 +99,20 @@ def route(instruction, previous=''):
 
 
 def run(session, instruction, previous='', context=''):
+    recipe_answer = recipe_answers.handle(session, instruction)
+    if recipe_answer is not None:
+        return recipe_answer
     selected = route(instruction, previous)
+    # Shortages are ambiguous during reception. Explicit stock/count requests still switch.
+    if selected == 'inventario' and context and route(context) == 'recepcion':
+        strong_inventory = tuple(hint for hint in INVENTORY_HINTS
+                                 if hint not in ('faltante', 'merma', 'diferencia', 'diferencias'))
+        if not _score(instruction, strong_inventory):
+            selected = 'recepcion'
+    if selected == 'carta_recetas' and not _score(instruction, CATALOG_HINTS) and context:
+        contextual = route(context)
+        if contextual in ('compras', 'recepcion', 'eventos', 'inventario', 'demanda'):
+            selected = contextual
     if selected == 'salon':
         return {'respuesta': 'Los pedidos de mesa se registran desde Salón. Si deseas comprar insumos, indica «hacer un pedido de compra».',
                 'consultas': [], 'plan': None, 'agente': 'orquestador'}
@@ -79,12 +120,28 @@ def run(session, instruction, previous='', context=''):
         selected = 'compras'
     if selected == 'carta_recetas' and not _score(instruction, CATALOG_HINTS) and context:
         selected = catalog_route(context) or selected
+    if selected == 'demanda':
+        from app.agents.demanda.agent import run as specialist
+        result = specialist(session, instruction, previous, context)
+        result['agente'] = selected
+        return result
     if selected == 'compras':
         from app.agents.compras.agent import run as specialist
         result = specialist(session, instruction, previous, context)
         result['agente'] = selected
         return result
+    if selected in ('eventos', 'recepcion'):
+        if selected == 'eventos':
+            from app.agents.eventos.agent import run as specialist
+        else:
+            from app.agents.recepcion.agent import run as specialist
+        result = specialist(session, instruction, previous, context)
+        result['agente'] = selected
+        return result
     if selected == 'orquestador':
+        if _score(instruction, EVENT_HINTS):
+            return {'respuesta': 'No se consultarán eventos. Puedes pedir la base de compras o consultar inventario y recepción.',
+                    'consultas': [], 'plan': None, 'agente': selected}
         return {'respuesta': 'El pedido combina inventario y catálogo. Indica cuál de esas tareas quieres preparar primero.',
                 'consultas': [], 'plan': None, 'agente': selected}
 

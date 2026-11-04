@@ -1,0 +1,123 @@
+/* Shared Barbarian visual language: bright workspaces and green landmarks. */
+:root {
+  --brand-banner: linear-gradient(112deg, #043b2b 0%, #086448 66%, #09835d 100%);
+  --brand-table: #104e3b;
+  --ui-canvas: #f4f6f3;
+  --ui-text: #172d26;
+  --ui-muted: #4f625a;
+  --ui-border: #ced9d2;
+}
+.topbar { background: #fff; border-bottom-color: #d5ded8; box-shadow: 0 2px 8px #163d2410; }
+.topbar-user__avatar { border: 1px solid #d3ddd7; color: #142d22; }
+.sidebar { background: linear-gradient(165deg, #043c29, #003c2a 70%, #003422); }
+.sidebar-link--active, .sidebar-link--active:hover {
+  background: linear-gradient(90deg, #08774e, #006047);
+  box-shadow: inset 3px 0 #29dc88; color: white;
+}
+.main-layout__content :is(.stock-header, .products-header, .users-header, .recipes-header,
+  .categories-header, .suppliers-header, .menu-categories-header, .carta-catalog-header,
+  .production-header, .promotions-header, .review-header, .inventory-header,
+  .receipt-header, .purchase-header, .movement-header, .history-hero,
+  .stock-limits__header, .inventory-operations > header, .activity-page > header,
+  .salon-layout-page > header, .assistant-heading, .home-welcome) {
+  position: relative; isolation: isolate;
+  min-height: 108px; padding: 19px 24px;
+  border: 1px solid #08724f; border-left: 4px solid #18bc77; border-radius: 11px;
+  background: var(--brand-banner); color: #fff;
+  box-shadow: 0 3px 9px #153f2519;
+}
+.main-layout__content :is(.stock-header, .products-header, .users-header, .recipes-header,
+  .categories-header, .suppliers-header, .menu-categories-header, .carta-catalog-header,
+  .production-header, .promotions-header, .review-header, .inventory-header,
+  .receipt-header, .purchase-header, .movement-header, .history-hero,
+  .stock-limits__header, .inventory-operations > header, .activity-page > header,
+  .salon-layout-page > header, .assistant-heading, .home-welcome) h1 {
+  color: #fff; font-size: clamp(26px, 2.3vw, 32px); line-height: 1.2; margin-block: 3px 7px;
+}
+.main-layout__content :is(.stock-header, .products-header, .users-header, .recipes-header,
+  .categories-header, .suppliers-header, .menu-categories-header, .carta-catalog-header,
+  .production-header, .promotions-header, .review-header, .inventory-header,
+  .receipt-header, .purchase-header, .movement-header, .history-hero,
+  .stock-limits__header, .inventory-operations > header, .activity-page > header,
+  .salon-layout-page > header, .assistant-heading, .home-welcome) p {
+  color: #e2f0e8; font-size: 14px; line-height: 1.5; margin-block: 0;
+}
+.main-layout__content :is(.stock-header__label, .products-header__eyebrow,
+  .categories-header__label, .suppliers-header__label, .home-welcome__label) { color: #a4ebc7; }
+.main-layout__content :is(thead th, .users-table thead th, .assistant-data-table thead th) {
+  background: var(--brand-table); color: #fff; border-color: #276b53;
+  font-size: 12px; font-weight: 650; letter-spacing: .03em; padding-block: 13px;
+}
+.main-layout__content tbody td { color: #374b40; border-bottom-color: #d9e3dd; }
+.main-layout__content tbody td strong { color: #13281e; }
+.main-layout__content :is([class$="-table-wrap"], [class$="-table-container"], .users-table) { border-radius: 8px; }
+.main-layout__content :is(.products-content, .stock-content, .users-card, .history-card,
+  .recipes-content, .production-content, .purchase-card, .io-card) {
+  background: #fff; border-color: #d3ded6; box-shadow: 0 2px 6px #173b2210;
+}
+.assistant-heading { flex-wrap: wrap; }
+.assistant-heading .assistant-scope { color: #e2f0e8; }
+.home-welcome__date { box-shadow: none; }
+.home-context span { background: #ffffff15; color: #e4f5e9; border-color: #ffffff30; }
+
+/* Stores reference: banner, separate actions, and a clearly selected filter. */
+.main-layout__content .stores-overview {
+  display: grid; gap: 16px; padding: 0; border: 0; background: transparent; border-radius: 0;
+}
+.main-layout__content .stores-overview .stores-header {
+  min-height: 108px; padding: 18px 24px; gap: 18px; justify-content: flex-start;
+  border: 1px solid #08724f; border-left: 4px solid #18bc77; border-radius: 11px;
+  background: var(--brand-banner); overflow: hidden;
+}
+.main-layout__content .stores-overview .stores-header::after {
+  display: block; content: ''; position: absolute; z-index: -1; pointer-events: none;
+  width: 420px; height: 420px; right: -180px; top: 18px;
+  border: 1px solid #ffffff18; border-radius: 50%; box-shadow: 0 0 0 45px #ffffff07;
+}
+.stores-header .stores-hero-icon {
+  display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px;
+  border: 1px solid #ffffff30; border-radius: 11px; background: #ffffff0c; color: #fff;
+}
+.main-layout__content .stores-overview h1 { color: #fff; font-size: 30px; margin: 0; }
+.main-layout__content .stores-overview .stores-count { color: #065038; background: #f3faf5; padding: 5px 11px; font-size: 13px; }
+.main-layout__content .stores-overview .stores-header p { margin-top: 6px; color: #e2f0e8; font-size: 14px; }
+.stores-overview-tools { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.main-layout__content .stores-overview .stores-status-tabs { gap: 9px; }
+.main-layout__content .stores-overview .stores-status-tabs button {
+  min-height: 40px; padding: 8px 18px; border: 1px solid #c6d3ca; border-radius: 8px;
+  background: #fff; color: #243c2e; font-size: 14px;
+}
+.main-layout__content .stores-overview .stores-status-tabs button[aria-pressed=true] {
+  background: #006447; border-color: #006447; color: #fff;
+}
+.main-layout__content .stores-overview .stores-status-tabs button span { background: #e9eeeb; color: #25392d; }
+.main-layout__content .stores-overview .stores-status-tabs button[aria-pressed=true] span { background: #0a825b; color: #fff; }
+.main-layout__content .stores-overview .stores-create {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  min-height: 40px; padding: 8px 17px; border: 1px solid #006447; border-radius: 8px;
+  background: linear-gradient(#087553, #00583e); color: #fff; font-size: 14px; font-weight: 650; white-space: nowrap;
+}
+.stores-page .users-actions .stores-edit { color: #00603f; border-color: #b3d2c0; font-weight: 600; }
+.stores-page .users-actions .stores-danger { color: #c52d35; border-color: #e3c6c8; }
+@media (max-width: 700px) {
+  .main-layout__content .stores-overview .stores-header { flex-direction: row; align-items: center; padding: 16px; gap: 12px; }
+  .stores-header .stores-hero-icon { width: 48px; height: 48px; }
+  .main-layout__content .stores-overview h1 { font-size: 27px; }
+  .stores-overview-tools { flex-wrap: wrap; }
+  .main-layout__content .stores-overview .stores-status-tabs { flex: 1; gap: 6px; }
+  .main-layout__content .stores-overview .stores-status-tabs button { min-height: 44px; padding: 8px 12px; }
+  .main-layout__content .stores-overview .stores-create { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .main-layout__content :is(.stock-header, .products-header, .users-header, .recipes-header,
+    .categories-header, .suppliers-header, .menu-categories-header, .carta-catalog-header,
+    .production-header, .promotions-header, .review-header, .inventory-header,
+    .receipt-header, .purchase-header, .movement-header, .history-hero,
+    .stock-limits__header, .inventory-operations > header, .activity-page > header,
+    .salon-layout-page > header, .assistant-heading, .home-welcome) { padding: 16px; }
+}
+@media print {
+  .main-layout__content :is(header, .assistant-heading, .home-welcome) { background: #fff; color: #111; box-shadow: none; }
+  .main-layout__content :is(header, .assistant-heading, .home-welcome) :is(h1, p) { color: #111; }
+  .main-layout__content :is(thead th, .users-table thead th, .assistant-data-table thead th) { background: #e9eeeb; color: #111; }
+}

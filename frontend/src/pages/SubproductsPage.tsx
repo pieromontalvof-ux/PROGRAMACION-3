@@ -1,12 +1,9 @@
+import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
   AlertTriangle,
-  Beaker,
-  CheckCircle2,
   ChevronDown,
-  CircleOff,
-  FlaskConical,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -144,14 +141,24 @@ export function SubproductsPage() {
       <header className="production-header">
         <div>
           <span>RECETAS Y PRODUCCIÓN</span>
-          <h1>Subproductos</h1>
+          <h1>Subproductos <span className="catalog-title-count">{datos.resumen.total_subproductos} subproductos</span></h1>
           <p>
             Consulta preparaciones internas, rendimientos
             e ingredientes utilizados.
           </p>
         </div>
-        <div className="production-header-actions">
-        {permisos.crear && <button type="button" onClick={() => { setMensaje(''); setEditor(null) }}>Nuevo subproducto</button>}
+      </header>
+      {mensaje && <p role="status" className="production-feedback">{mensaje}</p>}
+      {error && <p role="alert" className="production-feedback production-feedback--error">{error}</p>}
+
+      <div className="catalog-overview-tools">
+        <StatusFilters value={estado} onChange={setEstado} options={[
+          { value: 'todos', label: 'Todos', count: datos.resumen.total_subproductos },
+          { value: 'activos', label: 'Activos', count: datos.resumen.subproductos_activos },
+          { value: 'inactivos', label: 'Inactivos', count: datos.resumen.subproductos_inactivos },
+        ]} />
+        <div className="catalog-admin-actions">
+        {permisos.crear && <button className="catalog-admin-new" type="button" onClick={() => { setMensaje(''); setEditor(null) }}>Nuevo subproducto</button>}
         <button
           type="button"
           disabled={actualizando}
@@ -161,34 +168,14 @@ export function SubproductsPage() {
           {actualizando ? 'Actualizando...' : 'Actualizar'}
         </button>
         </div>
-      </header>
-      {mensaje && <p role="status" className="production-feedback">{mensaje}</p>}
-      {error && <p role="alert" className="production-feedback production-feedback--error">{error}</p>}
-
-      <div className="production-summary">
-        <article><span><FlaskConical /></span><div><small>Subproductos</small><strong>{datos.resumen.total_subproductos}</strong></div></article>
-        <article><span className="green"><CheckCircle2 /></span><div><small>Activos</small><strong>{datos.resumen.subproductos_activos}</strong></div></article>
-        <article><span className="red"><CircleOff /></span><div><small>Inactivos</small><strong>{datos.resumen.subproductos_inactivos}</strong></div></article>
-        <article><span className="yellow"><Beaker /></span><div><small>Ingredientes distintos</small><strong>{datos.resumen.ingredientes_diferentes}</strong></div></article>
       </div>
 
       <section className="production-content">
-        <div className="production-title">
-          <div><span>PREPARACIONES INTERNAS</span><h2>Listado de subproductos</h2></div>
-          <p>Despliega una fila para revisar su composición.</p>
-        </div>
 
         <div className="production-filters">
           <label><Search /><input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar código, subproducto o ingrediente" /></label>
-          <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoFiltro)}>
-            <option value="todos">Todos los estados</option>
-            <option value="activos">Activos</option>
-            <option value="inactivos">Inactivos</option>
-          </select>
           <button type="button" onClick={() => { setBusqueda(''); setEstado('todos') }}>Limpiar</button>
         </div>
-
-        <p className="production-results">Mostrando <strong>{filtrados.length}</strong> de <strong>{datos.subproductos.length}</strong></p>
 
         <div className="production-table-wrap">
           <table className="production-table">

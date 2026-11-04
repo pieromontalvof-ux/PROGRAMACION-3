@@ -45,11 +45,11 @@ def call(path, body, content_type='application/json', timeout=60):
         raise AssistantError('OpenAI devolvió una respuesta no válida.', 502) from None
 
 
-def respond(messages, tools):
+def respond(messages, tools, max_output_tokens=3500):
     data = call('responses', json.dumps({
         'model': os.getenv('OPENAI_MODEL', 'gpt-6-luna'), 'store': False,
         'input': messages, 'tools': tools, 'parallel_tool_calls': False,
-        'max_output_tokens': 3500,
+        'max_output_tokens': max_output_tokens,
     }, ensure_ascii=False).encode('utf-8'))
     if data.get('status') != 'completed':
         raise AssistantError('La respuesta quedó incompleta. Divide tu instrucción en pasos más pequeños.', 502)

@@ -51,10 +51,11 @@ export function MovementTrackingPage() {
     finally { setOcupado(false) }
   }
   return <section className="movement-tracking">
-    <header><h1>Préstamos y devoluciones</h1><p>Guías de salida y recepción del local {localActivo?.nombre}.</p>
+    <header><div><h1>Préstamos y devoluciones</h1><p>Guías de salida y recepción del local {localActivo?.nombre}.</p></div>
+      <div className="movement-tracking-actions">
       <Link to="/home/movimientos/registrar">Registrar salida</Link>
       <button onClick={() => {setError(''); cargar().catch(e => setError(e.message))}}>Actualizar</button>
-    </header>
+      </div></header>
     {error && <p role="alert">{error}</p>}{mensaje && <p role="status">{mensaje}</p>}
     <nav>{[['enviados','Préstamos entregados'],['pendientes','Préstamos por recibir'],['recibidos','Préstamos recibidos'],['proveedor','Devoluciones a proveedor']].map(([id,label]) =>
       <button key={id} aria-pressed={tab===id} onClick={() => setTab(id)}>{label}</button>)}</nav>

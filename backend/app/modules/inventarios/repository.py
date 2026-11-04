@@ -984,4 +984,3 @@ def listar_historial_correcciones(id_inventario):
         consulta,
         {"id_inventario": id_inventario},
     ).mappings().all()
-

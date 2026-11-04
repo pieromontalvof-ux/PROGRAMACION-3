@@ -1,4 +1,5 @@
 import { AssistantPage } from './features/asistenteIA/AssistantPage'
+import { AgentAdminPage } from './features/asistenteIA/AgentAdminPage'
 import { SalonLayoutPage } from './pages/SalonLayoutPage'
 import { SalonOrderPage } from './pages/SalonOrderPage'
 import { SalonPaymentPage } from './features/salonPayments/SalonPaymentPage'
@@ -91,6 +92,9 @@ function App() {
           element={<StockPage />}
         />
         <Route path="asistente-ia" element={<AssistantPage />} />
+        <Route path="asistente-ia/agentes" element={<AgentAdminPage mode="mapa" />} />
+        <Route path="asistente-ia/archivos" element={<AgentAdminPage mode="archivos" />} />
+        <Route path="asistente-ia/permisos" element={<AgentAdminPage mode="permisos" />} />
         <Route path="tiendas" element={<StoresPage />} />
         <Route path="opciones-salon" element={<SalonLayoutPage />} />
         <Route path="limites-stock" element={<StockLimitsPage />} />
