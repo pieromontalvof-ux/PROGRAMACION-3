@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.agents.runtime import run_specialist
+from app.agents import activity
 from app.modules.asistente_ia.agent import INSTRUCTIONS
 
 
@@ -30,6 +31,7 @@ class Specialist:
             'ni prepares cambios en otro módulo. No inventes datos ni equivalencias. '
             'Los campos faltantes se solicitan al usuario; Realizar confirma cada cambio.')
 
+    @activity.agent(lambda self, *a, **kw: self.identity)
     def run(self, session, instruction, previous='', context=''):
         return run_specialist(session, instruction, previous, context, self.resources,
                               self.instructions, self.skills, writable_resources=(self.resource,),

@@ -6,6 +6,7 @@ from flask import current_app
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from app.core.extensions import db
+from app.agents import activity
 from app.agents.catalog_specialists import SPECIALISTS
 from app.modules.asistente_ia import drafts, forms, tools
 from app.modules.asistente_ia.provider import AssistantError
@@ -88,6 +89,8 @@ def coordinate(session, result, instruction, previous='', context='', state=None
         state['pila'].append(current)
         state['mensajes'].append({'de': current['agente'], 'a': owner(resource),
                                   'motivo': handoff['motivo']})
+        activity.emit('mensaje_entre_agentes', de=current['agente'], a=owner(resource),
+                      mensaje=handoff['motivo'], instruccion=handoff['instruccion'])
         state['paso'] = str(uuid4())
         state['actual'] = {'agente': owner(resource), 'recurso': resource,
                            'instruccion': handoff['instruccion'], 'previo': '',
@@ -133,6 +136,8 @@ def resume(session, token, draft_id):
     result_data = row['resultado']
     db.session.rollback()
     parent = state['pila'].pop()
+    activity.emit('mensaje_entre_agentes', de=state['actual']['agente'], a=parent['agente'],
+                  mensaje='Requisito confirmado. Se retoma la tarea pendiente.')
     state['mensajes'].append({'de': state['actual']['agente'], 'a': parent['agente'],
                               'motivo': 'Requisito confirmado. Se retoma la tarea pendiente.'})
     parent.setdefault('resultados_confirmados', []).append({

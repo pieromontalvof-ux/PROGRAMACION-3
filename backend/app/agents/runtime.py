@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from app.core.extensions import db
+from app.agents import activity
 from app.modules.asistente_ia import inventory, provider, tools
 from app.modules.asistente_ia.provider import AssistantError
 
@@ -130,6 +131,8 @@ def run_specialist(session, instruction, previous, context, resources, instructi
                     if not all(isinstance(args.get(k), str) and 1 <= len(args[k].strip()) <= 4000
                                for k in ('instruccion', 'motivo')):
                         raise AssistantError('Indica la tarea y el motivo del traspaso.')
+                    activity.emit('herramienta_inicio', herramienta='solicitar_especialista', parametros=args)
+                    activity.emit('herramienta_fin', herramienta='solicitar_especialista', estado='completada', resultado={'recurso': args['recurso'], 'motivo': args['motivo']})
                     return {'respuesta': args['motivo'], 'consultas': consulted, 'plan': None,
                             'traspaso': args}
                 elif item['name'] == 'abrir_formulario' and not inventory_specialist:

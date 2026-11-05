@@ -36,6 +36,21 @@ export interface RespuestaAsistente {
   flujo_compra?: string
   tarea_pendiente?: string
   comunicaciones?: { de: AgenteId; a: AgenteId; motivo: string }[]
+  actividad?: ActividadAgentes
+  nota_actividad?: string
+}
+export interface ActividadAgentes {
+  id: string; inicio: string; fin: string; entrada: string; url: string
+  estado: string; agentes: string[]; respuesta_final: string; truncada: boolean; nota: string
+  eventos: { paso: number; fecha: string; tipo: string; agente: string; de?: string; a?: string
+    mensaje?: string; herramienta?: string; parametros?: unknown; resultado?: unknown; estado?: string }[]
+}
+export async function obtenerActividad(token: string, id: string): Promise<ActividadAgentes> {
+  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const response = await fetch(`${api}/asistente-ia/actividad/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.mensaje ?? 'No se pudo descargar la actividad.')
+  return data
 }
 export type RecursoFormulario = 'categorias_productos' | 'proveedores' | 'productos' | 'categorias_carta' | 'menajes' | 'presentaciones'
 export interface FormularioCatalogo {

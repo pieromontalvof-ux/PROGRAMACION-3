@@ -1,5 +1,6 @@
 """Workspace API regressions using real SQLite transactions, JWT and storage."""
 import unittest
+import tempfile
 from unittest.mock import patch
 
 from flask import Flask
@@ -52,6 +53,9 @@ class AssistantWorkspaceTests(unittest.TestCase):
 
     def setUp(self):
         self.app = Flask(__name__)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.app.config['APP_DATA_DIR'] = temporary.name
         self.app.config.update(SQLALCHEMY_DATABASE_URI='sqlite://',
                                JWT_SECRET_KEY='workspace-test-secret-key-at-least-32',
                                SECRET_KEY='workspace-signing-test-secret')
@@ -251,6 +255,37 @@ class AssistantWorkspaceTests(unittest.TestCase):
                 'respuesta': 'Revisar', 'consultas': [], 'borrador': {'id_borrador': DRAFT}}))
         self.assertEqual(response.status_code, 404)
         self.assertEqual(self.get().json['revision'], 0)
+
+
+    def test_activity_export_is_authoritative_scoped_and_recovers_with_workspace(self):
+        from app.agents import activity
+        @activity.agent('demanda')
+        def real_execution(session, instruction, previous='', context=''):
+            @activity.tool('analizar_demanda')
+            def read():
+                return {'total': 2, 'registros': []}
+            read()
+            return {'respuesta': 'Dos registros consultados.', 'consultas': [], 'plan': None, 'agente': 'demanda'}
+        with patch.object(routes.agent, 'run', side_effect=real_execution):
+            response = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
+                                        json={'instruccion': 'Analiza la demanda'})
+        self.assertEqual(response.status_code, 200, response.json)
+        result = response.json
+        trace = result['actividad']
+        self.assertEqual(trace['agentes'], ['orquestador', 'demanda'])
+        url = '/api/asistente-ia/actividad/' + trace['id']
+        self.assertEqual(self.client.get(url, headers=self.headers).json, trace)
+        self.assertEqual(self.client.get(url, headers=self.token(user=2)).status_code, 404)
+        self.assertEqual(self.client.get(url, headers=self.token(profile=2)).status_code, 404)
+        self.assertEqual(self.client.get(url, headers=self.token(local=2)).status_code, 404)
+        result['actividad']['entrada'] = 'Texto manipulado en el navegador'
+        saved = self.put(self.snapshot(result=result, history=[{
+            'prompt': 'Consulta', 'response': 'Dos registros', 'time': '10:00', 'done': False,
+            'queries': [], 'actividad': trace}]))
+        self.assertEqual(saved.status_code, 200, saved.json)
+        restored = self.get().json['workspace']
+        self.assertEqual(restored['result']['actividad']['entrada'], 'Analiza la demanda')
+        self.assertEqual(restored['history'][0]['actividad']['entrada'], 'Analiza la demanda')
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+from app.agents import activity
 import json
 import logging
 import os
@@ -37,6 +38,7 @@ def search_response(payload):
         raise
 
 
+@activity.tool('buscar_eventos_web')
 def events(instruction='', context='', local=None):
     today = datetime.now(timezone(timedelta(hours=-5))).date()
     until = today + timedelta(days=6)
@@ -141,6 +143,7 @@ def display_report(report):
     return message
 
 
+@activity.agent('eventos')
 def run(session, instruction, previous='', context=''):
     from app.modules.asistente_ia import configuration
     configuration.authorize('eventos', 'eventos_cercanos')

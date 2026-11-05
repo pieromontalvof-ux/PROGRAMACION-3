@@ -11,6 +11,7 @@ import { VoiceButton } from './VoiceButton'
 import { ReviewDetails } from './ReviewDetails'
 import { etiqueta, textoRevision } from './labels'
 import { AnswerContent } from './AnswerContent'
+import { AgentActivity } from './AgentActivity'
 
 function summary(result: RespuestaAsistente) {
   const b = result.borrador
@@ -95,6 +96,7 @@ export function AssistantWorkspace() {
       if (!alive.current) return
       const text = summary(data)
       if (original) setHistory(items => [...items, { prompt: lastPrompt, response: original, time, done: confirmed,
+        actividad: result?.actividad,
         queries: !confirmed && !result?.borrador ? result?.consultas ?? [] : [] }].slice(-10))
       setLastPrompt(prompt || 'Corregir el borrador con el texto editado.')
       setTime(new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }))
@@ -202,6 +204,7 @@ export function AssistantWorkspace() {
         <div className="assistant-answer-row"><span className="assistant-avatar"><Bot size={23} /></span><article className="assistant-card assistant-past-answer">
           <header className="assistant-answer-heading"><h2>Barbarito</h2><time>{turn.time}</time></header>
           <AnswerContent text={turn.response} queries={turn.queries} />
+          {turn.actividad && token && <AgentActivity activity={turn.actividad} token={token} />}
           <small>{turn.done ? 'Cambio realizado' : 'Respuesta anterior · solo lectura'}</small></article></div>
       </section>)}
       {(result || review) && <div ref={latest} className="assistant-latest">
@@ -212,6 +215,8 @@ export function AssistantWorkspace() {
               {result?.agente && <small className="assistant-agent-label">{nombresAgentes[result.agente]}</small>}
               <time>{time}</time></header>
             <p className="assistant-answer-caption">{result?.borrador ? 'Revisa los datos antes de confirmar. Puedes corregir o añadir instrucciones.' : 'Aquí tienes la información solicitada. Puedes continuar la conversación abajo.'}</p>
+            {result?.actividad && token && <AgentActivity activity={result.actividad} token={token} />}
+            {result?.nota_actividad && <p className="assistant-note" role="status">{result.nota_actividad}</p>}
             {Boolean(result?.comunicaciones?.length) && <details className="assistant-access"><summary>Colaboración entre agentes</summary>
               {result?.comunicaciones?.map((message, index) => <p key={index}><strong>{nombresAgentes[message.de]} → {nombresAgentes[message.a]}</strong>: {message.motivo}</p>)}
             </details>}

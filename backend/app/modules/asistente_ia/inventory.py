@@ -1,3 +1,4 @@
+from app.agents import activity
 """Herramientas del agente de inventario. Siempre reutilizan rutas y permisos nativos."""
 from datetime import date
 from urllib.parse import urlencode
@@ -40,6 +41,7 @@ def positive(value):
     return value
 
 
+@activity.tool('consultar_inventario')
 def read(session,resource,filters=None):
     from . import tools
     tools.authorize(session,resource)

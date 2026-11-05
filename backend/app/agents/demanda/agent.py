@@ -1,3 +1,4 @@
+from app.agents import activity
 from pathlib import Path
 from app.agents.runtime import run_specialist
 
@@ -26,6 +27,7 @@ Sin ventas o sin datos explica la limitación; no inventes cobertura ni agotamie
 Eres de solo lectura. Compras usa este mismo análisis para explicar una propuesta que la persona revisará.'''
 
 
+@activity.agent('demanda')
 def run(session, instruction, previous='', context='', *, bounded=False, filters=None):
     if bounded:
         from .summary import analyze

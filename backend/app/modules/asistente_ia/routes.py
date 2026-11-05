@@ -3,7 +3,7 @@ import time
 from functools import wraps
 from threading import Lock
 from uuid import UUID
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, current_app
 from io import BytesIO
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app.core.extensions import db
@@ -11,6 +11,7 @@ from app.modules.auth.service import obtener_sesion_actual
 from . import agent, drafts, provider, tools, forms
 from .provider import AssistantError
 from app.agents.orchestrator import communication
+from app.agents import activity
 
 asistente_ia_bp = Blueprint('asistente_ia', __name__)
 MODULOS = {r[0] for r in tools.RESOURCES.values()}
@@ -37,7 +38,32 @@ def secured(function):
         try:
             session, code = obtener_sesion_actual(int(get_jwt_identity()), get_jwt())
             if code != 200: return jsonify(session), code
-            return function(session, *args, **kwargs)
+            if function.__name__ not in ('preparar', 'continuar', 'preparar_formulario'):
+                return function(session, *args, **kwargs)
+            data = request.get_json(silent=True) or {}
+            if not isinstance(data, dict):
+                data = {}
+            token = activity.begin(data.get('instruccion', 'Continuar tarea' if function.__name__ == 'continuar' else 'Revisar formulario'), drafts.scope())
+            try:
+                response = current_app.make_response(function(session, *args, **kwargs))
+                payload = response.get_json() or {}
+                # Direct form shortcuts are programmed routing, not a model handoff.
+                if payload.get('agente'):
+                    activity.emit('ruta_respuesta', a=payload['agente'], mensaje='Área de la respuesta. Los participantes ejecutados se identifican en los eventos de delegación.')
+                payload['actividad'] = activity.finish(payload, response.status_code)
+                if payload['actividad'] is None:
+                    payload.pop('actividad')
+                    payload['nota_actividad'] = 'La respuesta está disponible, pero no se pudo guardar su actividad.'
+                response.set_data(current_app.json.dumps(payload))
+                return response
+            except AssistantError as error:
+                activity.finish({'mensaje': str(error)}, error.status)
+                raise
+            except Exception:
+                activity.finish({'mensaje': 'No se pudo completar la solicitud.'}, 500)
+                raise
+            finally:
+                activity.reset(token)
         except AssistantError as error:
             db.session.rollback()
             return jsonify(mensaje=str(error)), error.status
@@ -45,6 +71,14 @@ def secured(function):
             db.session.rollback()
             return jsonify(mensaje='No se pudo completar la operación. Si estabas confirmando un cambio, revisa el módulo antes de intentarlo otra vez.'), 500
     return wrapped
+
+
+@asistente_ia_bp.get('/actividad/<identity>')
+@secured
+def actividad(session, identity):
+    response = jsonify(activity.load(identity))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 def body(max_bytes=100000):

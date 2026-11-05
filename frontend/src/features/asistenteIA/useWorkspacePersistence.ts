@@ -4,6 +4,10 @@ import { blankWorkspace, type WorkspaceState } from './workspaceState'
 type Status = 'loading' | 'ready' | 'saving' | 'error' | 'conflict' | 'unavailable'
 type Reply = { workspace: WorkspaceState | null; revision: number; mensaje?: string }
 const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+// The authoritative trace stays on the server; recovery saves its reference.
+function serialize(value: unknown) {
+  return JSON.stringify(value, (key, item) => key === 'actividad' && item ? { id: item.id } : item)
+}
 
 export function useWorkspacePersistence(token: string | null, value: WorkspaceState | null,
   restore: (value: WorkspaceState) => void) {
@@ -21,7 +25,7 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
   const ignored = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queue = useRef<Promise<void>>(Promise.resolve())
-  const serialized = JSON.stringify(value)
+  const serialized = serialize(value)
 
   const cancelTimer = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
@@ -45,7 +49,7 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
       }
       if (!response.ok) throw new Error(data.mensaje ?? 'No se pudo recuperar el progreso.')
       if (active.current !== identity) return
-      revision.current = data.revision; saved.current = JSON.stringify(data.workspace)
+      revision.current = data.revision; saved.current = serialize(data.workspace)
       if (data.workspace) { hydrating.current = true; restoreRef.current(data.workspace) }
       phase.current = 'ready'; setStatus('ready'); setMessage(data.mensaje ?? '')
     }).catch(error => {
@@ -64,13 +68,13 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
       if (phase.current === 'unavailable') return
       if (phase.current === 'loading' || phase.current === 'error') throw new Error('El progreso todavía no está disponible. Reintenta la recuperación.')
       if (phase.current === 'conflict') throw new Error('Otra ventana actualizó esta tarea. Recarga el progreso antes de continuar.')
-      const text = JSON.stringify(next)
+      const text = serialize(next)
       if (!force && text === saved.current) return
       phase.current = 'saving'; setStatus('saving')
       try {
         const response = await fetch(`${api}/asistente-ia/workspace`, {
           method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspace: next, revision: revision.current }),
+          body: serialize({ workspace: next, revision: revision.current }),
         })
         const data: Reply = await response.json()
         if (active.current !== identity) return
@@ -109,7 +113,7 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
   const flush = useCallback((next?: WorkspaceState | null) => enqueue(next === undefined ? latest.current : next, true), [enqueue])
   const clear = useCallback(async () => {
     cancelTimer()
-    ignored.current = JSON.stringify(latest.current)
+    ignored.current = serialize(latest.current)
     await enqueue(null, true)
     hydrating.current = false
   }, [enqueue, cancelTimer])

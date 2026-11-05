@@ -1,3 +1,4 @@
+from app.agents import activity
 """Explicit application capabilities; no arbitrary URLs, SQL or code from the model."""
 import json
 import unicodedata
@@ -53,6 +54,7 @@ def authorize(session, resource, action='consultar'):
         raise AssistantError('Tu perfil activo no tiene permiso para ' + action + ' ' + resource.replace('_', ' ') + '.', 403)
 
 
+@activity.tool('ruta_nativa')
 def native(path, method='GET', data=None):
     # Local dispatch reuses the REAL route, JWT decorators, local scope and audit.
     # Only callers below construct paths from RESOURCES + validated integer IDs.
@@ -80,6 +82,7 @@ def normalized(value):
     return ''.join(c for c in unicodedata.normalize('NFD', value.lower()) if not unicodedata.combining(c))
 
 
+@activity.tool('consultar')
 def query(session, resource, search='', offset=0):
     if resource == demand.RESOURCE[0]:return demand.read(session, {'busqueda': search, 'desde_registro': offset})
     if resource in inventory.RESOURCES:return inventory.read(session,resource,{'busqueda':search,'desde_registro':offset})
@@ -119,6 +122,7 @@ def editable(resource, row):
     return result
 
 
+@activity.tool('preparar_cambio')
 def prepare(session, resource, action, identity, changes):
     from . import configuration
     configuration.authorize_owner(resource, action)

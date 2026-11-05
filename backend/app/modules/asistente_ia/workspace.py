@@ -101,12 +101,16 @@ def form(value):
 
 def result(value):
     object_keys(value, ('respuesta', 'borrador', 'consultas', 'agente', 'formulario',
-                        'opciones', 'continuacion', 'flujo_compra', 'tarea_pendiente', 'comunicaciones'))
+                        'opciones', 'continuacion', 'flujo_compra', 'tarea_pendiente', 'comunicaciones', 'actividad', 'nota_actividad'))
     cleaned = {'respuesta': string(value.get('respuesta', '')), 'borrador': None,
                'consultas': plain_json(value.get('consultas', []))}
     if not isinstance(cleaned['consultas'], list):
         invalid()
-    for key in ('agente', 'continuacion', 'flujo_compra', 'tarea_pendiente'):
+    if value.get('actividad'):
+        if not isinstance(value['actividad'], dict):
+            invalid()
+        cleaned['actividad'] = {'id': identity(value['actividad'].get('id'))}
+    for key in ('agente', 'continuacion', 'flujo_compra', 'tarea_pendiente', 'nota_actividad'):
         if key in value:
             cleaned[key] = string(value[key], 80000 if key in ('continuacion', 'flujo_compra') else 8000)
     for key in ('opciones', 'comunicaciones'):
@@ -196,13 +200,17 @@ def sanitize(value):
         if not isinstance(history, list) or len(history) > 10:
             invalid()
         for item in history:
-            object_keys(item, ('prompt', 'response', 'time', 'done', 'queries'))
+            object_keys(item, ('prompt', 'response', 'time', 'done', 'queries', 'actividad'))
             for key in ('prompt', 'response', 'time'):
                 string(item.get(key, ''))
             boolean(item.get('done', False))
             if not isinstance(item.get('queries', []), list):
                 invalid()
             plain_json(item.get('queries', []))
+            if item.get('actividad'):
+                if not isinstance(item['actividad'], dict):
+                    invalid()
+                item['actividad'] = {'id': identity(item['actividad'].get('id'))}
         cleaned['history'] = history
     return cleaned
 
@@ -214,6 +222,16 @@ def restore(session, snapshot):
     if cleaned is None:
         return {'workspace': None}
     messages, rows, states = [], {}, {}
+    from app.agents import activity
+    def refresh_activity(answer):
+        if answer and answer.get('actividad'):
+            try:
+                answer['actividad'] = activity.load(answer['actividad']['id'])
+            except AssistantError:
+                answer.pop('actividad', None)
+    refresh_activity(cleaned.get('result'))
+    for turn in cleaned.get('history', []):
+        refresh_activity(turn)
 
     def check_token(token):
         if token:

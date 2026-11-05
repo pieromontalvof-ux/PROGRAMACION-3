@@ -1,3 +1,4 @@
+from app.agents import activity
 """Formularios del catálogo: opciones reales y propuestas sin llamadas al modelo."""
 import re
 from decimal import Decimal, InvalidOperation
@@ -56,6 +57,7 @@ def category_choice(instruction, previous):
     return 'categorias_carta' if (choice[2] or choice[1]) in ('carta', 'menu') else 'categorias_productos'
 
 
+@activity.tool('abrir_formulario')
 def open_form(session, resource):
     if not isinstance(resource, str) or resource not in TITLES:
         raise AssistantError('Este formulario no está disponible.', 400)

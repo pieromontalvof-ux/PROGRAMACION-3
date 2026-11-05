@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, type SetStateAction } from 'react'
-import type { Consulta, FormularioCatalogo, RespuestaAsistente } from './service'
+import type { ActividadAgentes, Consulta, FormularioCatalogo, RespuestaAsistente } from './service'
 import type { WorkflowSnapshot } from './CatalogWorkflow'
 
 export interface WorkspaceState {
@@ -15,7 +15,7 @@ export interface WorkspaceState {
   confirmed: boolean
   lastPrompt: string
   time: string
-  history: { prompt: string; response: string; time: string; done: boolean; queries: Consulta[] }[]
+  history: { prompt: string; response: string; time: string; done: boolean; queries: Consulta[]; actividad?: ActividadAgentes }[]
   resumeDraft: string | null
   draftId: string | null
   workflow: WorkflowSnapshot | null

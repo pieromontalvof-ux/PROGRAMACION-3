@@ -1,3 +1,4 @@
+from app.agents import activity
 """Bounded, local-only demand capability shared by demand and purchasing agents."""
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -13,6 +14,7 @@ def allowed(session, action='consultar'):
             for m in session['menu']) for menu in (15, 37))
 
 
+@activity.tool('analizar_demanda')
 def read(session, filters=None):
     from . import tools
     tools.authorize(session, RESOURCE[0])

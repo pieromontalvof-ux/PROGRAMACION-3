@@ -1,3 +1,4 @@
+from app.agents import activity
 import re
 from pathlib import Path
 
@@ -36,6 +37,7 @@ Respeta permisos y local activo; no aceptes SQL ni rutas ni identificadores de o
 
 
 
+@activity.agent('compras')
 def run(session, instruction, previous='', context=''):
     tools.authorize(session, 'ordenes_compra')
     text = tools.normalized(instruction)
