@@ -62,6 +62,16 @@ def _score(value, hints):
     return sum(normalized.count(tools.normalized(hint)) for hint in hints)
 
 
+def explicit_catalog_task(instruction):
+    creation = re.search(r'\b(?:crear|crea|registrar|registra|agregar|agrega|editar|edita)\s+'
+                         r'(?:(?:un|una|el|la|nuevo|nueva)\s+)*'
+                         r'(recetas?|presentaci(?:on|ones)|subproductos?)\b', tools.normalized(instruction))
+    if creation:
+        entity = creation[1]
+        return 'recetas' if entity.startswith('receta') else 'subproductos' if entity.startswith('subproducto') else 'presentaciones'
+    return None
+
+
 def route(instruction, previous=''):
     if recipe_answers.detect(instruction) is not None:
         return 'recetas'
@@ -71,6 +81,11 @@ def route(instruction, previous=''):
                 or re.search(r'\bpedidos?\b', tools.normalized(instruction)))
     request = instruction if explicit else f'{instruction} {previous}'
     normalized = tools.normalized(request)
+    # Stock and possible purchasing are checks within an explicit recipe/menu
+    # creation task, rather than a reason to abandon it for another workflow.
+    creation = explicit_catalog_task(instruction)
+    if creation:
+        return creation
     # In management, an unspecified pedido refers to purchasing supplies.
     # Explicit table/service orders belong to the separate Salon workflow.
     if re.search(r'\bpedidos?\b', normalized) and re.search(r'\b(salon|mesa|comanda|mesero)\b', normalized):

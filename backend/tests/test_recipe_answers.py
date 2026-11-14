@@ -90,6 +90,13 @@ class RecipeAnswersTests(unittest.TestCase):
         from app.agents.orchestrator import recipe_answers
         self.assertIsNone(recipe_answers.detect('editar receta de hamburguesa'))
 
+    def test_registering_a_recipe_is_not_mistaken_for_reading_an_existing_one(self):
+        from app.agents.orchestrator import recipe_answers
+        for instruction in ('Quiero registrar la receta de una bebida nueva llamada Maracuyá especial',
+                            'Registra una receta de maracuyá; primero revisa el insumo y su proveedor'):
+            with self.subTest(instruction=instruction):
+                self.assertIsNone(recipe_answers.detect(instruction))
+
     def test_operational_preparation_is_not_a_cooking_question(self):
         from app.agents.orchestrator import recipe_answers
         for instruction in ('como preparo un pedido', 'como se hace un conteo', 'como se prepara una orden de compra'):

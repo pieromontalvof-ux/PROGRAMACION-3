@@ -104,6 +104,9 @@
 .assistant-data-table thead th { font-size: 11px; font-weight: 600; }
 .assistant-data-table tbody th { font-weight: 500; min-width: 155px; }
 .assistant-data-table tbody tr:last-child>* { border-bottom: 0; }
+.assistant-event-details { margin-top: 16px; border-top: 1px solid var(--ui-border); padding-top: 12px; }
+.assistant-event-details > summary { cursor: pointer; color: var(--ui-muted); font-size: 13px; padding: 8px 0; }
+.assistant-event-details[open] > summary { margin-bottom: 12px; }
 .assistant-stock-card { margin: 16px 0 22px; border: 1px solid var(--ui-border); border-radius: 13px; overflow: hidden; background: var(--ui-surface); }
 .assistant-stock-card>header { display: flex; gap: 13px; align-items: center; padding: 18px; background: var(--ui-surface); }
 .assistant-stock-card>header h3 { margin: 0 0 4px; font-size: 18px; }
@@ -161,3 +164,5 @@
 .assistant-agent-activity-body li p { margin: 6px 0; white-space: pre-wrap; }
 .assistant-agent-activity-body pre { white-space: pre-wrap; overflow-wrap: anywhere; background: white; padding: 10px; border-radius: 8px; font-size: 12px; }
 .assistant-activity-meta { font-size: 12px; color: #416350; }
+.assistant-optional-sheet { border: 1px solid var(--ai-border); border-radius: 12px; padding: 14px; margin: 14px 0; }
+.assistant-optional-sheet > summary { cursor: pointer; color: var(--ai-green); font-weight: 600; min-height: 30px; }

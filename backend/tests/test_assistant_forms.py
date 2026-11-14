@@ -87,7 +87,7 @@ class AssistantFormTests(unittest.TestCase):
             for question in (first.json['respuesta'],
                              '¿La categoría es para productos de inventario o para artículos de la carta?'):
                 result = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
-                    json={'instruccion': 'ES PARA PRODUCTO', 'borrador_previo': question})
+                    json={'instruccion': 'ES PARA PRODUCTO', 'borrador_previo': question, 'modo': 'formulario'})
                 self.assertEqual(result.status_code, 200)
                 self.assertEqual(result.json['formulario']['recurso'], 'categorias_productos')
         model.assert_not_called()
@@ -185,7 +185,7 @@ class AssistantFormTests(unittest.TestCase):
              patch.object(routes.agent, 'run') as model, \
              patch.object(routes.drafts, 'save') as save:
             result = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
-                json={'instruccion': 'crear proveedor', 'borrador_previo': 'Consulta anterior'})
+                json={'instruccion': 'crear proveedor', 'borrador_previo': 'Consulta anterior', 'modo': 'formulario'})
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json['formulario']['proveedores'], [SUPPLIER])
         self.assertIsNone(result.json['borrador'])

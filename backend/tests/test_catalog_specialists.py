@@ -24,7 +24,10 @@ class CatalogSpecialistTests(unittest.TestCase):
                 agent.run({'menu': []}, 'Consulta')
                 definitions = {t['name']: t for t in model.call_args.args[1]}
                 self.assertEqual(definitions['preparar_cambio']['parameters']['properties']['recurso']['enum'], [agent.resource])
-                self.assertEqual(definitions['consultar']['parameters']['properties']['recurso']['enum'], list(agent.resources))
+                catalog_reads = definitions['consultar']['parameters']['properties']['recurso']['enum']
+                inventory_reads = definitions.get('consultar_inventario', {}).get('parameters', {}).get('properties', {}).get('recurso', {}).get('enum', [])
+                self.assertEqual(set(catalog_reads + inventory_reads), set(agent.resources))
+                self.assertNotIn('stock', catalog_reads)
                 if agent.resource in ('categorias_carta', 'menajes', 'presentaciones'):
                     self.assertEqual(definitions['abrir_formulario']['parameters']['properties']['recurso']['enum'], [agent.resource])
                 else:

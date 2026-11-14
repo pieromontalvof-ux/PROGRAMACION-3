@@ -1,9 +1,15 @@
 """OpenAI transport. Secrets and provider error bodies never leave this module."""
 import json
 import os
+import logging
+import socket
+import ssl
+import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class AssistantError(ValueError):
@@ -17,6 +23,33 @@ def configured():
     return bool(os.getenv('OPENAI_API_KEY', '').strip())
 
 
+def _open_connection(req, timeout):
+    """Recover brief transport failures within the original request budget."""
+    deadline = time.monotonic() + timeout
+    for attempt in range(3):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError()
+        try:
+            return urlopen(req, timeout=remaining)
+        except HTTPError:
+            # Provider responses (including auth/quota errors) are not a
+            # connection failure and must retain their existing handling.
+            raise
+        except (URLError, OSError) as error:
+            reason = error.reason if isinstance(error, URLError) else error
+            permanent = isinstance(reason, ssl.SSLCertVerificationError) or (
+                isinstance(reason, socket.gaierror) and reason.errno in (socket.EAI_NONAME, 11001))
+            delay = .25 * (2 ** attempt)
+            retry = attempt < 2 and not permanent and deadline - time.monotonic() > delay
+            # Never log error text: it can contain URLs, credentials or data.
+            logger.warning('OpenAI connection failure attempt=%s category=%s errno=%s retry=%s',
+                           attempt + 1, type(reason).__name__, getattr(reason, 'errno', None), retry)
+            if not retry:
+                raise
+            time.sleep(delay)
+
+
 def call(path, body, content_type='application/json', timeout=60):
     key = os.getenv('OPENAI_API_KEY', '').strip()
     if not key:
@@ -24,7 +57,7 @@ def call(path, body, content_type='application/json', timeout=60):
     req = Request('https://api.openai.com/v1/' + path, data=body, headers={
         'Authorization': 'Bearer ' + key, 'Content-Type': content_type})
     try:
-        with urlopen(req, timeout=timeout) as response:
+        with _open_connection(req, timeout=timeout) as response:
             return json.load(response)
     except HTTPError as error:
         messages = {401: 'La clave de OpenAI no es válida. Revisa la configuración del backend.',

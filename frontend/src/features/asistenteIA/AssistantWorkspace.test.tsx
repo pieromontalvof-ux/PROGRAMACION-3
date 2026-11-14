@@ -49,6 +49,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('assistant confirmed workflow continuation', () => {
+  it('keeps chat as default and opens an optional sheet prefilled from the proposal', async () => {
+    const result: RespuestaAsistente = { respuesta: 'Revisa.', consultas: [], agente: 'menajes', borrador: {
+      id_borrador: 'sheet-draft', recurso: 'menajes', accion: 'crear', id: null,
+      datos: { nombre: 'Vaso especial' }, vista: { nombre: 'Vaso especial' }, anterior: null } }
+    mocks.request.mockImplementation(async (_token, route) => route === 'preparar' ? result : {
+      formulario: { recurso: 'menajes', titulo: 'Crear menaje', categorias: [], proveedores: [],
+        unidades_medida: [], categorias_proveedor_configurables: false, dependencias_creables: [], menajes: [], items: [], tipos: [] } })
+    render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+    const input = await screen.findByRole('textbox', { name: 'Consulta o corrección' })
+    await waitFor(() => expect(input.hasAttribute('disabled')).toBe(false))
+    fireEvent.change(input, { target: { value: 'Crear menaje Vaso especial' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await screen.findByRole('button', { name: 'Editar ficha (opcional)' })
+    expect(mocks.request.mock.calls[0][2].modo).toBe('conversacion')
+    expect(screen.queryByRole('textbox', { name: 'Nombre' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar ficha (opcional)' }))
+    const name = await screen.findByRole('textbox', { name: 'Nombre' }) as HTMLInputElement
+    expect(name.value).toBe('Vaso especial')
+    expect(screen.getByRole('button', { name: 'Realizar' }).hasAttribute('disabled')).toBe(true)
+    expect(mocks.request.mock.calls.map(call => call[1])).toEqual(['preparar', 'formulario'])
+  })
   it('sends a typed query with Enter', async () => {
     mocks.request.mockResolvedValue({ respuesta: 'Consulta recibida.', consultas: [], borrador: null })
     render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)

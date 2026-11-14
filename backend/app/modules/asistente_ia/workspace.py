@@ -140,13 +140,15 @@ def workflow(value):
         invalid()
     cleaned = {'frames': [], 'proposal': None, 'saved': None, 'dirty': boolean(value.get('dirty', False))}
     fields = {'nombre', 'prefijo', 'categorias', 'proveedor', 'categoria', 'unidad',
-              'contenido', 'item', 'tipo', 'menaje', 'precio'}
+              'contenido', 'item', 'tipo', 'menaje', 'precio', 'activo'}
     for frame in frames:
         object_keys(frame, ('form', 'values', 'version'))
         values = frame.get('values', {})
         object_keys(values, fields)
         for key, child in values.items():
-            if key == 'categorias':
+            if key == 'activo':
+                boolean(child)
+            elif key == 'categorias':
                 if not isinstance(child, list) or len(child) > 1000:
                     invalid()
                 for item in child:

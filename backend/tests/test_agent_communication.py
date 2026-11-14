@@ -201,7 +201,7 @@ class AgentCommunicationTests(unittest.TestCase):
              patch.object(routes.drafts, 'save', return_value='11111111-1111-4111-8111-111111111111'), \
              patch.object(routes.drafts, 'load') as stored:
             first = client.post('/api/asistente-ia/preparar', headers=headers,
-                                json={'instruccion': 'Crear receta de hamburguesa'})
+                                json={'instruccion': 'Crear receta de hamburguesa', 'modo': 'formulario'})
             self.assertEqual(first.status_code, 200)
             continuation = first.json['continuacion']
             review = client.post('/api/asistente-ia/formulario/preparar', headers=headers,
@@ -231,7 +231,7 @@ class AgentCommunicationTests(unittest.TestCase):
              patch('app.modules.asistente_ia.provider.respond', return_value=[call]) as model:
             response = self.app.test_client().post('/api/asistente-ia/preparar',
                 headers={'Authorization': 'Bearer ' + token}, json={
-                    'instruccion': 'Crear presentación de venta pero no existe el menaje, quiero crearlo'})
+                    'instruccion': 'Crear presentación de venta pero no existe el menaje, quiero crearlo', 'modo': 'formulario'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json['agente'], 'menajes')
         self.assertIn('continuacion', response.json)

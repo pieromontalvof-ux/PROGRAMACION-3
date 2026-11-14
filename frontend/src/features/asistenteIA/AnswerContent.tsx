@@ -9,9 +9,16 @@ const number = (value: unknown) => typeof value === 'number'
 
 export function AnswerContent({ text, queries = [] }: { text: string; queries?: Consulta[] }) {
   const last = queries.at(-1)
-  const fallback = <FormattedAnswer text={text} />
+  const eventReport = queries.filter(q => q.recurso === 'eventos_cercanos').at(-1)?.registros[0]
+  const fallback = <>
+    <FormattedAnswer text={text} />
+    {typeof eventReport?.detalle === 'string' && eventReport.detalle && <details className="assistant-event-details">
+      <summary>Ver revisión de eventos</summary>
+      <FormattedAnswer text={eventReport.detalle} />
+    </details>}
+  </>
   if (last?.recurso === 'recetas') return <RecipeCards queries={queries} fallback={fallback} />
-  if (last?.recurso !== 'stock' || !last.registros.length) return fallback
+  if (last?.recurso !== 'stock' || eventReport || !last.registros.length) return fallback
 
   // Keep the most recent result and its preceding pages, not earlier searches.
   const pages = [last]

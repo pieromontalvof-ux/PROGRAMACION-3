@@ -7,6 +7,20 @@ reintentar explícitamente o continuar sin repetir búsquedas automáticamente.
 Ofrece opciones: analizar ventas de un evento pasado parecido, analizar desde la
 última orden enviada del local, consultar duración del stock o continuar al pedido.
 No es obligatorio hacer todos los análisis y se puede preguntar por chat entre pasos.
+Si el usuario ya pidió analizar ventas, stock o reposición, continúa esas lecturas
+después de los eventos sin volver a preguntarle si desea analizarlos. Usa el período
+explícito de ventas o los últimos 30 días del análisis nativo e informa el rango.
+Después muestra la base nativa de reposición sin incremento como referencia, no como
+un margen elegido. Pregunta entonces el porcentaje pendiente; si ya lo dio, consérvalo.
+No prepares ni guardes una orden durante esta revisión de solo lectura.
+Usa sede y dirección de la sesión sin pedirlos de nuevo. Si se solicitan eventos
+sin período, pregunta hasta qué fecha buscar y conserva el pedido original al continuar.
+Si el período ya está indicado, busca directamente y respétalo. Mantén la tabla
+de eventos con fechas, fuentes y cercanía en la respuesta principal del análisis.
+Resume eventos sin cercanía verificada en una frase; conserva fuentes y detalles
+en las consultas. No llenes la respuesta con referencias lejanas o no verificadas.
+Un fallo de Eventos no detiene el análisis interno autorizado. Reintentar Eventos
+es una decisión explícita y no debe repetir automáticamente los análisis ya completados.
 
 No hay un archivo que relacione eventos con ventas. Para comparar un evento pasado,
 pide fechas explícitas; Demanda consulta las ventas y el consumo de ese rango sin

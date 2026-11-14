@@ -14,7 +14,7 @@ def detect(instruction):
     value = tools.normalized(instruction).strip()
     if re.fullmatch(SELECT, value):
         return value
-    if re.search(r'\b(crear|crea|editar|edita|modificar|modifica|actualizar|actualiza|cambiar|cambia|agregar|agrega)\b', value):
+    if re.search(r'\b(crear|crea|registrar|registra|anadir|anade|editar|edita|modificar|modifica|actualizar|actualiza|cambiar|cambia|agregar|agrega)\b', value):
         return None
     value = re.sub(r'\b(?:preapra|preprar|preaparar)\b', 'prepara', value)
     match = re.search(r'\b(?:como\s+(?:se\s+)?(?:prepara[rs]?|prepra|preparo|hace[rs]?|hago|cocina[rs]?|cocino|elabora[rs]?)|quiero\s+(?:hacer|preparar|cocinar|elaborar)|preparacion\s+de|ingredientes\s+(?:de|para)|receta\s+de)\s+(.+)', value)

@@ -11,5 +11,8 @@ SKILLS = tuple(Path(__file__).parents[2] / 'modules' / 'asistente_ia' / 'skills'
 
 @activity.agent('carta_recetas')
 def run(session, instruction, previous='', context=''):
-    instructions = INSTRUCTIONS + '\nPara crear categorías de productos, proveedores o productos, usa abrir_formulario para recoger datos del usuario. No hagas un cuestionario de texto si puedes abrir el formulario.'
+    from app.modules.asistente_ia import forms
+    instructions = INSTRUCTIONS + ('\nGestiona categorías, proveedores y productos por conversación: revisa coincidencias '
+        'y requisitos reales, conserva los datos recibidos y prepara una ficha de revisión. No impongas formularios.'
+        if forms.prefers_chat() else '\nSi el usuario eligió el formulario, usa abrir_formulario para recoger los datos.')
     return run_specialist(session, instruction, previous, context, RESOURCES, instructions, SKILLS)

@@ -4,6 +4,7 @@ import { Bot, Send, ShieldCheck, Sparkles, UserRound, Plus, PencilLine, CheckChe
 import { useAuth } from '../../context/AuthContext'
 import { obtenerEstadoAsistente, solicitar, type EstadoAsistente, type RespuestaAsistente } from './service'
 import { CatalogWorkflow, type WorkflowSnapshot } from './CatalogWorkflow'
+import { valuesFromProposal } from './CatalogForm'
 import { useWorkspaceState, hasWorkspace, normalizeWorkspace } from './workspaceState'
 import { useWorkspacePersistence } from './useWorkspacePersistence'
 import { nombresAgentes } from './service'
@@ -35,6 +36,7 @@ export function AssistantWorkspace() {
   const [voiceBusy, setVoiceBusy] = useState(false)
   const [workflowBusy, setWorkflowBusy] = useState(false)
   const [dependencyOpen, setDependencyOpen] = useState(false)
+  const [formPanelOpen, setFormPanelOpen] = useState(false)
   const [checked, setChecked] = useState(false)
   const [editing, setEditing] = useState(false)
   const latest = useRef<HTMLDivElement>(null)
@@ -88,6 +90,7 @@ export function AssistantWorkspace() {
       const old = result?.borrador?.id_borrador
       if (result) setResult({ ...result, borrador: null })
       const data = await solicitar<RespuestaAsistente>(token!, 'preparar', {
+        modo: 'conversacion',
         instruccion: prompt || 'Prepara nuevamente este borrador con las correcciones del texto.',
         borrador_previo: confirmed ? `YA REALIZADO: ${review}` : review, contexto_previo: context, reemplaza: old,
         continuacion: continuation,
@@ -105,6 +108,19 @@ export function AssistantWorkspace() {
       setResult(data); setReview(text); setOriginal(text); setInstruction(''); setConfirmed(false)
       setContinuation(data.continuacion); setResumeDraft(null)
       setCatalogForm(data.formulario ?? null); setWorkflow(null); setDraftId(data.borrador?.id_borrador ?? null); setFormVersion(v => v + 1); setFormDirty(false)
+      setFormPanelOpen(false)
+    })
+  }
+
+  function editProposalInSheet() {
+    const draft = result?.borrador
+    if (!draft || draft.accion !== 'crear' || !['productos', 'proveedores', 'categorias_productos', 'categorias_carta', 'menajes', 'presentaciones'].includes(draft.recurso)) return
+    void action(async signal => {
+      const data = await solicitar<{ formulario: import('./service').FormularioCatalogo }>(token!, 'formulario', { recurso: draft.recurso }, signal)
+      if (!alive.current) return
+      setCatalogForm(data.formulario); setWorkflow({ frames: [{ form: data.formulario, values: valuesFromProposal(draft.datos), version: 0 }],
+        proposal: null, dirty: false, saved: null, draftId: null })
+      setFormVersion(v => v + 1); setFormPanelOpen(true)
     })
   }
 
@@ -214,19 +230,22 @@ export function AssistantWorkspace() {
             <header className="assistant-answer-heading"><h2>{confirmed ? 'Cambio realizado' : result?.borrador ? 'Propuesta de Barbarito' : 'Respuesta de Barbarito'}</h2>
               {result?.agente && <small className="assistant-agent-label">{nombresAgentes[result.agente]}</small>}
               <time>{time}</time></header>
-            <p className="assistant-answer-caption">{result?.borrador ? 'Revisa los datos antes de confirmar. Puedes corregir o añadir instrucciones.' : 'Aquí tienes la información solicitada. Puedes continuar la conversación abajo.'}</p>
+            {result?.borrador && <p className="assistant-answer-caption">Revisa la propuesta o indica tus cambios por chat.</p>}
             {result?.actividad && token && <AgentActivity activity={result.actividad} token={token} />}
             {result?.nota_actividad && <p className="assistant-note" role="status">{result.nota_actividad}</p>}
-            {Boolean(result?.comunicaciones?.length) && <details className="assistant-access"><summary>Colaboración entre agentes</summary>
+            {!result?.actividad && Boolean(result?.comunicaciones?.length) && <details className="assistant-access"><summary>Colaboración entre agentes</summary>
               {result?.comunicaciones?.map((message, index) => <p key={index}><strong>{nombresAgentes[message.de]} → {nombresAgentes[message.a]}</strong>: {message.motivo}</p>)}
             </details>}
-            {result?.tarea_pendiente && <p className="assistant-note">Después de este requisito retomaremos: {result.tarea_pendiente}</p>}
+            {result?.tarea_pendiente && <details className="assistant-pending-task"><summary>Solicitud original conservada</summary><p>{result.tarea_pendiente}</p></details>}
             {resumeDraft && <button className="assistant-secondary" disabled={locked} onClick={() => { void action(signal => resumeTask(resumeDraft, signal)) }}>Retomar tarea pendiente</button>}
-            {catalogForm && token && <CatalogWorkflow key={formVersion} token={token} form={catalogForm} disabled={busy || voiceBusy}
+            {catalogForm && token && <details className="assistant-optional-sheet" open={formPanelOpen} onToggle={e => setFormPanelOpen(e.currentTarget.open)}>
+              <summary>Ficha editable (opcional)</summary>
+              <CatalogWorkflow key={formVersion} token={token} form={catalogForm} disabled={busy || voiceBusy}
               onChange={() => { setFormDirty(true); setChecked(false) }} onReview={reviewForm} onInvalidate={invalidateFormProposal}
               initialSnapshot={workflow} onSnapshot={setWorkflow}
               onCheckpoint={async (snapshot: WorkflowSnapshot) => { setWorkflow(snapshot); await progress.flush({ ...state, workflow: snapshot }) }}
-              onNestedChange={setDependencyOpen} onBusy={setWorkflowBusy} onSaved={message => { setSuccess(message); setContext(current => `${current}\nREQUISITO CREADO: ${message}`.slice(-16000)) }} />}
+              onNestedChange={setDependencyOpen} onBusy={setWorkflowBusy} onSaved={message => { setSuccess(message); setContext(current => `${current}\nREQUISITO CREADO: ${message}`.slice(-16000)) }} />
+            </details>}
             {editing ? <div className="assistant-editor"><label htmlFor="assistant-review">Editar resumen</label>
               <textarea id="assistant-review" rows={7} maxLength={16000} disabled={locked} value={review} onChange={e => { setReview(e.target.value); setChecked(false) }} />
               <small>Pulsa Enviar para preparar una nueva propuesta con tus correcciones.</small></div> :
@@ -238,6 +257,9 @@ export function AssistantWorkspace() {
             </div>}
             {result?.borrador && <section className="assistant-proposal"><header><span className="assistant-eyebrow">{etiqueta(result.borrador.accion)}</span><h3>{etiqueta(result.borrador.recurso)}</h3></header>
               <ReviewDetails value={result.borrador.vista} />
+              {!catalogForm && result.borrador.accion === 'crear' && ['productos', 'proveedores', 'categorias_productos', 'categorias_carta', 'menajes', 'presentaciones'].includes(result.borrador.recurso) &&
+                <button className="assistant-secondary" disabled={locked} onClick={editProposalInSheet}>Editar ficha (opcional)</button>}
+              <p className="assistant-note">Puedes corregir esta propuesta por conversación antes de confirmar.</p>
               {result.borrador.recurso === 'presentaciones' && <p className="assistant-note">Nombre, tipo y categoría se comparten con las demás presentaciones del artículo.</p>}
               {result.borrador.anterior && <details><summary>Ver datos antes del cambio</summary><ReviewDetails value={result.borrador.anterior} /></details>}
             </section>}

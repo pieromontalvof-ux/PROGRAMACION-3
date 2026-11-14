@@ -24,6 +24,7 @@ def _skills(paths, labels):
 def catalog():
     identities = ['carta_recetas', 'inventario', 'compras', 'eventos', 'recepcion', 'demanda', *SPECIALISTS]
     owners = {resource: 'carta_recetas' for resource in catalog_agent.RESOURCES}
+    owners.update({resource: 'inventario' for resource in inventory_agent.RESOURCES})
     owners.update({specialist.resource: specialist.identity for specialist in SPECIALISTS.values()})
     connections = [
         {'origen': 'orquestador', 'destino': identity, 'tipo': 'coordinacion'}
@@ -32,11 +33,12 @@ def catalog():
     connections.extend(
         {'origen': specialist.identity, 'destino': owner, 'tipo': 'dependencia'}
         for specialist in SPECIALISTS.values()
-        for owner in dict.fromkeys(owners[resource] for resource in specialist.dependencies if resource in owners)
+        for owner in dict.fromkeys(owners[resource] for resource in (*specialist.dependencies, *specialist.read_resources) if resource in owners)
         if owner != specialist.identity
     )
     connections.append({'origen': 'compras', 'destino': 'demanda', 'tipo': 'dependencia'})
     connections.append({'origen': 'compras', 'destino': 'eventos', 'tipo': 'dependencia'})
+    connections.append({'origen': 'compras', 'destino': 'inventario', 'tipo': 'dependencia'})
     return {
         'conexiones': connections,
         'coordinador': {
@@ -69,7 +71,7 @@ def catalog():
             {
                 'id': 'compras', 'nombre': 'Compras y reposición',
                 'descripcion': 'Participa en el flujo guiado: eventos, análisis opcionales, consultas y margen elegido antes de preparar el pedido.',
-                'relaciones': ['orquestador', 'demanda', 'eventos'],
+                'relaciones': ['orquestador', 'demanda', 'eventos', 'inventario'],
                 'herramientas': ['consultar', 'formulario', 'preparar_cambio', 'analizar_demanda'],
                 'recursos': list(purchase_agent.RESOURCES),
                 'instrucciones': purchase_agent.INSTRUCTIONS,
@@ -109,12 +111,13 @@ def catalog():
                 'id': specialist.identity, 'nombre': specialist.name,
                 'descripcion': specialist.description, 'relaciones': ['orquestador'],
                 'herramientas': ['consultar', 'preparar_cambio'] +
+                                (['revisar_insumo', 'consultar_inventario'] if 'stock' in specialist.read_resources else []) +
                                 (['solicitar_especialista'] if specialist.dependencies else []) +
                                 (['abrir_formulario'] if specialist.resource in ('categorias_carta', 'menajes', 'presentaciones') else []) +
                                 (['formulario'] if specialist.resource in ('presentaciones', 'subproductos', 'recetas', 'promociones') else []),
                 'recursos': list(specialist.resources),
                 'recursos_modificables': [specialist.resource],
-                'recursos_solo_consulta': list(specialist.dependencies),
+                'recursos_solo_consulta': list(dict.fromkeys((*specialist.dependencies, *specialist.read_resources))),
                 'instrucciones': specialist.instructions,
                 'skills': _skills(specialist.skills, [specialist.name]),
             } for specialist in SPECIALISTS.values()],

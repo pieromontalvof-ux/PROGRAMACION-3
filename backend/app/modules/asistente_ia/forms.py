@@ -1,6 +1,7 @@
 from app.agents import activity
 """Formularios del catálogo: opciones reales y propuestas sin llamadas al modelo."""
 import re
+from flask import has_request_context, request
 from decimal import Decimal, InvalidOperation
 
 from . import tools
@@ -11,6 +12,19 @@ TITLES = {'categorias_productos': 'Crear categoría de productos',
           'categorias_carta': 'Crear categoría de carta', 'menajes': 'Crear menaje',
           'presentaciones': 'Crear presentación de venta'}
 CATEGORY_QUESTION = '¿Quieres crear una categoría de productos o una categoría de carta?'
+
+
+def prefers_chat():
+    """Chat endpoints default to conversation; native manual forms remain available."""
+    if not has_request_context() or request.path not in ('/api/asistente-ia/preparar', '/api/asistente-ia/continuar'):
+        return False
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or data.get('modo') == 'formulario':
+        return False
+    instruction = data.get('instruccion', '')
+    if isinstance(instruction, str) and re.search(r'\b(?:abrir|abre|usar|usa|ver|mostrar|muestra|completar)\s+(?:(?:el|la|un|una)\s+)?(?:formulario|ficha)\b', tools.normalized(instruction)):
+        return False
+    return True
 
 
 def detect(instruction):

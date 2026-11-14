@@ -4,6 +4,9 @@ import { nombresAgentes, obtenerActividad, type ActividadAgentes, type AgenteId 
 
 const name = (id: string) => nombresAgentes[id as AgenteId] ?? id
 const labels: Record<string, string> = { agente_inicio: 'Inicio', agente_fin: 'Resultado del agente', agente_error: 'Error del agente', delegacion: 'Delegación', retorno: 'Entrega de resultado', mensaje_entre_agentes: 'Mensaje entre agentes', herramienta_inicio: 'Herramienta invocada', herramienta_fin: 'Resultado de herramienta', respuesta_final: 'Respuesta final', ruta_respuesta: 'Área de respuesta' }
+labels.ejecucion_incompleta = 'Tarea pendiente'
+labels.consulta_reutilizada = 'Consulta ya realizada'
+labels.paso_requisito = 'Requisito del catálogo'
 export function AgentActivity({ activity, token }: { activity: ActividadAgentes; token: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')

@@ -1,5 +1,6 @@
 """Authenticated assistant: read, review, confirm; model never executes writes."""
 import time
+import json
 from functools import wraps
 from threading import Lock
 from uuid import UUID
@@ -255,6 +256,8 @@ def documento_agente(session, agent_id, document_id):
 @secured
 def preparar(session):
     data = body()
+    if data.get('modo', 'conversacion') not in ('conversacion', 'formulario'):
+        raise AssistantError('Selecciona conversación o formulario.')
     instruction, previous = data.get('instruccion'), data.get('borrador_previo', '')
     context = data.get('contexto_previo', '')
     if not isinstance(context, str) or len(context) > 16000:
@@ -262,11 +265,26 @@ def preparar(session):
     if not isinstance(instruction, str) or not 1 <= len(instruction.strip()) <= 8000 or not isinstance(previous, str) or len(previous) > 16000:
         raise AssistantError('Escribe una instrucción de hasta 8000 caracteres.')
     limit()
+    state = communication.load(data['continuacion']) if data.get('continuacion') else None
+    if state is None:
+        target = forms.detect(instruction)
+        if target in forms.TITLES:
+            from . import configuration
+            configuration.authorize_owner(target, 'crear')
+            tools.authorize(session, target, 'crear')
     if data.get('reemplaza'):
         drafts.cancel(identity(data['reemplaza']))
     db.session.rollback()
-    if data.get('continuacion'):
-        state = communication.load(data['continuacion'])
+    if forms.prefers_chat() and (state is None or not state.get('conversacion')):
+        from app.agents.orchestrator import presentation_advice
+        advice = presentation_advice.run(session, instruction)
+        if advice is not None:
+            references = advice.pop('_referencias_revisadas')
+            reviewed = json.dumps({'contexto_previo': context[-6000:], 'opciones_revisadas': references}, ensure_ascii=False)
+            # A full new specification replaces a previous form-oriented task.
+            result = communication.coordinate(session, advice, instruction, previous, reviewed, objective='presentaciones')
+            return finish_result(session, result)
+    if state is not None:
         result = communication.invoke(session, state['actual'], instruction, previous, context)
         result = communication.coordinate(session, result, instruction, previous, context, state)
         return finish_result(session, result)
@@ -286,15 +304,19 @@ def preparar(session):
         if not options:
             raise AssistantError('Tu perfil no tiene permiso para crear categorías.', 403)
         return jsonify(respuesta=forms.CATEGORY_QUESTION, opciones=options, consultas=[], borrador=None, agente='orquestador')
-    if resource:
+    if resource and not forms.prefers_chat():
         return jsonify(respuesta='Completa el formulario y revisa la propuesta antes de realizar el cambio.',
                        formulario=forms.open_form(session, resource), consultas=[], borrador=None,
                        agente=resource if resource in ('categorias_carta', 'menajes', 'presentaciones') else 'carta_recetas')
     from app.agents.orchestrator import purchase_flow
     result = purchase_flow.handle(session, instruction, previous, context, data.get('flujo_compra'))
     if result is None:
-        result = agent.run(session, instruction, previous, context)
-    if result.get('traspaso'):
+        routed_instruction = instruction
+        if resource and forms.detect(instruction) is None:
+            routed_instruction = forms.TITLES[resource] + '. Aclaración del usuario: ' + instruction
+        result = agent.run(session, routed_instruction, previous, context)
+    from app.agents.catalog_specialists import SPECIALISTS
+    if result.get('traspaso') or (forms.prefers_chat() and result.get('agente') in ('carta_recetas', *SPECIALISTS)):
         result = communication.coordinate(session, result, instruction, previous, context)
     return finish_result(session, result)
 

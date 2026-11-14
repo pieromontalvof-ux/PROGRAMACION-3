@@ -184,7 +184,7 @@ class PurchaseAssistantTests(unittest.TestCase):
             with self.assertRaises(AssistantError):
                 search_response({'input': 'eventos'})
         call.assert_called_once()
-        self.assertEqual(call.call_args.kwargs['timeout'], 30)
+        self.assertEqual(call.call_args.kwargs['timeout'], 60)
 
     def test_failed_search_does_not_call_model_to_rewrite_static_error(self):
         from app.agents.eventos.agent import run
@@ -202,10 +202,10 @@ class PurchaseAssistantTests(unittest.TestCase):
             events('quiero hacer un pedido', local=LOCAL)
         payload = json.loads(call.call_args.args[1])
         self.assertEqual(payload['reasoning'], {'effort': 'low'})
-        self.assertEqual(payload['max_tool_calls'], 3)
-        self.assertEqual(payload['tools'][0]['search_context_size'], 'low')
-        self.assertLessEqual(payload['max_output_tokens'], 2200)
-        self.assertIn('4 eventos', payload['input'])
+        self.assertEqual(payload['max_tool_calls'], 4)
+        self.assertEqual(payload['tools'][0]['search_context_size'], 'medium')
+        self.assertLessEqual(payload['max_output_tokens'], 3200)
+        self.assertIn('6 eventos', payload['input'])
 
     def test_configuration_failure_is_not_retried(self):
         from app.agents.eventos.agent import search_response
@@ -235,7 +235,7 @@ class PurchaseAssistantTests(unittest.TestCase):
              'text': f'Evento — Recinto — 17/10 20:30 — [Más información]({url})', 'annotations': []}]}]}
         with patch('app.modules.asistente_ia.provider.call', return_value=response):
             report = events(local=LOCAL)
-        self.assertEqual(report['estado'], 'consultado')
+        self.assertEqual(report['estado'], 'parcial')
         self.assertEqual(report['fuentes'][0]['url'], url)
 
     def test_unsearched_link_does_not_become_verified_source(self):

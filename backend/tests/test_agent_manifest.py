@@ -31,10 +31,14 @@ class AgentManifestGraphTests(unittest.TestCase):
                         for edge in catalog().get('conexiones', []) if edge['tipo'] == 'dependencia'}
         self.assertEqual(dependencies, {
             ('compras', 'demanda'), ('compras', 'eventos'),
+            ('compras', 'inventario'),
             ('presentaciones', 'categorias_carta'), ('presentaciones', 'menajes'),
             ('subproductos', 'carta_recetas'), ('recetas', 'presentaciones'),
             ('recetas', 'carta_recetas'), ('recetas', 'subproductos'),
             ('promociones', 'presentaciones'),
+            ('presentaciones', 'carta_recetas'), ('presentaciones', 'inventario'),
+            ('recetas', 'inventario'), ('subproductos', 'inventario'),
+            ('presentaciones', 'recetas'), ('presentaciones', 'subproductos'),
         })
 
     def test_dependency_changes_in_canonical_specialist_reach_manifest(self):

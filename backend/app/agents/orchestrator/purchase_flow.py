@@ -50,6 +50,8 @@ def last_order_date():
 
 def margin(instruction, bare=False):
     normalized = tools.normalized(instruction)
+    # A prohibition on saving/sending is not a refusal of a chosen percentage.
+    normalized = re.sub(r'\bno\s+(?:confirmes|envies|guardes|ejecutes)\b[^.;!?]*', '', normalized)
     if '?' in normalized or re.search(r'^(?:¿|que\b|como\b|cuanto\b|y si\b)', normalized.strip()) or re.search(r'\b(no|pasaria|ejemplo|supongamos)\b', normalized):
         return None
     if any(term in normalized for term in ('sin incremento', 'sin aumento', 'sin margen')):
@@ -68,6 +70,9 @@ def margin(instruction, bare=False):
 
 
 def starts(instruction):
+    from .router import explicit_catalog_task
+    if explicit_catalog_task(instruction):
+        return False
     value = tools.normalized(instruction)
     return bool(re.search(r'\b(pedido|orden de compra|comprar insumos)\b', value)
                 and re.search(r'\b(quiero|hacer|prepara|preparar|genera|generar|crear|nuevo|nueva)\b', value)
@@ -116,6 +121,8 @@ def handle(session, instruction, previous='', context='', token=None):
     tools.authorize(session, 'ordenes_compra')
     state = load(token) if token else {'scope': drafts.scope(), 'paso': 'analisis', 'margen': margin(instruction), 'solicitud': instruction[:2000]}
     value = tools.normalized(instruction).strip()
+    if value in ('cancelar pedido', 'cancelar flujo de compra'):
+        return {'respuesta': 'Flujo de compra cancelado. No se guardó ninguna orden.', 'plan': None, 'consultas': [], 'agente': 'orquestador'}
     if token:
         from app.agents.orchestrator import recipe_answers
         recipe_answer = recipe_answers.handle(session, instruction)
@@ -124,20 +131,67 @@ def handle(session, instruction, previous='', context='', token=None):
             if recipe_answer.get('opciones'):
                 result['opciones'] = recipe_answer['opciones']
             return result
-    if not token or value == 'reintentar eventos':
-        try:
-            result = event_agent.run(session, instruction, '', context)
-        except AssistantError as error:
-            result = {'respuesta': f'La consulta de eventos no está disponible: {error}. Puedes continuar con los análisis o el pedido sin ese informe.',
-                      'plan': None, 'consultas': []}
+    waiting_dates = state.get('paso') == 'fechas_eventos_futuros'
+    if not token or waiting_dates or value == 'reintentar eventos':
+        from . import purchase_review
+        skip_events = not token and 'eventos' in purchase_review.exclusions(instruction)
+        search_instruction = instruction
+        if value == 'reintentar eventos':
+            saved_period = state.get('periodo_eventos')
+            search_instruction = 'Reintentar eventos. ' + (f'Eventos del {saved_period[0]} al {saved_period[1]}. ' if saved_period else '') + state.get('solicitud', instruction)
+        if waiting_dates and margin(instruction) is not None:
+            state['margen'] = margin(instruction)
+        if not skip_events and value != 'reintentar eventos' and (waiting_dates or re.search(r'\b(eventos|conciertos|congresos)\b', value)):
+            from app.agents.eventos.period import resolve
+            today = datetime.now(timezone(timedelta(hours=-5))).date()
+            try:
+                period = resolve(instruction, today)
+            except ValueError as error:
+                state['paso'] = 'fechas_eventos_futuros'
+                return answer(state, str(error) + ' ¿Hasta qué fecha quieres que busque eventos?', choices=False)
+            if period is None:
+                state['paso'] = 'fechas_eventos_futuros'
+                return answer(state, 'Usaré la sede y dirección de tu sesión. ¿Hasta qué fecha quieres que busque eventos para el pedido?', choices=False)
+            state['periodo_eventos'] = list(period)
+            state['paso'] = 'analisis'
+            if waiting_dates:
+                search_instruction = state.get('solicitud', '') + f'\nPeríodo de eventos confirmado: del {period[0]} al {period[1]}.'
+                # Put the window first so historic sales clauses cannot hide it.
+                search_instruction = f'Eventos del {period[0]} al {period[1]}. ' + search_instruction
+        if skip_events:
+            result = {'respuesta':'Eventos omitidos según tu indicación.','consultas':[],'plan':None}
+        else:
+            try:
+                result = event_agent.run(session, search_instruction, '', context)
+            except AssistantError as error:
+                result = {'respuesta': f'La consulta de eventos no está disponible: {error}. Puedes continuar con los análisis o el pedido sin ese informe.',
+                          'plan': None, 'consultas': []}
         reports = result.get('consultas') or []
         report = (reports[0].get('registros') or [{}])[0] if reports else {}
-        state['eventos_fallidos'] = report.get('estado') not in ('consultado', 'parcial')
+        state['eventos_fallidos'] = not skip_events and report.get('estado') not in ('consultado', 'parcial')
         state['eventos'] = result['respuesta'][-4500:]
-        result['agente'] = 'eventos'
+        result['agente'] = 'orquestador' if skip_events else 'eventos'
+        from . import purchase_review
+        if purchase_review.requested(instruction) or purchase_review.requested(state.get('solicitud', '')):
+            if state.get('revision_completada'):
+                message = purchase_review.event_brief(result) + '\n\n' + state.get('analisis', '') + '\n\n' + purchase_review.next_step(state)
+                return answer(state, message, result, choices=False)
+            reviewed = purchase_review.review(session, state, state.get('solicitud', instruction), result, context)
+            return answer(state, reviewed['respuesta'], reviewed, choices=False)
         return answer(state, result['respuesta'] + '\n\n¿Quieres revisar las ventas durante un evento pasado parecido o desde la última orden enviada? También puedes consultar la duración del stock o continuar directamente al pedido.', result)
-    if value in ('cancelar pedido', 'cancelar flujo de compra'):
-        return {'respuesta': 'Flujo de compra cancelado. No se guardó ninguna orden.', 'plan': None, 'consultas': [], 'agente': 'orquestador'}
+    from . import purchase_review
+    resume_review = (purchase_review.requested(instruction) or value in (
+        'continua con el analisis solicitado', 'continua con el analisis', 'continua con la revision',
+        'continuar con el pedido', 'continuar con el pedido base', 'continuar') or margin(instruction) is not None)
+    if (not state.get('revision_completada') and resume_review
+            and (purchase_review.requested(state.get('solicitud', '')) or purchase_review.requested(instruction))):
+        chosen = margin(instruction)
+        if chosen is not None:
+            state['margen'] = chosen
+        requested_instruction = instruction if purchase_review.requested(instruction) else state.get('solicitud', instruction)
+        result = purchase_review.review(session, state, requested_instruction,
+                                        {'respuesta':state.get('eventos', ''),'consultas':[],'plan':None}, context)
+        return answer(state, result['respuesta'], result, choices=False)
     if value == 'analizar evento pasado parecido':
         state['paso'] = 'fechas_evento'
         return answer(state, 'Indica el nombre y las fechas del evento pasado, por ejemplo: 2026-10-10 al 2026-10-11. No hay un historial que vincule eventos con ventas; compararé las ventas de esas fechas sin atribuirles una causa.')
