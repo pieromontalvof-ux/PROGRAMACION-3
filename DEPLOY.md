@@ -5,7 +5,7 @@ El Dockerfile compila React con `VITE_API_URL=/api` y lo sirve junto con Flask m
 ## Configuración
 
 1. Crear un proyecto en Railway y añadir PostgreSQL **18**, compatible con la base actual. Comprobar la versión de la imagen; no restaurar un respaldo de PostgreSQL 18 en una versión anterior.
-2. Añadir un servicio desde el repositorio MULTIAGENTE, rama `main`, directorio raíz. Railway detecta el Dockerfile y `railway.json`.
+2. Añadir un servicio desde el repositorio de Barbarito, rama `main`, directorio raíz. Railway detecta el Dockerfile y `railway.json`.
 3. En Variables del servicio de la aplicación, configurar:
 
 | Variable | Valor |

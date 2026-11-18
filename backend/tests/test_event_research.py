@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 from flask import Flask
 
-from app.agents.eventos import research
-from app.agents.eventos import agent
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.agents.eventos import research
+from app.multiagente.agents.eventos import agent
+from app.multiagente.api.provider import AssistantError
 
 LOCAL = {'id_local':4,'nombre':'Sheraton','direccion':'Paseo de la República 170'}
 PERIOD = ['2026-11-11','2026-11-18']
@@ -25,7 +25,15 @@ def candidate(**changes):
 
 class EventResearchTests(unittest.TestCase):
     def setUp(self):
-        patcher=patch('app.agents.eventos.geography.check',side_effect=lambda location,rows:self.geo(rows))
+        # Orchestration/cache tests isolate the two logical stages; independent
+        # search families and partial batches are exercised in test_event_batches.
+        for name,side_effect in (
+            ('discover',lambda payload,search,venues:search(payload)),
+            ('verify',lambda payload,search,candidates:search(payload)),
+        ):
+            stage=patch('app.multiagente.agents.eventos.batches.'+name,side_effect=side_effect)
+            stage.start();self.addCleanup(stage.stop)
+        patcher=patch('app.multiagente.agents.eventos.geography.check',side_effect=lambda location,rows:self.geo(rows))
         patcher.start()
         self.addCleanup(patcher.stop)
 

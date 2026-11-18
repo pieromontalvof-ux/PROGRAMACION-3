@@ -6,6 +6,8 @@ import {useAuth} from '../../context/AuthContext'
 import {documentNames, money, receiptImage, resumenReposiciones, type Receipt, type ReceiptLine} from './receipt'
 import './SalonPaymentPage.css'
 
+interface Customer {id_cliente:string; nombre:string; numero_documento:string; tipo_documento:string; tipo_persona:string}
+
 interface Account {
   local:string; usuario:string; mesa:string; revision:string; total:number
   id_borrador:number|null; lineas:ReceiptLine[]
@@ -25,6 +27,14 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
   const [method,setMethod]=useState('')
   const [document,setDocument]=useState('')
   const [customer,setCustomer]=useState('')
+  const [selectedCustomer,setSelectedCustomer]=useState<string|null>(null)
+  const [customers,setCustomers]=useState<Customer[]>([])
+  const [personType,setPersonType]=useState('NATURAL')
+  const [customerBusy,setCustomerBusy]=useState(false)
+  const [customerNotice,setCustomerNotice]=useState('')
+  const [directoryReady,setDirectoryReady]=useState(false)
+  const [identityReady,setIdentityReady]=useState(false)
+  const identityRequest=useRef(0)
   const [error,setError]=useState('')
   const [busy,setBusy]=useState(false)
   const submitting=useRef(false)
@@ -36,13 +46,43 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
       .catch(e=>{if(!controller.signal.aborted)setError(e.message)})
     return ()=>controller.abort()
   },[mesa,id])
+  useEffect(()=>{const controller=new AbortController()
+    salonApi('clientes/configuracion',undefined,'GET',controller.signal).then(data=>{if(!controller.signal.aborted){setDirectoryReady(data.directorio_disponible);setIdentityReady(!!data.consulta_identidad_externa)}})
+      .catch(()=>{})
+    return ()=>controller.abort()
+  },[])
+  async function searchCustomers(){
+    setCustomerBusy(true);setCustomerNotice('')
+    try{const data=await salonApi(`clientes?q=${encodeURIComponent(document)}&limit=10`)
+      setCustomers(data.clientes);if(!data.clientes.length)setCustomerNotice('No hay clientes registrados con ese documento. Puedes ingresar sus datos y guardarlos.')
+    }catch(e){setCustomerNotice(e instanceof Error?e.message:'No se pudo buscar el cliente')}
+    finally{setCustomerBusy(false)}
+  }
+  async function saveCustomer(){
+    setCustomerBusy(true);setCustomerNotice('')
+    try{const data=await salonApi('clientes',{nombre:customer,tipo_persona:personType,tipo_documento:type==='FACTURA'?'RUC':'DNI',numero_documento:document})
+      setSelectedCustomer(data.id_cliente);setCustomers([]);setCustomerNotice('Cliente registrado en este local.')
+    }catch(e){setCustomerNotice(e instanceof Error?e.message:'No se pudo guardar el cliente')}
+    finally{setCustomerBusy(false)}
+  }
+  async function lookupIdentity(){
+    const requestId=++identityRequest.current
+    setCustomerBusy(true);setCustomerNotice('')
+    try{
+      const data=await salonApi('clientes/consultar-documento',{tipo_documento:type==='FACTURA'?'RUC':'DNI',numero_documento:document})
+      if(requestId!==identityRequest.current)return
+      setCustomer(data.nombre);setSelectedCustomer(null);setCustomers([])
+      setCustomerNotice('Datos obtenidos de Factiliza. Revísalos antes de guardar el cliente.')
+    }catch(e){if(requestId===identityRequest.current)setCustomerNotice(e instanceof Error?e.message:'No se pudo consultar el documento')}
+    finally{setCustomerBusy(false)}
+  }
   const ready=account && account.lineas.length>0 && account.id_borrador===null && account.lineas.every(l=>l.enviada)
   async function emit() {
     if(!ready || !method || submitting.current)return
     submitting.current=true;setBusy(true);setError('')
     try {
       const saved:Receipt=await salonApi(`mesas/${mesa}/emitir`,{clave:key.current,revision:account.revision,
-        tipo:type,metodo:method,documento:document,cliente:customer})
+        tipo:type,metodo:method,documento:document,cliente:customer,...(selectedCustomer?{id_cliente:selectedCustomer}:{})})
       setReceipt(saved)
       navigate(`/salon/comprobante/${saved.id}`,{replace:true})
     }catch(e){setError(e instanceof Error ? e.message : 'No se pudo registrar el cobro')}
@@ -63,12 +103,21 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
       <form id="payment-form" onSubmit={e=>{e.preventDefault();void emit()}}>
         <fieldset disabled={busy}><legend>Tipo de comprobante</legend>
           <div className="payment-choices">{Object.entries(documentNames).map(([value,label])=><button key={value} type="button" aria-pressed={type===value}
-            onClick={()=>{setType(value);setDocument('');setCustomer('')}}>{label}</button>)}</div>
+            onClick={()=>{identityRequest.current++;setType(value);setDocument('');setCustomer('');setSelectedCustomer(null);setCustomers([]);setCustomerNotice('')}}>{label}</button>)}</div>
           <p className="payment-note">Registro interno de cobro. La emisión electrónica a SUNAT aún no está conectada.</p>
           {type!=='BOLETA' && <div className="payment-customer">
             <label>{type==='FACTURA' ? 'RUC' : 'DNI'}<input autoComplete="off" inputMode="numeric" required pattern={type==='FACTURA' ? '[0-9]{11}' : '[0-9]{8}'}
-              maxLength={type==='FACTURA' ? 11 : 8} value={document} onChange={e=>setDocument(e.target.value.replace(/\D/g,''))}/></label>
-            <label>{type==='FACTURA' ? 'Razón social' : 'Nombres y apellidos'}<input required maxLength={200} value={customer} onChange={e=>setCustomer(e.target.value)}/></label>
+              maxLength={type==='FACTURA' ? 11 : 8} value={document} onChange={e=>{identityRequest.current++;setDocument(e.target.value.replace(/\D/g,''));setSelectedCustomer(null);setCustomers([])}}/></label>
+            <label>{type==='FACTURA' ? 'Razón social' : 'Nombres y apellidos'}<input required maxLength={200} value={customer} onChange={e=>{setCustomer(e.target.value);setSelectedCustomer(null)}}/></label>
+            <div>
+              <button type="button" disabled={!directoryReady||customerBusy||!document} onClick={()=>void searchCustomers()}>Buscar cliente registrado</button>
+              <button type="button" disabled={!identityReady||customerBusy||document.length!==(type==='FACTURA'?11:8)} onClick={()=>void lookupIdentity()}>Consultar DNI/RUC</button>
+              {!identityReady&&<p className="payment-note">Consulta externa pendiente de configurar el token de Factiliza. Puedes registrar al cliente manualmente.</p>}
+              {type==='FACTURA'&&<label>Tipo de persona<select value={personType} onChange={e=>setPersonType(e.target.value)}><option value="NATURAL">Persona natural con RUC</option><option value="JURIDICA">Persona jur?dica</option></select></label>}
+              <button type="button" disabled={!directoryReady||customerBusy||!customer||!document||!!selectedCustomer} onClick={()=>void saveCustomer()}>Guardar cliente</button>
+              {!!customers.length&&<ul>{customers.filter(c=>c.tipo_documento===(type==='FACTURA'?'RUC':'DNI')).map(c=><li key={c.id_cliente}><button type="button" onClick={()=>{setSelectedCustomer(c.id_cliente);setCustomer(c.nombre);setDocument(c.numero_documento);setPersonType(c.tipo_persona);setCustomers([])}}>{c.nombre} ? {c.numero_documento}</button></li>)}</ul>}
+              {customerNotice&&<p role="status">{customerNotice}</p>}
+            </div>
           </div>}
         </fieldset>
         <fieldset disabled={busy}><legend>Método de pago</legend><div className="payment-choices">

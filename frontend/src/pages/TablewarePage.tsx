@@ -16,7 +16,7 @@ import {
 
 import { useAuth } from '../context/AuthContext'
 import { obtenerMenajes, administrarMenaje, type AccionMenaje } from '../services/cartaService'
-import type { RespuestaMenajes, MenajeDetalle } from '../types/carta'
+import type { RespuestaMenajes, MenajeDetalle, UnidadCapacidad } from '../types/carta'
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
 import { permisosDe } from '../utils/permissionHelpers'
 
@@ -24,23 +24,76 @@ import './CartaCatalogPages.css'
 
 type EstadoFiltro = 'todos' | 'activos' | 'inactivos'
 
+const unidadesCapacidad: Record<UnidadCapacidad, { nombre: string; factor: number }> = {
+  MLT: { nombre: 'mL', factor: 1 },
+  LTR: { nombre: 'L', factor: 1000 },
+  FLOZ_US: { nombre: 'Onzas líquidas (oz)', factor: 29.5735295625 },
+  FLOZ_UK: { nombre: 'fl oz (imperiales)', factor: 28.4130625 },
+}
+const formatearMedida = (valor: number) => valor.toLocaleString('es-ES', { maximumFractionDigits: 2, useGrouping: false })
+
+function medidasTexto(item: MenajeDetalle) {
+  const capacidad = item.capacidad != null && item.unidad_capacidad
+    ? `${formatearMedida(item.capacidad)} ${unidadesCapacidad[item.unidad_capacidad].nombre}` : null
+  const dimensiones = [item.diametro_cm != null ? `Ø ${formatearMedida(item.diametro_cm)} cm` : null,
+    item.largo_cm != null ? `largo ${formatearMedida(item.largo_cm)} cm` : null,
+    item.ancho_cm != null ? `ancho ${formatearMedida(item.ancho_cm)} cm` : null,
+    item.altura_cm != null ? `alto ${formatearMedida(item.altura_cm)} cm` : null].filter(Boolean).join(' · ')
+  return [capacidad, dimensiones].filter(Boolean)
+}
+
 export function TablewarePage() {
   const { token, menu, perfilActivo } = useAuth()
   const permisos = permisosDe(menu, 10)
   const administrador = perfilActivo?.id_perfil === 1
   const [operacion, setOperacion] = useState<{ accion: AccionMenaje; item?: MenajeDetalle } | null>(null)
   const [nombre, setNombre] = useState('')
+  const [capacidad, setCapacidad] = useState('')
+  const [capacidadEditada, setCapacidadEditada] = useState(false)
+  const [unidadCapacidad, setUnidadCapacidad] = useState<UnidadCapacidad>('MLT')
+  const [diametro, setDiametro] = useState('')
+  const [altura, setAltura] = useState('')
+  const [largo, setLargo] = useState('')
+  const [ancho, setAncho] = useState('')
   const [procesando, setProcesando] = useState(false)
   const [errorModal, setErrorModal] = useState('')
   const [mensaje, setMensaje] = useState('')
   function abrir(accion: AccionMenaje, item?: MenajeDetalle) {
     setOperacion({ accion, item }); setNombre(item?.nombre ?? ''); setErrorModal(''); setMensaje('')
+    setCapacidad(item?.capacidad?.toString() ?? '')
+    setCapacidadEditada(false)
+    setUnidadCapacidad(item?.unidad_capacidad ?? 'MLT')
+    setDiametro(item?.diametro_cm?.toString() ?? '')
+    setAltura(item?.altura_cm?.toString() ?? '')
+    setLargo(item?.largo_cm?.toString() ?? '')
+    setAncho(item?.ancho_cm?.toString() ?? '')
+    if (item?.unidad_capacidad === 'FLOZ_UK' && item.capacidad != null) {
+      setCapacidad((item.capacidad * unidadesCapacidad.FLOZ_UK.factor).toFixed(3))
+      setUnidadCapacidad('MLT')
+    }
   }
   async function guardar() {
     if (!token || !operacion || procesando) return
+    const editandoMedidas = operacion.accion === 'crear' || operacion.accion === 'editar'
+    if (editandoMedidas && [capacidad, diametro, altura, largo, ancho].some(valor => valor !== '' && (!Number.isFinite(Number(valor)) || Number(valor) <= 0))) {
+      setErrorModal('Las medidas deben ser números mayores que cero o quedar vacías.')
+      return
+    }
     setProcesando(true); setErrorModal('')
     try {
-      const respuesta = await administrarMenaje(token, operacion.accion, nombre, operacion.item?.id_menaje)
+      const medidas = editandoMedidas ? {
+        capacidad: capacidad === '' ? null : Number(capacidad),
+        unidad_capacidad: capacidad === '' ? null : unidadCapacidad,
+        diametro_cm: diametro === '' ? null : Number(diametro),
+        altura_cm: altura === '' ? null : Number(altura),
+        largo_cm: largo === '' ? null : Number(largo),
+        ancho_cm: ancho === '' ? null : Number(ancho),
+      } : undefined
+      if (medidas && !capacidadEditada && operacion.item?.unidad_capacidad === 'FLOZ_UK') {
+        medidas.capacidad = operacion.item.capacidad ?? null
+        medidas.unidad_capacidad = 'FLOZ_UK'
+      }
+      const respuesta = await administrarMenaje(token, operacion.accion, nombre, operacion.item?.id_menaje, medidas)
       setOperacion(null); setMensaje(respuesta.mensaje); setAbierto(null)
       await cargar(true)
     } catch (e) { setErrorModal(e instanceof Error ? e.message : 'No se pudo guardar') }
@@ -66,9 +119,8 @@ export function TablewarePage() {
 
       try {
         setError('')
-        actualizacion
-          ? setActualizando(true)
-          : setCargando(true)
+        if (actualizacion) setActualizando(true)
+        else setCargando(true)
         setDatos(await obtenerMenajes(token))
       } catch (desconocido) {
         setError(
@@ -222,6 +274,8 @@ export function TablewarePage() {
                           <Utensils />
                           <strong>{item.nombre}</strong>
                         </span>
+                        <div>{medidasTexto(item).length ? medidasTexto(item).map(medida => <div key={medida}><small>{medida}</small></div>) : <small>Sin registrar</small>}</div>
+                        {item.origen_medidas === 'DEMO' && <small>Medidas de ejemplo</small>}
                       </td>
                       <td>{item.total_items}</td>
                       <td><strong>{item.total_presentaciones}</strong></td>
@@ -288,8 +342,20 @@ export function TablewarePage() {
       </section>
       <CatalogDialog abierto={!!operacion} procesando={procesando} titulo={operacion?.accion === 'crear' ? 'Nuevo menaje' : operacion?.accion === 'editar' ? 'Editar menaje' : operacion?.accion === 'eliminar' ? 'Eliminar menaje' : operacion?.accion === 'reactivar' ? 'Reactivar menaje' : 'Desactivar menaje'} guardar={guardar} cerrar={() => setOperacion(null)}>
         {errorModal && <p role="alert">{errorModal}</p>}
+          {operacion?.item?.origen_medidas === 'DEMO' && <p>Estas medidas son de ejemplo. Puedes reemplazarlas por las medidas reales de tu menaje.</p>}
         {operacion?.accion === 'crear' || operacion?.accion === 'editar' ? <>
           <label>Nombre del menaje<input required maxLength={100} value={nombre} onChange={e => setNombre(e.target.value)} /></label>
+          <label>Capacidad (opcional)<input type="number" min="0" step="any" value={capacidad} onChange={e => { setCapacidad(e.target.value); setCapacidadEditada(true) }} aria-describedby="menaje-capacidad-ayuda" /></label>
+          <label>Unidad de capacidad<select value={unidadCapacidad} onChange={e => { setUnidadCapacidad(e.target.value as UnidadCapacidad); setCapacidadEditada(true) }}>
+            {Object.entries(unidadesCapacidad).filter(([codigo]) => codigo !== 'FLOZ_UK').map(([codigo, unidad]) => <option key={codigo} value={codigo}>{unidad.nombre}</option>)}
+          </select></label>
+          <p id="menaje-capacidad-ayuda">{capacidad !== '' && Number.isFinite(Number(capacidad)) && Number(capacidad) > 0
+            ? `Equivalencia: ${formatearMedida(Number(capacidad) * unidadesCapacidad[unidadCapacidad].factor)} mL. ` : ''}fl oz indica volumen, no onzas de peso.</p>
+          <label>Diámetro en cm (opcional)<input type="number" min="0" step="any" value={diametro} onChange={e => setDiametro(e.target.value)} /></label>
+          <label>Altura en cm (opcional)<input type="number" min="0" step="any" value={altura} onChange={e => setAltura(e.target.value)} /></label>
+          <label>Largo en cm (opcional)<input type="number" min="0" step="any" value={largo} onChange={e => setLargo(e.target.value)} /></label>
+          <label>Ancho en cm (opcional)<input type="number" min="0" step="any" value={ancho} onChange={e => setAncho(e.target.value)} /></label>
+          <p>Para bandejas y tablas rectangulares usa largo y ancho. La capacidad corresponde a líquidos; puedes dejarla vacía.</p>
           {operacion.item && operacion.item.total_presentaciones > 0 && <p>El nuevo nombre aparecerá en todas las presentaciones asociadas.</p>}
         </> : <p>Confirma que deseas {operacion?.accion} <strong>{operacion?.item?.nombre}</strong>. {operacion?.accion === 'eliminar' && 'Se borrará el menaje del catálogo.'}</p>}
       </CatalogDialog>

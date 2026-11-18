@@ -16,10 +16,10 @@ class SupplyReviewTests(unittest.TestCase):
         self.ctx.push()
         self.addCleanup(self.ctx.pop)
         for target, kwargs in (
-            ('app.modules.asistente_ia.tools.allowed', {'return_value': True}),
-            ('app.modules.asistente_ia.tools.authorize', {}),
-            ('app.modules.asistente_ia.configuration.authorize', {}),
-            ('app.modules.asistente_ia.configuration.authorize_owner', {}),
+            ('app.multiagente.api.tools.allowed', {'return_value': True}),
+            ('app.multiagente.api.tools.authorize', {}),
+            ('app.multiagente.api.configuration.authorize', {}),
+            ('app.multiagente.api.configuration.authorize_owner', {}),
         ):
             p = patch(target, **kwargs)
             p.start()
@@ -27,13 +27,13 @@ class SupplyReviewTests(unittest.TestCase):
         self.session = {'local_activo': {'id_local': 4, 'nombre': 'Sheraton'}}
 
     def inspect(self, stock, products=None, providers=None):
-        from app.agents import supply
+        from app.multiagente.agents import supply
         sources = {'productos': PRODUCTS if products is None else products,
                    'proveedores': PROVIDERS if providers is None else providers}
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: sources[r]), \
-             patch('app.modules.asistente_ia.inventory.read', return_value={
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: sources[r]), \
+             patch('app.multiagente.api.inventory.read', return_value={
                  'registros': stock, 'hay_mas': False}), \
-             patch('app.modules.asistente_ia.tools.execute', side_effect=AssertionError('No writes')):
+             patch('app.multiagente.api.tools.execute', side_effect=AssertionError('No writes')):
             return supply.review(self.session, 'Maracuyá', 'presentaciones')
 
     def test_exact_product_wins_over_a_different_drink_with_the_same_word(self):
@@ -45,10 +45,10 @@ class SupplyReviewTests(unittest.TestCase):
         self.assertTrue(report['requiere_decision'])
 
     def test_admin_recipe_review_only_checks_registration_not_stock_or_supply(self):
-        from app.agents import supply
+        from app.multiagente.agents import supply
         session = {**self.session, 'perfil_activo': {'id_perfil': 1}}
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else self.fail('No supplier query for recipe creation')), \
-             patch('app.modules.asistente_ia.inventory.read') as stock:
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else self.fail('No supplier query for recipe creation')), \
+             patch('app.multiagente.api.inventory.read') as stock:
             report = supply.review(session, 'Maracuyá', 'recetas')
         self.assertEqual(report['alcance'], 'CATALOGO')
         self.assertEqual(report['estado_catalogo'], 'ACTIVO')
@@ -59,9 +59,9 @@ class SupplyReviewTests(unittest.TestCase):
         stock.assert_not_called()
 
     def test_missing_admin_ingredient_requires_registration_not_purchasing(self):
-        from app.agents import supply
+        from app.multiagente.agents import supply
         session = {**self.session, 'perfil_activo': {'id_perfil': 1}}
-        with patch('app.modules.asistente_ia.tools.records', return_value=[]):
+        with patch('app.multiagente.api.tools.records', return_value=[]):
             report = supply.review(session, 'Nuevo insumo', 'recetas')
         self.assertEqual(report['estado_catalogo'], 'NO_REGISTRADO')
         self.assertEqual(report['alcance'], 'CATALOGO')
@@ -69,7 +69,7 @@ class SupplyReviewTests(unittest.TestCase):
         self.assertTrue(report['requiere_decision'])
 
     def test_supply_review_also_works_when_agent_activity_is_recording(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         token = activity.begin('Revisar maracuyá', {'usuario': 1, 'perfil': 1, 'local': 4})
         try:
             report = self.inspect([{'id_producto': 27, 'stock_actual': 0}])
@@ -100,53 +100,53 @@ class SupplyReviewTests(unittest.TestCase):
                 self.assertTrue(report['requiere_decision'])
 
     def test_partial_match_is_offered_for_selection_not_substituted(self):
-        from app.agents import supply
-        with patch('app.modules.asistente_ia.tools.records', return_value=[PRODUCTS[1]]), \
-             patch('app.modules.asistente_ia.inventory.read') as stock:
+        from app.multiagente.agents import supply
+        with patch('app.multiagente.api.tools.records', return_value=[PRODUCTS[1]]), \
+             patch('app.multiagente.api.inventory.read') as stock:
             report = supply.review(self.session, 'Maracuya', 'recetas')
         self.assertEqual(report['estado_catalogo'], 'ELEGIR_PRODUCTO')
         stock.assert_not_called()
 
     def test_commercial_drink_name_does_not_hide_a_registered_possible_ingredient(self):
-        from app.agents import supply
-        with patch('app.modules.asistente_ia.tools.records', return_value=PRODUCTS), \
-             patch('app.modules.asistente_ia.inventory.read') as stock:
+        from app.multiagente.agents import supply
+        with patch('app.multiagente.api.tools.records', return_value=PRODUCTS), \
+             patch('app.multiagente.api.inventory.read') as stock:
             report = supply.review(self.session, 'Maracuyá especial', 'recetas')
         self.assertEqual(report['estado_catalogo'], 'ELEGIR_PRODUCTO')
         self.assertEqual(report['registros'][0]['id_producto'], 27)
         stock.assert_not_called()
 
     def test_stock_profile_permission_is_checked_before_querying(self):
-        with patch('app.modules.asistente_ia.tools.allowed', side_effect=lambda s, r, *a: r != 'stock'):
+        with patch('app.multiagente.api.tools.allowed', side_effect=lambda s, r, *a: r != 'stock'):
             report = self.inspect([{'id_producto': 27, 'stock_actual': 0}])
         self.assertEqual(report['registros'][0]['estado_stock'], 'SIN_ACCESO')
         self.assertIsNone(report['registros'][0]['stock_actual'])
         self.assertNotIn('sin stock', report['resumen'].lower())
 
     def test_disabled_agent_catalog_access_does_not_claim_product_is_absent(self):
-        from app.agents import supply
-        from app.modules.asistente_ia.provider import AssistantError
-        with patch('app.modules.asistente_ia.configuration.authorize', side_effect=AssistantError('Deshabilitado', 403)), \
-             patch('app.modules.asistente_ia.tools.records') as records:
+        from app.multiagente.agents import supply
+        from app.multiagente.api.provider import AssistantError
+        with patch('app.multiagente.api.configuration.authorize', side_effect=AssistantError('Deshabilitado', 403)), \
+             patch('app.multiagente.api.tools.records') as records:
             report = supply.review(self.session, 'Maracuyá', 'recetas')
         self.assertEqual(report['estado_catalogo'], 'SIN_ACCESO')
         records.assert_not_called()
 
     def test_disabled_stock_owner_access_does_not_leak_stock(self):
-        from app.modules.asistente_ia.provider import AssistantError
+        from app.multiagente.api.provider import AssistantError
         def authorize(resource, *args):
             if resource == 'stock':
                 raise AssistantError('Deshabilitado', 403)
-        with patch('app.modules.asistente_ia.configuration.authorize_owner', side_effect=authorize):
+        with patch('app.multiagente.api.configuration.authorize_owner', side_effect=authorize):
             report = self.inspect([{'id_producto': 27, 'stock_actual': 10}])
         self.assertEqual(report['registros'][0]['estado_stock'], 'SIN_ACCESO')
         self.assertIsNone(report['registros'][0]['stock_actual'])
 
     def test_unavailable_stock_service_is_not_reported_as_a_shortage(self):
-        from app.agents import supply
-        from app.modules.asistente_ia.provider import AssistantError
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
-             patch('app.modules.asistente_ia.inventory.read', side_effect=AssistantError('No disponible', 502)):
+        from app.multiagente.agents import supply
+        from app.multiagente.api.provider import AssistantError
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
+             patch('app.multiagente.api.inventory.read', side_effect=AssistantError('No disponible', 502)):
             report = supply.review(self.session, 'Maracuya', 'presentaciones')
         self.assertEqual(report['registros'][0]['estado_stock'], 'NO_VERIFICADO')
         self.assertNotIn('sin stock', report['resumen'].lower())
@@ -163,43 +163,43 @@ class SupplyReviewTests(unittest.TestCase):
         self.assertEqual(report['registros'][0]['stock_actual'], 0)
 
     def test_supplier_permission_does_not_leak_its_name_from_the_product(self):
-        with patch('app.modules.asistente_ia.tools.allowed', side_effect=lambda s, r, *a: r != 'proveedores'):
+        with patch('app.multiagente.api.tools.allowed', side_effect=lambda s, r, *a: r != 'proveedores'):
             report = self.inspect([{'id_producto': 27, 'stock_actual': 0}])
         self.assertEqual(report['registros'][0]['estado_proveedor'], 'SIN_ACCESO')
         self.assertIsNone(report['registros'][0]['proveedor'])
 
     def test_recipe_supply_connections_remain_read_only_in_manifest(self):
-        from app.agents.manifest import catalog
+        from app.multiagente.agents.manifest import catalog
         recipe = next(a for a in catalog()['agentes'] if a['id'] == 'recetas')
         self.assertIn('stock', recipe['recursos_solo_consulta'])
         self.assertIn('proveedores', recipe['recursos_solo_consulta'])
         self.assertEqual(recipe['recursos_modificables'], ['recetas'])
 
     def test_matching_a_title_is_only_a_possible_ingredient_not_a_recipe(self):
-        from app.agents import supply
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
-             patch('app.modules.asistente_ia.inventory.read', return_value={'registros': []}):
+        from app.multiagente.agents import supply
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
+             patch('app.multiagente.api.inventory.read', return_value={'registros': []}):
             report = supply.for_title(self.session, 'Maracuyá especial', 'presentaciones')
         self.assertEqual(report['referencia'], 'POSIBLE_INSUMO')
         self.assertEqual(report['registros'][0]['id_producto'], 27)
         self.assertIn('confirmar', report['resumen'].lower())
 
     def test_recipe_request_keeps_its_agent_when_it_also_mentions_stock_and_purchase(self):
-        from app.agents.orchestrator.router import route
+        from app.multiagente.agents.orchestrator.router import route
         self.assertEqual(route('Quiero registrar una receta de maracuyá; revisa el stock y si falta vemos la compra.'), 'recetas')
 
     def test_runtime_reads_supply_with_no_write_tools_for_suppliers_or_stock(self):
         import json
-        from app.agents.catalog_specialists import SPECIALISTS
+        from app.multiagente.agents.catalog_specialists import SPECIALISTS
         tool_call = [{'type': 'function_call', 'call_id': 'supply', 'name': 'revisar_insumo',
                       'arguments': json.dumps({'nombre': 'Maracuyá'})}]
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Sin existencias. Revisemos el proveedor.'}]}]
-        with patch('app.modules.asistente_ia.configuration.saved', return_value=None), \
-             patch('app.modules.asistente_ia.library.for_skills', return_value=''), \
-             patch('app.agents.runtime.db.session.rollback'), \
-             patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
-             patch('app.modules.asistente_ia.inventory.read', return_value={'registros': [{'id_producto': 27, 'stock_actual': 0}]}), \
-             patch('app.modules.asistente_ia.provider.respond', side_effect=[tool_call, answer]) as model:
+        with patch('app.multiagente.api.configuration.saved', return_value=None), \
+             patch('app.multiagente.api.library.for_skills', return_value=''), \
+             patch('app.multiagente.agents.runtime.db.session.rollback'), \
+             patch('app.multiagente.api.tools.records', side_effect=lambda s, r: PRODUCTS if r == 'productos' else PROVIDERS), \
+             patch('app.multiagente.api.inventory.read', return_value={'registros': [{'id_producto': 27, 'stock_actual': 0}]}), \
+             patch('app.multiagente.api.provider.respond', side_effect=[tool_call, answer]) as model:
             result = SPECIALISTS['presentaciones'].run(self.session, 'Quiero una bebida de maracuyá')
         self.assertEqual(result['consultas'][0]['registros'][0]['estado_stock'], 'SIN_STOCK')
         definitions = {t['name']: t for t in model.call_args.args[1]}
@@ -208,12 +208,12 @@ class SupplyReviewTests(unittest.TestCase):
         self.assertNotIn('stock', definitions['solicitar_especialista']['parameters']['properties']['recurso']['enum'])
 
     def test_presentation_preflight_reports_the_registered_ingredient_and_stock(self):
-        from app.agents.orchestrator.presentation_advice import run
+        from app.multiagente.agents.orchestrator.presentation_advice import run
         sources = {'productos': PRODUCTS, 'proveedores': PROVIDERS,
                    'presentaciones': [], 'menajes': [{'id_menaje': 1, 'nombre': 'Vaso', 'activo': True}],
                    'categorias_carta': [{'id_categoria_carta': 1, 'nombre': 'Sin alcohol', 'prefijo': 'SA', 'activo': True}]}
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: sources[r]), \
-             patch('app.modules.asistente_ia.inventory.read', return_value={'registros': [{'id_producto': 27, 'stock_actual': 0}]}):
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: sources[r]), \
+             patch('app.multiagente.api.inventory.read', return_value={'registros': [{'id_producto': 27, 'stock_actual': 0}]}):
             result = run(self.session, 'Crear una presentación llamada «Maracuyá especial», de 400 mL, a S/ 14, en la categoría «Sin alcohol»')
         self.assertIn('Distribuidora Central', result['respuesta'])
         self.assertEqual(result['_referencias_revisadas']['decision_pendiente'], 'abastecimiento')
@@ -221,18 +221,18 @@ class SupplyReviewTests(unittest.TestCase):
         self.assertIsNone(result['plan'])
 
     def test_admin_inactive_ingredient_preflight_asks_about_catalog_not_supply(self):
-        from app.agents.orchestrator.presentation_advice import run
+        from app.multiagente.agents.orchestrator.presentation_advice import run
         sources = {'productos': [{**PRODUCTS[0], 'activo': False}], 'proveedores': PROVIDERS,
                    'presentaciones': [], 'menajes': [{'id_menaje': 1, 'nombre': 'Vaso', 'activo': True}],
                    'categorias_carta': [{'id_categoria_carta': 1, 'nombre': 'Sin alcohol', 'prefijo': 'SA', 'activo': True}]}
-        with patch('app.modules.asistente_ia.tools.records', side_effect=lambda s, r: sources[r]):
+        with patch('app.multiagente.api.tools.records', side_effect=lambda s, r: sources[r]):
             result = run({**self.session, 'perfil_activo': {'id_perfil': 1}},
                          'Crear una presentación llamada «Maracuyá especial», de 400 mL, a S/ 14, en la categoría «Sin alcohol»')
         self.assertNotIn('abastecimiento', result['respuesta'].lower())
         self.assertEqual(result['_referencias_revisadas']['decision_pendiente'], 'insumo_catalogo')
 
     def test_supply_results_are_retained_for_the_next_conversation_turn(self):
-        from app.agents.orchestrator import communication
+        from app.multiagente.agents.orchestrator import communication
         report = self.inspect([{'id_producto': 27, 'stock_actual': 0}])
         with self.ctx.app.test_request_context('/api/asistente-ia/preparar', json={'modo': 'conversacion'}), \
              patch.object(communication.drafts, 'scope', return_value={'usuario': 1, 'perfil': 1, 'local': 4}):

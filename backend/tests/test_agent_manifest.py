@@ -2,8 +2,8 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
-from app.agents.catalog_specialists import SPECIALISTS
-from app.agents.manifest import catalog
+from app.multiagente.agents.catalog_specialists import SPECIALISTS
+from app.multiagente.agents.manifest import catalog
 
 
 class AgentManifestGraphTests(unittest.TestCase):
@@ -36,6 +36,9 @@ class AgentManifestGraphTests(unittest.TestCase):
             ('subproductos', 'carta_recetas'), ('recetas', 'presentaciones'),
             ('recetas', 'carta_recetas'), ('recetas', 'subproductos'),
             ('promociones', 'presentaciones'),
+            ('promociones', 'recetas'), ('promociones', 'subproductos'),
+            ('promociones', 'carta_recetas'), ('promociones', 'inventario'),
+            ('promociones', 'demanda'),
             ('presentaciones', 'carta_recetas'), ('presentaciones', 'inventario'),
             ('recetas', 'inventario'), ('subproductos', 'inventario'),
             ('presentaciones', 'recetas'), ('presentaciones', 'subproductos'),

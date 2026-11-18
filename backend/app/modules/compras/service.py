@@ -15,6 +15,7 @@ from app.modules.compras.repository import (
     obtener_detalle_orden_historial,
     obtener_orden_historial,
     obtener_total_recibido_orden,
+    enviar_orden_borrador,
 )
 
 
@@ -91,13 +92,33 @@ def _calcular_sugerencia(producto, porcentaje=Decimal("0")):
 
     return Decimal(paquetes_finales) * presentacion
 
-def obtener_pedido_sugerido(porcentaje="0"):
+def obtener_pedido_sugerido(porcentaje="0", horizonte=None, dias=7):
+    from app.modules.inventarios.weekly import validate_days
+    try:
+        dias = validate_days(dias)
+    except ValueError as exc:
+        return {"mensaje": str(exc)}, 400
     try:
         porcentaje = Decimal(str(porcentaje))
     except (InvalidOperation, TypeError, ValueError):
         return {"mensaje": "Indica un porcentaje válido entre 0 y 1000."}, 400
     if not porcentaje.is_finite() or not 0 <= porcentaje <= 1000:
         return {"mensaje": "El porcentaje debe estar entre 0 y 1000."}, 400
+    if horizonte not in (None,'semanal'):
+        return {"mensaje":"Horizonte de compra no permitido."},400
+    if horizonte == 'semanal':
+        from app.core.local_scope import local_actual
+        from app.modules.inventarios.weekly import report
+        weekly=report(local_actual(),porcentaje=porcentaje,dias=dias)
+        rows=weekly['reposicion']
+        complete=weekly['metadata']['historial_completo']
+        message=(f'Propuesta para {dias} días, descontando el stock actual.' if complete else
+                 f'Historial insuficiente para proyectar {dias} días; revisa los días sin registro.')
+        return {'productos':rows,'total_productos':len(rows),'porcentaje_incremento':float(porcentaje),
+                'horizonte':'semanal','periodos':weekly['periodos'],
+                'dias_abastecimiento':dias,'metadata':weekly['metadata'],
+                'diagnostico':{'motivo':'con_sugerencia' if rows else 'sin_necesidad_calculada' if complete else 'sin_historial',
+                               'mensaje':message},'advertencias':weekly.get('advertencias',[])},200
     sugeridos = []
     productos = listar_productos_para_compra()
     for producto in productos:
@@ -342,6 +363,36 @@ def obtener_detalle_orden(id_orden):
             ],
         }
     }, 200
+
+
+def enviar_borrador(id_orden,id_usuario):
+    try:
+        orden=obtener_orden_historial(id_orden,bloquear=True)
+        if orden is None:
+            db.session.rollback()
+            return {'mensaje':'La orden no existe en este local.'},404
+        state=orden['estado_orden_compra']
+        result={'id_orden_compra':id_orden,'codigo':orden['codigo'],'estado_orden_compra':'ENVIADA'}
+        if state=='ENVIADA':
+            db.session.rollback()
+            return {'mensaje':'La orden ya estaba enviada.','orden':result},200
+        if state!='BORRADOR' or Decimal(str(obtener_total_recibido_orden(id_orden) or 0))>0:
+            db.session.rollback()
+            return {'mensaje':'Solo se puede enviar una orden en borrador sin recepciones.'},409
+        detalles=obtener_detalle_orden_historial(id_orden)
+        _,error=_validar_detalles(detalles)
+        if error:
+            db.session.rollback()
+            return {'mensaje':error},400
+        enviar_orden_borrador(id_orden,id_usuario)
+        guardar_historial_estado_orden(id_orden,'BORRADOR','ENVIADA','Envío confirmado del pedido',id_usuario)
+        registrar_actividad(id_usuario=id_usuario,modulo='ORDEN_COMPRA',accion='ENVIAR',
+            id_registro_afectado=id_orden,descripcion=f"Envió la orden {orden['codigo']} existente, sin duplicar sus productos")
+        db.session.commit()
+        return {'mensaje':'Orden enviada correctamente','orden':result},200
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def cambiar_estado_orden(id_orden, id_usuario, datos):

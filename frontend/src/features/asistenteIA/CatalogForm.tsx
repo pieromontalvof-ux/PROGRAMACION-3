@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ClipboardList, RefreshCw, Plus } from 'lucide-react'
 import type { FormularioCatalogo, RecursoFormulario } from './service'
 import './CatalogForm.css'
+import { tipoArticulo } from './labels'
 
 interface Props {
   form: FormularioCatalogo
@@ -99,7 +100,7 @@ export function CatalogForm({ form, disabled, onChange, onValuesChange, onReview
         {!item && dependency('categorias_carta', 'No está mi categoría de carta: crear una')}
         <label>2. Menaje<select required value={menaje} onChange={e => setMenaje(e.target.value)}><option value="">Selecciona el menaje</option>{form.menajes.filter(m => m.activo).map(m => <option key={m.id_menaje} value={m.id_menaje}>{m.nombre}</option>)}</select></label>
         {dependency('menajes', 'No está mi menaje: crear uno')}
-        <label>Tipo de artículo<select required disabled={Boolean(item)} value={tipo} onChange={e => setTipo(e.target.value)}><option value="">Selecciona</option>{form.tipos.map(t => <option key={t} value={t}>{t === 'DIRECTO' ? 'Directo' : 'Preparado'}</option>)}</select></label>
+        <label>Tipo de artículo<select required disabled={Boolean(item)} value={tipo} onChange={e => setTipo(e.target.value)}><option value="">Selecciona</option>{form.tipos.map(t => <option key={t} value={t}>{tipoArticulo(t)}</option>)}</select></label>
         <div className="assistant-catalog-columns"><label>Unidad<select required value={unidad} onChange={e => setUnidad(e.target.value)}><option value="">Selecciona</option>{form.unidades_medida.filter(u => ['KGM', 'LTR', 'C62', 'PORCION'].includes(u.codigo)).map(u => <option key={u.codigo} value={u.codigo}>{u.nombre} ({u.simbolo})</option>)}</select></label>
         <label>Contenido{symbol ? ` (${symbol})` : ''}<input required type="number" min="0.001" max="999999999.999" step="0.001" value={contenido} onChange={e => setContenido(e.target.value)} /></label></div>
         <label>Precio de venta (S/)<input required type="number" min="0" max="99999999.99" step="0.01" value={precio} onChange={e => setPrecio(e.target.value)} /></label>

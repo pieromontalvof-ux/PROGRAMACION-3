@@ -19,6 +19,12 @@ const labels: Record<string, string> = {
   id_promocion_grupo: 'Grupo existente (ID)', activo: 'Activo', instruccion: 'Instrucciones',
 }
 export const etiqueta = (key: string) => labels[key] ?? key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase())
+export const tipoArticulo = (value: string) => ({ DIRECTO: 'Directo', PREPARADO: 'Preparado', PORCIONADO: 'Porcionado' }[value] ?? value)
+export function valorDeCampo(key: string, value: unknown): unknown {
+  if (key === 'tipo_item' && typeof value === 'string') return tipoArticulo(value)
+  if (key === 'id_item_carta' && (value == null || ['Sin asignar', 'Nuevo / sin asignar'].includes(String(value)))) return 'Crear artículo nuevo'
+  return value
+}
 
 export function textoRevision(value: unknown, depth = 0): string {
   if (depth === 0) value = revisionVisible(value)
@@ -26,6 +32,6 @@ export function textoRevision(value: unknown, depth = 0): string {
   if (typeof value === 'boolean') return value ? 'Sí' : 'No'
   if (Array.isArray(value)) return value.map((v, i) => `\n${'  '.repeat(depth)}${i + 1}. ${textoRevision(v, depth + 1)}`).join('')
   if (typeof value === 'object') return Object.entries(value).map(([k, v]) =>
-    `${'  '.repeat(depth)}${etiqueta(k)}: ${textoRevision(v, depth + 1)}`).join('\n')
+    `${'  '.repeat(depth)}${etiqueta(k)}: ${textoRevision(valorDeCampo(k, v), depth + 1)}`).join('\n')
   return String(value)
 }

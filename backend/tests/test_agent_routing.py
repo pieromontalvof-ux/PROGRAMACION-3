@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.agents.orchestrator.router import route
+from app.multiagente.agents.orchestrator.router import route
 
 
 class CartaWordingTests(unittest.TestCase):
@@ -12,8 +12,8 @@ class CartaWordingTests(unittest.TestCase):
             with self.subTest(message=message):
                 self.assertEqual(route(message), 'presentaciones')
 from app import create_app
-from app.agents.carta_recetas.agent import run as run_catalog
-from app.agents.inventario.agent import run as run_inventory
+from app.multiagente.agents.carta_recetas.agent import run as run_catalog
+from app.multiagente.agents.inventario.agent import run as run_inventory
 
 
 class AgentRoutingTests(unittest.TestCase):
@@ -65,8 +65,8 @@ class AgentRoutingTests(unittest.TestCase):
             (run_inventory,{'consultar_inventario','preparar_cambio'},{'consultar','formulario'}),
         ):
             with self.subTest(specialist=specialist.__module__), app.test_request_context():
-                with patch('app.modules.asistente_ia.tools.allowed',return_value=True), \
-                     patch('app.modules.asistente_ia.provider.respond',return_value=answer) as model:
+                with patch('app.multiagente.api.tools.allowed',return_value=True), \
+                     patch('app.multiagente.api.provider.respond',return_value=answer) as model:
                     specialist({'menu':[]},'Consulta')
                 names={tool['name'] for tool in model.call_args.args[1]}
                 self.assertTrue(expected.issubset(names))

@@ -3,13 +3,25 @@ from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 import test_purchase_review as fixtures
-from app.agents.eventos import agent
-from app.agents.orchestrator import purchase_flow as flow, purchase_review
+from app.multiagente.agents.eventos import agent
+from app.multiagente.agents.orchestrator import purchase_flow as flow, purchase_review
 
 
 class EventPeriodTests(unittest.TestCase):
+    def test_short_date_answers_use_current_month_without_confusing_percentages(self):
+        from app.multiagente.agents.eventos.period import resolve
+        today=date(2026,11,14)
+        for phrase in ('hasta el 18','hasta 18','hasta el 18 de este mes'):
+            self.assertEqual(resolve(phrase,today),('2026-11-14','2026-11-18'))
+        self.assertEqual(resolve('18',today,allow_day_only=True),('2026-11-14','2026-11-18'))
+        self.assertIsNone(resolve('18',today))
+        self.assertIsNone(resolve('18%',today,allow_day_only=True))
+        for phrase in ('hasta el 31','hasta el 5'):
+            with self.assertRaises(ValueError):
+                resolve(phrase,today)
+
     def test_weekday_deadlines_and_relative_days(self):
-        from app.agents.eventos.period import resolve
+        from app.multiagente.agents.eventos.period import resolve
         today = date(2026, 11, 11)
         self.assertEqual(resolve('hasta el próximo miercoles', today), ('2026-11-11', '2026-11-18'))
         self.assertEqual(resolve('hasta el miércoles de la próxima semana', today), ('2026-11-11', '2026-11-18'))
@@ -19,7 +31,7 @@ class EventPeriodTests(unittest.TestCase):
         self.assertEqual(resolve('hasta el próximo lunes', date(2026, 11, 15)), ('2026-11-15', '2026-11-16'))
 
     def test_explicit_periods_use_lima_calendar_and_include_today(self):
-        from app.agents.eventos.period import resolve
+        from app.multiagente.agents.eventos.period import resolve
         today = date(2026, 11, 6)
         self.assertEqual(resolve('próximos siete días', today), ('2026-11-06', '2026-11-12'))
         self.assertEqual(resolve('hasta el 15 de noviembre', today), ('2026-11-06', '2026-11-15'))
@@ -58,6 +70,19 @@ class EventPeriodTests(unittest.TestCase):
 class PurchaseDateConversationTests(unittest.TestCase):
     setUp = fixtures.PurchaseReviewTests.setUp
     review = fixtures.PurchaseReviewTests.review
+    def test_hasta_el_18_continues_pending_original_purchase(self):
+        request=fixtures.REQUEST.replace('de los próximos siete días','')
+        first,_,_,_=self.review(instruction=request)
+        with patch.object(flow,'datetime') as clock:
+            clock.now.return_value=datetime(2026,11,14,14,tzinfo=timezone.utc)
+            second,search,demand,native=self.review(instruction='hasta el 18',token=first['flujo_compra'])
+        self.assertEqual(search.call_count,1)
+        self.assertEqual(demand.call_count,1)
+        self.assertEqual(native.call_count,2)
+        self.assertEqual(flow.load(second['flujo_compra'])['periodo_eventos'],['2026-11-14','2026-11-18'])
+        self.assertNotIn('¿Hasta qué fecha',second['respuesta'])
+        self.assertIsNone(second['plan'])
+
     def test_next_wednesday_continues_pending_purchase_without_repeating_question(self):
         request = fixtures.REQUEST.replace('de los próximos siete días', '')
         first, _, _, _ = self.review(instruction=request)

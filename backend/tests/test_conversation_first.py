@@ -1,18 +1,38 @@
 import unittest
 import json
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.api.provider import AssistantError
 from unittest.mock import patch
 from flask import Flask
 from flask_jwt_extended import JWTManager, create_access_token
-from app.modules.asistente_ia import routes, forms
-from app.agents.catalog_specialists import SPECIALISTS
-from app.agents.orchestrator import communication
+from app.multiagente.api import routes, forms
+from app.multiagente.agents.catalog_specialists import SPECIALISTS
+from app.multiagente.agents.orchestrator import communication
 
 
 ANSWER=[{'type':'message','content':[{'type':'output_text','text':'Revisé las opciones. Falta elegir un menaje.'}]}]
 
 
 class ConversationFirstTests(unittest.TestCase):
+    def test_promotion_period_reply_stays_with_its_original_specialist(self):
+        initial='Quiero comparar dos opciones de promocion con bebidas, entradas, ventas y stock. No crear todavia.'
+        question={'agente':'promociones','respuesta':'Que periodo de ventas quieres comparar?','consultas':[],'plan':None}
+        with patch('app.multiagente.agents.orchestrator.presentation_advice.run',return_value=None), \
+             patch.object(routes.agent,'run',return_value=question), \
+             patch('app.multiagente.agents.catalog_specialists.Specialist.run',return_value={
+                 'respuesta':'Analizo cuatro meses en todas las tiendas.','consultas':[],'plan':None}) as specialist:
+            first=self.app.test_client().post('/api/asistente-ia/preparar',headers=self.headers,json={
+                'modo':'conversacion','instruccion':initial})
+            self.assertEqual(first.status_code,200,first.json)
+            self.assertIn('continuacion',first.json)
+            second=self.app.test_client().post('/api/asistente-ia/preparar',headers=self.headers,json={
+                'modo':'conversacion','instruccion':'revisa los ultimo 4 meses',
+                'borrador_previo':question['respuesta'],'contexto_previo':initial,
+                'continuacion':first.json['continuacion']})
+        self.assertEqual(second.status_code,200,second.json)
+        self.assertEqual(second.json['agente'],'promociones')
+        self.assertIn(initial,specialist.call_args.args[3])
+        self.assertEqual(specialist.call_args.args[1],'revisa los ultimo 4 meses')
+
     def setUp(self):
         self.app=Flask(__name__)
         self.app.config.update(JWT_SECRET_KEY='conversation-test-secret-key-32-characters',SECRET_KEY='conversation-signing')
@@ -22,13 +42,13 @@ class ConversationFirstTests(unittest.TestCase):
         self.token=create_access_token(identity='1',additional_claims={'id_perfil':2,'id_local':1})
         self.headers={'Authorization':'Bearer '+self.token};routes._attempts.clear()
         for target,kwargs in [
-            ('app.modules.asistente_ia.routes.obtener_sesion_actual',{'return_value':({'menu':[]},200)}),
-            ('app.modules.asistente_ia.tools.allowed',{'return_value':True}),
-            ('app.modules.asistente_ia.tools.authorize',{}),
-            ('app.modules.asistente_ia.configuration.saved',{'return_value':None}),
-            ('app.modules.asistente_ia.library.for_skills',{'return_value':''}),
-            ('app.agents.runtime.db.session.rollback',{}),
-            ('app.agents.activity.finish',{'return_value':None}),
+            ('app.multiagente.api.routes.obtener_sesion_actual',{'return_value':({'menu':[]},200)}),
+            ('app.multiagente.api.tools.allowed',{'return_value':True}),
+            ('app.multiagente.api.tools.authorize',{}),
+            ('app.multiagente.api.configuration.saved',{'return_value':None}),
+            ('app.multiagente.api.library.for_skills',{'return_value':''}),
+            ('app.multiagente.agents.runtime.db.session.rollback',{}),
+            ('app.multiagente.agents.activity.finish',{'return_value':None}),
         ]:
             p=patch(target,**kwargs);p.start();self.addCleanup(p.stop)
 
@@ -42,7 +62,7 @@ class ConversationFirstTests(unittest.TestCase):
 
     def test_new_beverage_recipe_asks_batch_or_glass_and_seals_the_sale_measure(self):
         from tests.test_preparation_flow import TASK
-        with patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+        with patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             response = self.app.test_client().post('/api/asistente-ia/preparar', headers=self.headers,
                 json={'instruccion': TASK})
         self.assertEqual(response.status_code, 200, response.json)
@@ -59,14 +79,14 @@ class ConversationFirstTests(unittest.TestCase):
             'datos_json':json.dumps({'contenido':1,'unidad':'PORCION'})})}]
         context = json.dumps({'tarea_original':TASK,'contexto_original':'','aclaraciones':['Por cada vaso.']})
         with self.app.test_request_context('/api/asistente-ia/preparar', json={'modo':'conversacion'}), \
-             patch('app.modules.asistente_ia.provider.respond', side_effect=[call,ANSWER]), \
+             patch('app.multiagente.api.provider.respond', side_effect=[call,ANSWER]), \
              patch.object(forms,'prepare',return_value={'recurso':'presentaciones','accion':'crear'}) as prepare:
             result = SPECIALISTS['presentaciones'].run({}, 'Cámbialo como la chicha', context=context)
         self.assertIsNone(result['plan'])
         prepare.assert_not_called()
 
     def test_recipe_with_possible_purchase_does_not_start_the_purchase_flow(self):
-        with patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+        with patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             response = self.app.test_client().post('/api/asistente-ia/preparar', headers=self.headers, json={
                 'instruccion': 'Quiero crear una receta de maracuya; revisa el stock y, si falta, vemos comprar insumos.'})
         self.assertEqual(response.status_code, 200, response.json)
@@ -81,7 +101,7 @@ class ConversationFirstTests(unittest.TestCase):
 
     def test_chat_does_not_offer_model_a_tool_that_forces_a_form(self):
         with self.app.test_request_context('/api/asistente-ia/preparar',json={'instruccion':'Crear presentación'}), \
-             patch('app.modules.asistente_ia.provider.respond',return_value=ANSWER) as model:
+             patch('app.multiagente.api.provider.respond',return_value=ANSWER) as model:
             SPECIALISTS['presentaciones'].run({},'Crear presentación de limonada de 500 mL')
         definitions={d['name'] for d in model.call_args.args[1]}
         self.assertNotIn('abrir_formulario',definitions)
@@ -107,7 +127,7 @@ class ConversationFirstTests(unittest.TestCase):
             'recurso':'menajes','accion':'crear','id':None,'datos_json':json.dumps({'nombre':' Vaso especial '})})}]
         plan={'recurso':'menajes','accion':'crear','id':None,'datos':{'nombre':'Vaso especial'}}
         with self.app.test_request_context('/api/asistente-ia/preparar',json={'instruccion':'Crear menaje'}), \
-             patch('app.modules.asistente_ia.provider.respond',return_value=call), \
+             patch('app.multiagente.api.provider.respond',return_value=call), \
              patch.object(forms,'open_form',return_value={'categorias':[],'menajes':[]}), \
              patch.object(routes.tools,'prepare',return_value=plan) as prepare, \
              patch.object(routes.tools,'execute') as execute:
@@ -162,7 +182,7 @@ class ConversationFirstTests(unittest.TestCase):
         choose=[{'type':'function_call','call_id':'choose','name':'usar_registro_existente',
                  'arguments':json.dumps({'recurso':'menajes','id':4})}]
         with self.app.test_request_context('/api/asistente-ia/preparar',json={'instruccion':'Usar Vaso existente'}), \
-             patch('app.modules.asistente_ia.provider.respond',return_value=choose) as model, \
+             patch('app.multiagente.api.provider.respond',return_value=choose) as model, \
              patch.object(routes.tools,'current_record',return_value={'id_menaje':4,'nombre':'Vaso','activo':True}):
             result=communication.invoke({}, {'agente':'menajes','recurso':'menajes','instruccion':'Usar Vaso existente','previo':'','contexto':''})
         self.assertEqual(result['seleccion_existente'],{'recurso':'menajes','id':4})
@@ -217,7 +237,7 @@ class ConversationFirstTests(unittest.TestCase):
         self.assertLessEqual(invoke.call_count,12)
 
     def test_optional_sheet_recovery_preserves_boolean_presentation_status(self):
-        from app.modules.asistente_ia import workspace
+        from app.multiagente.api import workspace
         saved={'frames':[{'form':{'recurso':'presentaciones'},'values':{'activo':False},'version':0}],
                'proposal':None,'dirty':False,'saved':None,'draftId':None}
         self.assertIs(workspace.workflow(saved)['frames'][0]['values']['activo'],False)
@@ -226,7 +246,7 @@ class ConversationFirstTests(unittest.TestCase):
 
     def test_full_specification_replaces_old_form_task_with_compact_reviewed_advice(self):
         from tests.test_presentation_advice import ROWS,REQUEST
-        from app.modules.asistente_ia import workspace
+        from app.multiagente.api import workspace
         legacy=communication.serializer().dumps({'scope':{'usuario':1,'perfil':2,'local':1},'paso':'old',
             'conversacion':False,'pila':[],'mensajes':[], 'actual':{'agente':'categorias_carta','instruccion':'Crear categoría','previo':'','contexto':''}})
         with patch.object(routes.tools,'records',side_effect=lambda session,resource:ROWS[resource]), \
@@ -254,7 +274,7 @@ class ConversationFirstTests(unittest.TestCase):
                              'motivo':'Categoría pendiente'}}
         with self.app.test_request_context(json={'modo':'conversacion'}), \
              patch.object(communication.drafts,'scope',return_value=scope), \
-             patch('app.modules.asistente_ia.provider.respond',return_value=ANSWER) as model:
+             patch('app.multiagente.api.provider.respond',return_value=ANSWER) as model:
             result=communication.coordinate({},handoff,'Ajusta a 400 mL por S/12, usa Vaso',state=state)
         history=json.loads(json.loads(model.call_args.args[0][1]['content'])['contexto_previo'])
         parent=json.loads(history['contexto_original'])
@@ -277,7 +297,7 @@ class ConversationFirstTests(unittest.TestCase):
              patch.object(communication.drafts,'scope',return_value=scope), \
              patch.object(communication.drafts,'load',return_value={'estado':'REALIZADO','plan':plan,
                          'resultado':{'id_categoria_carta':42}}), \
-             patch('app.modules.asistente_ia.provider.respond',return_value=ANSWER) as model:
+             patch('app.multiagente.api.provider.respond',return_value=ANSWER) as model:
             communication.resume({},communication.serializer().dumps(state),'draft-id')
         history=json.loads(json.loads(model.call_args.args[0][1]['content'])['contexto_previo'])
         self.assertEqual(history['aclaraciones_requisitos'][0]['aclaraciones'],
@@ -290,7 +310,7 @@ class ConversationFirstTests(unittest.TestCase):
                'pila':[],'mensajes':[], 'actual':{'agente':'presentaciones','recurso_objetivo':'presentaciones',
                'instruccion':'Crear Limonada especial de 500 mL','previo':'','contexto':'Menaje elegido: Vaso',
                'aclaraciones':['El precio debe ser S/12']}}
-        with patch('app.modules.asistente_ia.provider.respond',return_value=ANSWER):
+        with patch('app.multiagente.api.provider.respond',return_value=ANSWER):
             response=self.app.test_client().post('/api/asistente-ia/preparar',headers=self.headers,
                 json={'instruccion':REQUEST,'continuacion':communication.serializer().dumps(state)})
         self.assertEqual(response.status_code,200,response.json)

@@ -7,6 +7,7 @@ from app.core.units import catalogo_unidades, valores_unidades, normalizar_medid
 from app.modules.auditoria.service import registrar_actividad, registrar_cambio
 from app.modules.recetas import editor_repository as repo
 from app.modules.recetas.editor_service import DatosInvalidos, cantidad, identidad
+from .measurements import serialize,ensure_fits,SELECT_SQL
 
 
 def formulario_presentacion():
@@ -14,7 +15,7 @@ def formulario_presentacion():
             "unidades": valores_unidades('presentacion'),
             "unidades_medida": catalogo_unidades('presentacion'),
             "categorias": repo.filas('SELECT id_categoria_carta, nombre, activo FROM categoria_carta ORDER BY nombre'),
-            "menajes": repo.filas('SELECT id_menaje, nombre, activo FROM menaje ORDER BY nombre'),
+            "menajes": [serialize(row) for row in repo.filas(SELECT_SQL+' ORDER BY m.nombre')],
             "items": repo.filas('SELECT id_item_carta, codigo, nombre, tipo, id_categoria_carta, activo FROM item_carta ORDER BY nombre')}, 200
 
 
@@ -64,9 +65,15 @@ def guardar_presentacion(id_usuario, datos, id_presentacion=None):
         contenido = cantidad(contenido)
         unidad = unidad_almacenamiento(unidad)
         menaje = identidad(datos.get('id_menaje'))
-        if not repo.filas('SELECT id_menaje FROM menaje WHERE id_menaje=:id AND activo FOR SHARE', {'id': menaje}):
+        menajes=repo.filas(SELECT_SQL+' WHERE m.id_menaje=:id FOR SHARE OF m', {'id': menaje})
+        if not menajes or not menajes[0].get('activo', True):
             if not anterior or anterior['id_menaje'] != menaje:
                 raise DatosInvalidos('Selecciona un menaje activo')
+        if menajes:
+            try:
+                ensure_fits(menajes[0],contenido,unidad)
+            except ValueError as error:
+                raise DatosInvalidos(str(error)) from None
         try:
             precio = Decimal(str(datos.get('precio')))
             if not precio.is_finite() or precio < 0 or precio > Decimal('99999999.99') or precio != precio.quantize(Decimal('0.01')):

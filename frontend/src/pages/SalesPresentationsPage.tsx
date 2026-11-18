@@ -70,9 +70,8 @@ export function SalesPresentationsPage() {
 
       try {
         setError('')
-        actualizacion
-          ? setActualizando(true)
-          : setCargando(true)
+        if (actualizacion) setActualizando(true)
+        else setCargando(true)
         setDatos(await obtenerPresentacionesVenta(token))
       } catch (desconocido) {
         setError(

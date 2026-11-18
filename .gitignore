@@ -38,3 +38,6 @@ frontend/dist/
 /EMPAQUETAR_BARBARITO.ps1
 /database/RESTAURAR_BARBARITO.ps1
 /database/GUIA_PC_NUEVO.md
+
+# Portable local fiscal service and private runtime
+/.local/

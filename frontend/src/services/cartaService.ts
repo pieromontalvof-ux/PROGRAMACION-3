@@ -2,6 +2,7 @@ import type {
   RespuestaCategoriasCarta,
   RespuestaMenajes,
   RespuestaPresentacionesVenta,
+  MedidasMenaje,
 } from '../types/carta'
 import type { FormularioReceta } from '../types/recipe'
 
@@ -31,9 +32,9 @@ interface RespuestaError {
 }
 
 export type AccionMenaje = 'crear' | 'editar' | 'desactivar' | 'reactivar' | 'eliminar'
-export async function administrarMenaje(token: string, accion: AccionMenaje, nombre: string, id?: number): Promise<{ mensaje: string }> {
+export async function administrarMenaje(token: string, accion: AccionMenaje, nombre: string, id?: number, medidas?: MedidasMenaje): Promise<{ mensaje: string }> {
   return procesarRespuesta(await fetch(`${API_URL}/carta/menajes${accion === 'crear' ? '' : `/${id}/${accion}`}`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre }),
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre, ...medidas }),
   }))
 }
 

@@ -430,6 +430,14 @@ def guardar_historial_estado_orden(
     )
 
 
+def enviar_orden_borrador(id_orden,id_usuario):
+    exigir_registro_local('orden',id_orden)
+    ejecutar_local(text('''UPDATE orden_compra SET estado_orden_compra='ENVIADA',
+        fecha_registro=(CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::date,
+        usuario_modificacion=:usuario,fecha_modificacion=(CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')
+        WHERE id_orden_compra=:id AND estado_orden_compra='BORRADOR' '''),{'id':id_orden,'usuario':id_usuario})
+
+
 def cambiar_estado_orden_historial(
     id_orden,
     estado,

@@ -155,7 +155,7 @@ export function SalonOrderPage() {
     const completa=configurandoPromo.grupos.every(g => seleccionesPromo.filter(s => s.id_grupo===g.id).length===g.cantidad)
     if(!completa){setError('Completa las opciones incluidas en la promoción.');return}
     setLineas(actual => [...actual,{id_presentacion:null,id_promocion:configurandoPromo.id,
-      selecciones_promocion:seleccionesPromo.map(({clave,...s}) => s),nombre:configurandoPromo.nombre,
+      selecciones_promocion:seleccionesPromo.map(({clave:_clave,...s}) => s),nombre:configurandoPromo.nombre,
       precio:configurandoPromo.precio,cantidad:1,comentario:'',opciones:[],enviada:false}])
     setSeleccion(lineas.length);setCambios(true);setMensaje('');setError('');setConfigurandoPromo(null)
   }

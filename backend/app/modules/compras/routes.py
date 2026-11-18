@@ -9,6 +9,7 @@ from app.modules.compras.service import (
     cambiar_estado_orden,
     obtener_detalle_orden,
     obtener_historial_ordenes,
+    enviar_borrador,
 )
 
 
@@ -25,7 +26,7 @@ def consultar_formulario():
 @compras_bp.get("/pedido-sugerido")
 @requiere_permiso(id_opcion_menu=22, accion="consultar")
 def consultar_pedido_sugerido():
-    respuesta, estado = obtener_pedido_sugerido(request.args.get("porcentaje", "0"))
+    respuesta, estado = obtener_pedido_sugerido(request.args.get("porcentaje", "0"),request.args.get('horizonte'),request.args.get('dias', '7'))
     return jsonify(respuesta), estado
 
 
@@ -54,6 +55,13 @@ def consultar_historial_ordenes():
 def consultar_detalle_orden(id_orden):
     respuesta, estado = obtener_detalle_orden(id_orden)
     return jsonify(respuesta), estado
+
+
+@compras_bp.post('/<int:id_orden>/enviar')
+@requiere_permiso(id_opcion_menu=22,accion='crear')
+def enviar_orden_existente(id_orden):
+    respuesta,estado=enviar_borrador(id_orden,int(get_jwt_identity()))
+    return jsonify(respuesta),estado
 
 
 @compras_bp.patch("/<int:id_orden>/estado")

@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import patch
-from app.agents.eventos import geography
+from app.multiagente.agents.eventos import geography
 
 
 class GeographyTests(unittest.TestCase):
     def test_nearby_venue_discovery_filters_distance_and_keeps_variety(self):
-        from app.agents.eventos.nearby import parse
+        from app.multiagente.agents.eventos.nearby import parse
         origin={'lat':-12.057,'lon':-77.036}
         elements=[{'type':'node','id':1,'lat':-12.058,'lon':-77.036,'tags':{'name':'Hotel Próximo','tourism':'hotel'}},
                   {'type':'way','id':2,'center':{'lat':-12.059,'lon':-77.036},'tags':{'name':'Parque Cercano','leisure':'park'}},
@@ -47,7 +47,7 @@ class GeographyTests(unittest.TestCase):
 
     def test_radius_boundary_with_uncertainty_remains_pending(self):
         origin={'lat':-12,'lon':-77,'incertidumbre_m':20,'url':'https://www.openstreetmap.org/node/1'}
-        venue={**origin,'lat':-12.0135,'incertidumbre_m':100}
+        venue={**origin,'lat':-12.009,'incertidumbre_m':100}
         row={'nombre':'Borde','fecha_desde':'2026-11-12','recinto':'Parque','direccion':'Dirección Lima'}
         with patch.object(geography,'locate',side_effect=[origin,venue]):
             result=geography.check({'nombre':'Bar','direccion':'Dirección Lima'},[row])

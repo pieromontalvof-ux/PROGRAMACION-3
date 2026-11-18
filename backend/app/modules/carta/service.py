@@ -127,7 +127,8 @@ def obtener_presentaciones_venta():
 
 
 def obtener_menajes():
-    menajes = listar_menajes_detallados()
+    from .measurements import serialize
+    menajes = [serialize(row) for row in listar_menajes_detallados()]
 
     activos = sum(
         1

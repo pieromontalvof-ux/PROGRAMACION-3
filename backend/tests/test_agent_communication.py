@@ -4,9 +4,9 @@ from unittest.mock import patch
 from flask_jwt_extended import create_access_token
 
 from app import create_app
-from app.agents.catalog_specialists import SPECIALISTS
-from app.agents.orchestrator import communication as coordinator
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.agents.catalog_specialists import SPECIALISTS
+from app.multiagente.agents.orchestrator import communication as coordinator
+from app.multiagente.api.provider import AssistantError
 
 
 SCOPE = {'usuario': 1, 'perfil': 1, 'local': 1}
@@ -27,11 +27,11 @@ class AgentCommunicationTests(unittest.TestCase):
         self.context.push()
         self.addCleanup(self.context.pop)
         for target, kwargs in (
-            ('app.modules.asistente_ia.drafts.scope', {'return_value': SCOPE}),
-            ('app.modules.asistente_ia.tools.allowed', {'return_value': True}),
-            ('app.modules.asistente_ia.tools.authorize', {}),
-            ('app.modules.asistente_ia.forms.open_form', {'side_effect': lambda s, r: {'recurso': r}}),
-            ('app.agents.orchestrator.communication.db.session.rollback', {}),
+            ('app.multiagente.api.drafts.scope', {'return_value': SCOPE}),
+            ('app.multiagente.api.tools.allowed', {'return_value': True}),
+            ('app.multiagente.api.tools.authorize', {}),
+            ('app.multiagente.api.forms.open_form', {'side_effect': lambda s, r: {'recurso': r}}),
+            ('app.multiagente.agents.orchestrator.communication.db.session.rollback', {}),
         ):
             mock = patch(target, **kwargs)
             mock.start()
@@ -56,8 +56,8 @@ class AgentCommunicationTests(unittest.TestCase):
         coordinator.bind_plan(state, plan)
         with patch.object(coordinator.drafts, 'load', return_value={
             'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_presentacion_venta': 77}}), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER) as model, \
-             patch('app.modules.asistente_ia.tools.execute') as execute:
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER) as model, \
+             patch('app.multiagente.api.tools.execute') as execute:
             result = coordinator.resume({}, initial['continuacion'], 'draft-id')
         self.assertEqual(result['agente'], 'recetas')
         self.assertNotIn('tarea_pendiente', result)
@@ -96,7 +96,7 @@ class AgentCommunicationTests(unittest.TestCase):
         coordinator.bind_plan(child, plan)
         with patch.object(coordinator.drafts, 'load', return_value={
             'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_menaje': 9}}), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             resumed = coordinator.resume({}, second['continuacion'], 'draft-id')
         self.assertEqual(resumed['agente'], 'presentaciones')
         self.assertEqual(coordinator.load(resumed['continuacion'])['pila'][0]['agente'], 'recetas')
@@ -106,7 +106,7 @@ class AgentCommunicationTests(unittest.TestCase):
             coordinator.coordinate({}, handoff('recetas', 'menajes'), 'Crear receta')
 
     def test_clarification_keeps_confirmed_nested_result_and_original_task(self):
-        from app.modules.asistente_ia import routes
+        from app.multiagente.api import routes
         self.app.config['JWT_SECRET_KEY'] = 'communication-api-secret-at-least-32-characters'
         routes._attempts.clear()
         auth = create_access_token(identity='1', additional_claims={'id_perfil': 1, 'id_local': 1})
@@ -118,10 +118,10 @@ class AgentCommunicationTests(unittest.TestCase):
         coordinator.bind_plan(coordinator.load(second['continuacion']), plan)
         with patch.object(coordinator.drafts, 'load', return_value={
             'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_menaje': 987654}}), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             resumed = coordinator.resume({}, second['continuacion'], 'draft-id')
         with patch.object(routes, 'obtener_sesion_actual', return_value=({}, 200)), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER) as model:
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER) as model:
             response = self.app.test_client().post('/api/asistente-ia/preparar',
                 headers={'Authorization': 'Bearer ' + auth}, json={
                     'instruccion': 'Precio 25', 'borrador_previo': '¿Cuál será el precio?',
@@ -141,7 +141,7 @@ class AgentCommunicationTests(unittest.TestCase):
         coordinator.bind_plan(coordinator.load(initial['continuacion']), plan)
         with patch.object(coordinator.drafts, 'load', return_value={
             'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_presentacion_venta': 77}}), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             result = coordinator.resume({}, initial['continuacion'], 'draft-id')
         self.assertIn('continuacion', result)
         self.assertNotIn('tarea_pendiente', result)
@@ -161,7 +161,7 @@ class AgentCommunicationTests(unittest.TestCase):
         coordinator.bind_plan(coordinator.load(second['continuacion']), plan)
         with patch.object(coordinator.drafts, 'load', return_value={
             'estado': 'REALIZADO', 'plan': plan, 'resultado': {'id_menaje': 9}}), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=ANSWER):
+             patch('app.multiagente.api.provider.respond', return_value=ANSWER):
             result = coordinator.resume({}, second['continuacion'], 'draft-id')
         parent = coordinator.load(result['continuacion'])['actual']
         self.assertEqual(parent['borrador_actual'], review)
@@ -170,7 +170,7 @@ class AgentCommunicationTests(unittest.TestCase):
     def test_runtime_exposes_only_authorized_dependency_handoffs(self):
         call = {'type': 'function_call', 'call_id': 'handoff', 'name': 'solicitar_especialista',
                 'arguments': json.dumps(handoff()['traspaso'])}
-        with patch('app.modules.asistente_ia.provider.respond', return_value=[call]) as model:
+        with patch('app.multiagente.api.provider.respond', return_value=[call]) as model:
             result = SPECIALISTS['recetas'].run({}, 'Crear receta sin presentación existente')
         self.assertEqual(result['traspaso']['recurso'], 'presentaciones')
         definition = next(t for t in model.call_args.args[1] if t['name'] == 'solicitar_especialista')
@@ -179,12 +179,12 @@ class AgentCommunicationTests(unittest.TestCase):
     def test_runtime_rejects_unauthorized_handoff(self):
         call = {'type': 'function_call', 'call_id': 'handoff', 'name': 'solicitar_especialista',
                 'arguments': json.dumps(handoff(resource='usuarios')['traspaso'])}
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=[[call], ANSWER]):
+        with patch('app.multiagente.api.provider.respond', side_effect=[[call], ANSWER]):
             result = SPECIALISTS['recetas'].run({}, 'Crear receta')
         self.assertNotIn('traspaso', result)
 
     def test_api_handoff_form_review_confirmation_and_return(self):
-        from app.modules.asistente_ia import routes
+        from app.multiagente.api import routes
         self.app.config['JWT_SECRET_KEY'] = 'communication-api-secret-at-least-32-characters'
         routes._attempts.clear()
         token = create_access_token(identity='1', additional_claims={'id_perfil': 1, 'id_local': 1})
@@ -195,7 +195,7 @@ class AgentCommunicationTests(unittest.TestCase):
         plan = {'recurso': 'presentaciones', 'accion': 'crear', 'id': None, 'anterior': None,
                 'datos': {'nombre_item': 'Hamburguesa'}}
         with patch.object(routes, 'obtener_sesion_actual', return_value=({}, 200)), \
-             patch('app.modules.asistente_ia.provider.respond', side_effect=[[call], ANSWER]), \
+             patch('app.multiagente.api.provider.respond', side_effect=[[call], ANSWER]), \
              patch.object(routes.forms, 'prepare', return_value=plan), \
              patch.object(routes.tools, 'readable', return_value={}), \
              patch.object(routes.drafts, 'save', return_value='11111111-1111-4111-8111-111111111111'), \
@@ -221,14 +221,14 @@ class AgentCommunicationTests(unittest.TestCase):
             self.assertEqual(coordinator.load(resumed.json['continuacion'])['pila'], [])
 
     def test_missing_requirement_does_not_bypass_specialist_with_direct_form_shortcut(self):
-        from app.modules.asistente_ia import routes
+        from app.multiagente.api import routes
         self.app.config['JWT_SECRET_KEY'] = 'communication-api-secret-at-least-32-characters'
         routes._attempts.clear()
         token = create_access_token(identity='1', additional_claims={'id_perfil': 1, 'id_local': 1})
         call = {'type': 'function_call', 'call_id': 'delegate', 'name': 'solicitar_especialista',
                 'arguments': json.dumps(handoff('presentaciones', 'menajes')['traspaso'])}
         with patch.object(routes, 'obtener_sesion_actual', return_value=({}, 200)), \
-             patch('app.modules.asistente_ia.provider.respond', return_value=[call]) as model:
+             patch('app.multiagente.api.provider.respond', return_value=[call]) as model:
             response = self.app.test_client().post('/api/asistente-ia/preparar',
                 headers={'Authorization': 'Bearer ' + token}, json={
                     'instruccion': 'Crear presentación de venta pero no existe el menaje, quiero crearlo', 'modo': 'formulario'})

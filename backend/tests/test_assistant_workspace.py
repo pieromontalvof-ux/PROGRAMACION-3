@@ -8,8 +8,8 @@ from flask_jwt_extended import JWTManager, create_access_token
 from sqlalchemy import text
 
 from app.core.extensions import db
-from app.modules.asistente_ia import routes
-from app.agents.orchestrator import communication
+from app.multiagente.api import routes
+from app.multiagente.agents.orchestrator import communication
 
 
 DRAFT = '73f497ae-c692-4e14-a89f-7db565cad044'
@@ -18,11 +18,17 @@ PLAN = {'recurso': 'menajes', 'accion': 'crear', 'id': None,
 
 
 class AssistantWorkspaceTests(unittest.TestCase):
+    def test_large_previous_report_does_not_blame_short_user_instruction(self):
+        response=self.client.post('/api/asistente-ia/preparar',headers=self.headers,
+                                  json={'instruccion':'10% general','borrador_previo':'x'*17000})
+        self.assertEqual(response.status_code,400)
+        self.assertIn('resumen previo',response.json['mensaje'])
+        self.assertNotIn('8000',response.json['mensaje'])
     def test_supervisor_preparation_query_reads_recipes_without_model(self):
         from test_recipe_answers import recipe
         headers = self.token(profile=3)
         with patch.object(routes.tools, 'authorize'), patch.object(routes.tools, 'records', return_value=[recipe()]), \
-                patch('app.modules.asistente_ia.provider.respond') as model:
+                patch('app.multiagente.api.provider.respond') as model:
             response = self.client.post('/api/asistente-ia/preparar', headers=headers,
                                         json={'instruccion': 'quiero saber como se prepra una hamburguesa'})
         self.assertEqual(response.status_code, 200, response.json)
@@ -32,11 +38,15 @@ class AssistantWorkspaceTests(unittest.TestCase):
         model.assert_not_called()
 
     def test_purchase_flow_survives_workspace_restore_and_resumes_to_margin(self):
-        from app.agents.orchestrator import purchase_flow
-        with patch.object(purchase_flow.tools, 'authorize'), patch.object(purchase_flow.event_agent, 'run', return_value={
+        from app.multiagente.agents.orchestrator import purchase_flow
+        decision=dict(accion='ACTUALIZAR',porcentaje_general=None,porcentaje_adicional=None,
+                      bebida=None,quitar_adicional=False,hasta=None,dias=7,aclaracion=None)
+        with patch('app.multiagente.agents.orchestrator.purchase_language.interpret',
+                   side_effect=[decision,{**decision,'accion':'CONTINUAR','dias':None}]), \
+                patch.object(purchase_flow.tools, 'authorize'), patch.object(purchase_flow.event_agent, 'run', return_value={
                 'respuesta': 'Eventos cercanos verificados', 'consultas': [], 'plan': None}):
             started = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
-                                       json={'instruccion': 'Quiero hacer un pedido'})
+                                       json={'instruccion': 'Quiero hacer un pedido para 7 días'})
             self.assertEqual(started.status_code, 200, started.json)
             result = started.json
             self.assertIn('flujo_compra', result)
@@ -68,7 +78,8 @@ class AssistantWorkspaceTests(unittest.TestCase):
         self.addCleanup(db.session.remove)
         db.session.execute(text('''CREATE TABLE asistente_ia_workspace (
             id_usuario INTEGER NOT NULL, id_perfil INTEGER NOT NULL, id_local INTEGER NOT NULL,
-            snapshot JSON, revision BIGINT NOT NULL DEFAULT 0,
+            snapshot JSON CHECK (snapshot IS NULL OR length(CAST(snapshot AS BLOB)) <= 200000),
+            revision BIGINT NOT NULL DEFAULT 0,
             actualizado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             vence_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id_usuario, id_perfil, id_local))'''))
@@ -136,8 +147,70 @@ class AssistantWorkspaceTests(unittest.TestCase):
             with self.subTest(snapshot=str(snapshot)[:80]):
                 self.assertEqual(self.put(snapshot).status_code, 400)
         self.assertEqual(self.put(self.snapshot(), True).status_code, 400)
-        large = self.snapshot(context='x' * 210000)
+        large = self.snapshot(context='x' * (2 * 1024 * 1024 + 1))
         self.assertEqual(self.put(large).status_code, 413)
+        self.assertEqual(self.get().json['revision'], 0)
+
+    def test_full_sales_and_stock_reports_survive_save_and_restore(self):
+        import json
+        sales = [{'producto': f'Producto {i}', 'cantidad': i + 1, 'venta': 123.45}
+                 for i in range(192)]
+        stock = [{'id_producto': i, 'nombre': f'Insumo {i}', 'stock': i + 0.25}
+                 for i in range(141)]
+        response = '\n'.join(f"| {row['producto']} | {row['cantidad']} | {row['venta']} |" for row in sales)
+        response += '\n' + '\n'.join(f"| {row['nombre']} | {row['stock']} |" for row in stock)
+        response = response * 4
+        queries = [{'recurso': 'stock', 'total': 141, 'desde': 0, 'hay_mas': False,
+                    'registros': stock, 'contexto': {'fecha': '2026-11-16',
+                    'plan_semanal': {'ventas': sales, 'stock': stock, 'respuesta': response}}}]
+        snapshot = self.snapshot(review=response, original=response, context=response,
+                                 result={'respuesta': response, 'consultas': queries},
+                                 history=[{'prompt': 'ver todas las filas', 'response': response,
+                                           'time': '', 'done': True, 'queries': queries}])
+        self.assertGreater(len(response), 16000)
+        self.assertGreater(len(json.dumps(snapshot)), 200000)
+        saved = self.put(snapshot)
+        self.assertEqual(saved.status_code, 200, saved.json)
+        self.assertGreater(len(json.dumps(saved.json['workspace']).encode('utf-8')), 200000)
+        stored = json.loads(db.session.execute(text('SELECT snapshot FROM asistente_ia_workspace')).scalar())
+        self.assertEqual(stored['_workspace_codec'], 'zlib-v1')
+        self.assertLess(len(json.dumps(stored).encode('utf-8')), 200000)
+        restored = self.get().json['workspace']
+        self.assertEqual(restored['review'], response)
+        self.assertEqual(restored['history'][0]['response'], response)
+        self.assertEqual(restored['result']['consultas'][0]['registros'], stock)
+        self.assertEqual(restored['result']['consultas'][0]['contexto'], {'fecha': '2026-11-16'})
+
+    def test_corrupt_or_oversized_compressed_storage_cannot_execute_or_restore(self):
+        import base64
+        import json
+        import zlib
+        from app.multiagente.api import workspace
+        envelopes = [
+            {'_workspace_codec': 'zlib-v1', 'data': 'bad!'},
+            {'_workspace_codec': 'zlib-v1', 'data': base64.b64encode(zlib.compress(b'x' * (workspace.MAX_BYTES + 1))).decode()},
+            {'_workspace_codec': 'zlib-v1', 'data': base64.b64encode(zlib.compress(b'{}') + b'extra').decode()},
+        ]
+        for envelope in envelopes:
+            with self.subTest(envelope=str(envelope)[:60]):
+                revision = self.get().json['revision']
+                self.assertEqual(self.put(self.snapshot(), revision).status_code, 200)
+                db.session.execute(text('UPDATE asistente_ia_workspace SET snapshot=:value'),
+                                   {'value': json.dumps(envelope)})
+                db.session.commit()
+                with patch.object(routes.tools, 'execute') as execute:
+                    recovered = self.get()
+                self.assertEqual(recovered.status_code, 200)
+                self.assertIsNone(recovered.json['workspace'])
+                execute.assert_not_called()
+        self.assertEqual(self.put(envelopes[0], self.get().json['revision']).status_code, 400)
+
+    def test_incompressible_storage_is_rejected_before_revision_changes(self):
+        import secrets
+        snapshot = self.snapshot(history=[{'prompt': '', 'response': secrets.token_hex(80000),
+                                          'time': '', 'done': True, 'queries': []} for _ in range(3)])
+        response = self.put(snapshot)
+        self.assertEqual(response.status_code, 413)
         self.assertEqual(self.get().json['revision'], 0)
 
     def test_signed_continuation_cannot_be_forged_or_shared_with_another_scope(self):
@@ -243,7 +316,7 @@ class AssistantWorkspaceTests(unittest.TestCase):
         self.assertFalse(restored['draft_state']['vigente'])
 
     def test_all_draft_references_are_scoped_even_when_another_draft_is_present(self):
-        from app.modules.asistente_ia.provider import AssistantError
+        from app.multiagente.api.provider import AssistantError
         foreign_id = '2bb5fc9e-fb80-41de-b651-e2091f1f6bd2'
         def lookup(draft_id):
             if draft_id == foreign_id:
@@ -258,7 +331,7 @@ class AssistantWorkspaceTests(unittest.TestCase):
 
 
     def test_activity_export_is_authoritative_scoped_and_recovers_with_workspace(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         @activity.agent('demanda')
         def real_execution(session, instruction, previous='', context=''):
             @activity.tool('analizar_demanda')

@@ -2,9 +2,9 @@ import json
 import unittest
 from unittest.mock import patch
 from app import create_app
-from app.agents.orchestrator.router import route
-from app.modules.asistente_ia import demand
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.agents.orchestrator.router import route
+from app.multiagente.api import demand
+from app.multiagente.api.provider import AssistantError
 from flask_jwt_extended import create_access_token
 
 
@@ -52,7 +52,7 @@ class DemandToolsTests(unittest.TestCase):
                 self.assertFalse(demand.allowed(session))
 
     def test_invalid_filters_cannot_override_local_or_expand_query(self):
-        with patch('app.modules.asistente_ia.tools.authorize'), patch('app.modules.asistente_ia.tools.native') as native:
+        with patch('app.multiagente.api.tools.authorize'), patch('app.multiagente.api.tools.native') as native:
             for filters in ({'id_local': 2}, {'desde': 'bad'}, {'hasta': '2999-01-01'},
                             {'desde': '2020-01-01', 'hasta': '2026-01-01'},
                             {'desde_registro': True}, {'busqueda': 'x'*201}, []):
@@ -64,7 +64,7 @@ class DemandToolsTests(unittest.TestCase):
         data = {'desde': '2026-01-01', 'hasta': '2026-01-31', 'metodologia': 'calendario',
                 'productos': [dict(nombre='IPA', id_producto=i) for i in range(45)],
                 'articulos': [dict(nombre='Hamburguesa'), dict(nombre='IPA 500 ml')]}
-        with patch('app.modules.asistente_ia.tools.authorize'), patch('app.modules.asistente_ia.tools.native', return_value=data):
+        with patch('app.multiagente.api.tools.authorize'), patch('app.multiagente.api.tools.native', return_value=data):
             r = demand.read({}, {'desde': '2026-01-01', 'hasta': '2026-01-31', 'busqueda': 'ipa', 'desde_registro': 20})
         self.assertEqual(len(r['registros']), 20)
         self.assertEqual(r['total'], 45)
@@ -72,16 +72,16 @@ class DemandToolsTests(unittest.TestCase):
         self.assertEqual(r['contexto']['total_articulos'], 1)
 
     def test_runtime_exposes_read_only_analysis_and_purchase_can_share_it(self):
-        from app.agents.demanda.agent import run
+        from app.multiagente.agents.demanda.agent import run
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Informe'}]}]
         call = [{'type': 'function_call', 'call_id': 'demand', 'name': 'analizar_demanda',
-                 'arguments': json.dumps({'filtros_json': '{}'})}]
+                 'arguments': json.dumps({'filtros_json': '{"desde":"2026-07-18","hasta":"2026-11-17"}'})}]
         app = create_app()
-        with app.test_request_context(), patch('app.modules.asistente_ia.tools.allowed', side_effect=lambda s,r,a='consultar': a=='consultar'), \
-             patch('app.modules.asistente_ia.demand.read', return_value={'recurso': 'demanda_rotacion'}) as read, \
-             patch('app.modules.asistente_ia.provider.respond', side_effect=[call, answer]) as model:
+        with app.test_request_context(), patch('app.multiagente.api.tools.allowed', side_effect=lambda s,r,a='consultar': a=='consultar'), \
+             patch('app.multiagente.api.demand.read', return_value={'recurso': 'demanda_rotacion'}) as read, \
+             patch('app.multiagente.api.provider.respond', side_effect=[call, answer]) as model:
             result = run({'menu': []}, 'Analiza la rotación')
-        read.assert_called_once_with({'menu': []}, {})
+        read.assert_called_once_with({'menu': []}, {'desde':'2026-07-18','hasta':'2026-11-17','detalle_productos':True})
         names = {tool['name'] for tool in model.call_args.args[1]}
         self.assertIn('analizar_demanda', names)
         self.assertNotIn('preparar_cambio', names)

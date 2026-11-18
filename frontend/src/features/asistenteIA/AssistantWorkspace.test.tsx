@@ -5,10 +5,38 @@ import { AssistantWorkspace } from './AssistantWorkspace'
 import type { RespuestaAsistente } from './service'
 import { blankWorkspace } from './workspaceState'
 
-const mocks = vi.hoisted(() => ({ request: vi.fn(), status: vi.fn() }))
+const mocks = vi.hoisted(() => ({ request: vi.fn(), status: vi.fn(), scope: {perfil:1, local:1, changing:false} }))
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-session', perfilActivo: { id_perfil: 1, nombre: 'Administrador' }, localActivo: null }),
+  useAuth: () => ({ token: 'test-session', perfilActivo: { id_perfil: mocks.scope.perfil, nombre: 'Administrador' }, localActivo: {id_local:mocks.scope.local}, cambiandoLocal:mocks.scope.changing }),
 }))
+
+it('preserves a clean promotion table after saving and in the following conversation turn',async()=>{
+  const vista={nombre:'Inicio para 2',precio:39.9,activo:true,hora_inicio:null,hora_fin:null,
+    grupos:[{cantidad_elegir:2,permite_repetir:true,opciones:['174 IPA · 0.2 LTR (#118)']},
+      {cantidad_elegir:1,permite_repetir:false,opciones:['Nachos · 1.0 PORCION (#68)','Papas · 1.0 PORCION (#61)']}]}
+  mocks.request.mockImplementation(async(_token,route)=>{
+    if(route==='realizar')return {mensaje:'Promoción guardada correctamente'}
+    if(mocks.request.mock.calls.filter(call=>call[1]==='preparar').length>1)return {respuesta:'Seguimos con tu consulta.',consultas:[],borrador:null}
+    return {respuesta:'Revisa la propuesta',consultas:[],borrador:{id_borrador:'promotion',recurso:'promociones',accion:'crear',id:null,anterior:null,datos:vista,vista}}
+  })
+  render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  const input=await screen.findByRole('textbox',{name:'Consulta o corrección'})
+  await waitFor(()=>expect(input.hasAttribute('disabled')).toBe(false))
+  fireEvent.change(input,{target:{value:'Prepara Inicio para 2'}})
+  fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+  fireEvent.click(await screen.findByRole('checkbox'))
+  fireEvent.click(screen.getByRole('button',{name:'Realizar'}))
+  await screen.findByRole('heading',{name:'Cambio realizado'})
+  expect(screen.getByRole('table')).toBeTruthy()
+  expect(screen.getByRole('heading',{name:'Inicio para 2'})).toBeTruthy()
+  expect(screen.queryByText(/Permite repetir/)).toBeNull()
+  await waitFor(()=>expect(input.hasAttribute('disabled')).toBe(false))
+  fireEvent.change(input,{target:{value:'Gracias, otra consulta'}})
+  fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+  await screen.findByText('Seguimos con tu consulta.')
+  expect(screen.getByRole('heading',{name:'Inicio para 2'})).toBeTruthy()
+  expect(screen.getByRole('table')).toBeTruthy()
+})
 vi.mock('./service', async importOriginal => ({
   ...await importOriginal<typeof import('./service')>(),
   solicitar: mocks.request,
@@ -49,6 +77,93 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('assistant confirmed workflow continuation', () => {
+  it('starts a clean conversation without previous drafts, context or flow tokens', async () => {
+    mocks.request.mockImplementation(async (_token, route) => {
+      if (route === 'cancelar') return { mensaje: 'Cancelado' }
+      return { ...proposal(false), flujo_compra: 'old-purchase-flow' }
+    })
+    render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+    const input = await screen.findByRole('textbox', { name: 'Consulta o corrección' })
+    await waitFor(() => expect(input.hasAttribute('disabled')).toBe(false))
+    fireEvent.change(input, { target: { value: 'Crear receta anterior' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }))
+    await screen.findByRole('checkbox')
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar conversación' }))
+    await waitFor(() => expect(screen.queryByRole('checkbox')).toBeNull())
+    await waitFor(() => expect(input.hasAttribute('disabled')).toBe(false))
+    expect(mocks.request.mock.calls.some(call => call[1] === 'cancelar')).toBe(true)
+    expect(vi.mocked(fetch).mock.calls.some(call => call[1]?.method === 'PUT' && JSON.parse(String(call[1].body)).workspace === null)).toBe(true)
+    fireEvent.change(input, { target: { value: 'Quiero comparar promociones' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }))
+    await waitFor(() => expect(mocks.request.mock.calls.filter(call => call[1] === 'preparar')).toHaveLength(2))
+    const body = mocks.request.mock.calls.filter(call => call[1] === 'preparar')[1][2]
+    expect(body.contexto_previo).toBe('')
+    expect(body.borrador_previo).toBe('')
+    expect(body.continuacion).toBeUndefined()
+    expect(body.flujo_compra).toBeUndefined()
+    expect(body.reemplaza).toBeUndefined()
+  })
+  it('validates manual purchase totals before allowing confirmation of the replacement draft',async()=>{
+    function purchase(id:string,total:number):RespuestaAsistente {
+      return {respuesta:'Revisa el pedido',consultas:[],flujo_compra:'signed-flow',borrador:{
+        id_borrador:id,recurso:'ordenes_compra',accion:'crear',id:null,anterior:null,
+        datos:{accion:'ENVIAR',detalles:[{id_producto:7,cantidad_solicitada:total}]},
+        vista:{productos:[{producto:'Gin',unidad:'LTR',presentacion_compra:0.6,cantidad_final:total,
+          porcentaje_general:10,porcentaje_adicional:0}]},
+      }}
+    }
+    mocks.request.mockImplementation(async(_token,route)=>{
+      if(route==='preparar')return purchase('purchase-old',1.8)
+      if(route==='compras/ajustar')return purchase('purchase-new',2.4)
+      return {mensaje:'Borrador guardado'}
+    })
+    render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+    const chat=await screen.findByRole('textbox',{name:'Consulta o corrección'})
+    await waitFor(()=>expect(chat.hasAttribute('disabled')).toBe(false))
+    fireEvent.change(chat,{target:{value:'Prepara mi pedido'}})
+    fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+    const quantity=await screen.findByRole('spinbutton',{name:'Cantidad de presentaciones de Gin'})
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.change(quantity,{target:{value:'4'}})
+    expect(screen.getByRole('button',{name:'Enviar pedido'}).hasAttribute('disabled')).toBe(true)
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByRole('button',{name:'Actualizar propuesta'}))
+    await waitFor(()=>expect(mocks.request.mock.calls.some(call=>call[1]==='compras/ajustar')).toBe(true))
+    expect(mocks.request.mock.calls.find(call=>call[1]==='compras/ajustar')?.[2]).toEqual({
+      id_borrador:'purchase-old',cantidades:[{id_producto:7,presentaciones:4}],
+    })
+    await waitFor(()=>expect((screen.getByRole('spinbutton',{name:'Cantidad de presentaciones de Gin'}) as HTMLInputElement).value).toBe('4'))
+    await waitFor(()=>expect(screen.getByRole('checkbox').hasAttribute('disabled')).toBe(false))
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button',{name:'Enviar pedido'}))
+    await waitFor(()=>expect(mocks.request.mock.calls.find(call=>call[1]==='realizar')?.[2].id).toBe('purchase-new'))
+    await screen.findByRole('heading',{name:'Cambio realizado'})
+    expect(screen.getByRole('columnheader',{name:'Total a pedir'})).toBeTruthy()
+    expect(screen.getByRole('cell',{name:'2.4 L'})).toBeTruthy()
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    expect(screen.queryByText(/Antes de redondear/)).toBeNull()
+  })
+  it('sends a short correction after a large report without resending every table row', async () => {
+    const report='### Informe de compras\nEntrega: 2026-11-22\n| Insumo | Cantidad |\n| --- | --- |\n'+
+      Array.from({length:1000},(_,i)=>`| Producto ${i} | 10 unidades |`).join('\n')
+    mocks.request.mockResolvedValueOnce({respuesta:report,consultas:[],borrador:null,flujo_compra:'signed-purchase-flow'})
+      .mockResolvedValueOnce({respuesta:'Confirma los incrementos.',consultas:[],borrador:null})
+    render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+    const input=await screen.findByRole('textbox',{name:'Consulta o corrección'})
+    await waitFor(()=>expect(input.hasAttribute('disabled')).toBe(false))
+    fireEvent.change(input,{target:{value:'Analiza mi pedido'}})
+    fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+    await screen.findByRole('heading',{name:'Informe de compras'})
+    await waitFor(()=>expect(input.hasAttribute('disabled')).toBe(false))
+    fireEvent.change(input,{target:{value:'10% general y 20% para pisco sour'}})
+    fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+    await waitFor(()=>expect(mocks.request).toHaveBeenCalledTimes(2))
+    const request=mocks.request.mock.calls[1][2]
+    expect(request.instruccion).toBe('10% general y 20% para pisco sour')
+    expect(request.borrador_previo.length).toBeLessThanOrEqual(16000)
+    expect(request.contexto_previo.length).toBeLessThanOrEqual(16000)
+    expect(request.flujo_compra).toBe('signed-purchase-flow')
+  })
   it('keeps chat as default and opens an optional sheet prefilled from the proposal', async () => {
     const result: RespuestaAsistente = { respuesta: 'Revisa.', consultas: [], agente: 'menajes', borrador: {
       id_borrador: 'sheet-draft', recurso: 'menajes', accion: 'crear', id: null,
@@ -183,4 +298,38 @@ describe('assistant confirmed workflow continuation', () => {
     expect(mocks.request.mock.calls.filter(call => call[1] === 'realizar')).toHaveLength(1)
     expect(mocks.request.mock.calls.filter(call => call[1] === 'continuar')).toHaveLength(2)
   })
+})
+
+it('clears the conversation on role and local changes even with the same token',async()=>{
+  const view=render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  await waitFor(()=>expect(screen.getByRole('textbox').hasAttribute('disabled')).toBe(false))
+  fireEvent.change(screen.getByRole('textbox'),{target:{value:'private previous scope'}})
+  mocks.scope.local=2
+  view.rerender(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
+  fireEvent.change(screen.getByRole('textbox'),{target:{value:'private role'}})
+  mocks.scope.perfil=2
+  view.rerender(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
+  mocks.scope.changing=true
+  view.rerender(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  expect(screen.queryByRole('textbox')).toBeNull()
+  mocks.scope={perfil:1,local:1,changing:false}
+})
+
+it('ignores an old response arriving after switching store',async()=>{
+  let finish!:(value:RespuestaAsistente)=>void
+  mocks.request.mockImplementationOnce(()=>new Promise<RespuestaAsistente>(resolve=>{finish=resolve}))
+  const view=render(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  await waitFor(()=>expect(screen.getByRole('textbox').hasAttribute('disabled')).toBe(false))
+  fireEvent.change(screen.getByRole('textbox'),{target:{value:'query old store'}})
+  fireEvent.click(screen.getByRole('button',{name:'Enviar'}))
+  await waitFor(()=>expect(mocks.request).toHaveBeenCalled())
+  mocks.scope.local=3
+  view.rerender(<MemoryRouter><AssistantWorkspace /></MemoryRouter>)
+  finish({respuesta:'PRIVATE OLD STORE',consultas:[],borrador:null})
+  await waitFor(()=>expect(screen.getByRole('textbox').hasAttribute('disabled')).toBe(false))
+  expect(screen.queryByText('PRIVATE OLD STORE')).toBeNull()
+  expect(screen.queryByText('query old store')).toBeNull()
+  mocks.scope={perfil:1,local:1,changing:false}
 })

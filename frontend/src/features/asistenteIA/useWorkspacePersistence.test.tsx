@@ -28,6 +28,28 @@ describe('scoped assistant workspace persistence', () => {
     expect(vi.mocked(fetch).mock.calls[0][1]?.method).toBe('GET')
   })
 
+  it('saves full visible reports without duplicated native planning context', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer({ workspace: null, revision: 0 }))
+    vi.mocked(fetch).mockResolvedValueOnce(answer({ workspace: null, revision: 1 }))
+    const rows = Array.from({ length: 141 }, (_, i) => ({ id_producto: i, stock: i + 0.25 }))
+    const report = Array.from({ length: 192 }, (_, i) => `| Producto ${i} | ${i + 1} | 123.45 |`).join('\n').repeat(4)
+    const queries = [{ recurso: 'stock', total: 141, desde: 0, hay_mas: false, registros: rows,
+      contexto: { fecha: '2026-11-16', plan_semanal: { respuesta: report, ventas: rows } } }]
+    const value = { ...blankWorkspace(), review: report, result: { respuesta: report, borrador: null, consultas: queries },
+      history: [{ prompt: 'todas las filas', response: report, time: '', done: true, queries }] }
+    const before = JSON.stringify(value).length
+    const { result } = renderHook(() => useWorkspacePersistence('session', value, vi.fn()))
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    await act(async () => { await result.current.flush() })
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string).workspace
+    expect(body.review).toBe(report)
+    expect(body.history[0].response).toBe(report)
+    expect(body.result.consultas[0].registros).toEqual(rows)
+    expect(body.result.consultas[0].contexto).toEqual({ fecha: '2026-11-16' })
+    expect(JSON.stringify(body).length).toBeLessThan(before - report.length)
+    expect(value.result.consultas[0].contexto.plan_semanal.respuesta).toBe(report)
+  })
+
   it('serializes a pending save before clearing so a late save cannot resurrect work', async () => {
     let finish!: (r: Response) => void
     vi.mocked(fetch).mockResolvedValueOnce(answer({ workspace: null, revision: 0 }))

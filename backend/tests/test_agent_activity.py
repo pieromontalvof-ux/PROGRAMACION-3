@@ -6,7 +6,7 @@ from flask import Flask
 
 class AgentActivityTests(unittest.TestCase):
     def test_real_delegation_tools_and_final_are_saved_and_scoped(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         app=Flask(__name__)
         with tempfile.TemporaryDirectory() as folder, app.test_request_context('/api/asistente-ia/preparar',base_url='https://demo.example'):
             app.config['APP_DATA_DIR']=folder
@@ -32,7 +32,7 @@ class AgentActivityTests(unittest.TestCase):
                 with self.assertRaises(Exception):activity.load(trace['id'])
 
     def test_failure_is_recorded_and_does_not_leak_internal_error(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         app=Flask(__name__)
         with tempfile.TemporaryDirectory() as folder,app.test_request_context('/'):
             app.config['APP_DATA_DIR']=folder
@@ -46,7 +46,7 @@ class AgentActivityTests(unittest.TestCase):
             self.assertNotIn('secreto',str(trace))
 
     def test_validation_rejection_does_not_create_log_files(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         from pathlib import Path
         app=Flask(__name__)
         with tempfile.TemporaryDirectory() as folder,app.test_request_context('/'):
@@ -57,7 +57,7 @@ class AgentActivityTests(unittest.TestCase):
             self.assertFalse(list(Path(folder).rglob('*.json')))
 
     def test_storage_failure_does_not_destroy_answer(self):
-        from app.agents import activity
+        from app.multiagente.agents import activity
         app=Flask(__name__)
         with app.test_request_context('/'):
             token=activity.begin('Consulta',{'usuario':1,'perfil':2,'local':1})

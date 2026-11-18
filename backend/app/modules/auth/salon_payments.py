@@ -144,6 +144,62 @@ def respuesta(fila):
             'fecha': fila['creado_en'].isoformat()}
 
 
+def filtros_diario(args, hoy=None):
+    from datetime import date, datetime, time, timedelta, timezone
+    zona=timezone(timedelta(hours=-5))
+    hoy=hoy or datetime.now(zona).date()
+    try:
+        desde=date.fromisoformat(args.get('desde') or hoy.isoformat())
+        hasta=date.fromisoformat(args.get('hasta') or hoy.isoformat())
+        pagina=int(args.get('pagina','1'))
+    except (ValueError,TypeError):
+        raise BadRequest('Revisa las fechas y la pagina del diario.')
+    if desde>hasta or hasta==date.max or pagina<1 or pagina>100000:
+        raise BadRequest('El rango de fechas o la pagina no es valido.')
+    tipo=args.get('tipo','')
+    metodo=args.get('metodo','')
+    codigo=args.get('codigo','').strip()
+    if tipo not in ('','BOLETA','BOLETA_ELECTRONICA','FACTURA') or metodo not in ('','EFECTIVO','TARJETA') or len(codigo)>30:
+        raise BadRequest('Filtros de venta no validos.')
+    return {'inicio':datetime.combine(desde,time.min,zona),
+            'fin':datetime.combine(hasta+timedelta(days=1),time.min,zona),
+            'tipo':tipo,'metodo':metodo,'codigo':codigo,'pagina':pagina}
+
+
+@salon_payments_bp.get('/ventas')
+@jwt_required()
+def diario_ventas():
+    sesion=contexto()
+    if sesion['perfil'] not in (2,3):
+        raise Forbidden('Solo gerentes y supervisores pueden consultar el diario de ventas.')
+    preparado()
+    filtros=filtros_diario(request.args)
+    params={**filtros,'local':sesion['id_local'],'offset':(filtros['pagina']-1)*20}
+    condiciones=["id_local=:local","creado_en>=:inicio","creado_en<:fin"]
+    if filtros['tipo']: condiciones.append('tipo=:tipo')
+    if filtros['metodo']: condiciones.append('metodo=:metodo')
+    if filtros['codigo']:
+        condiciones.append("strpos('INT-' || lpad(id_cobro::text,8,'0'),:codigo)>0")
+        params['codigo']=filtros['codigo'].upper()
+    where=' AND '.join(condiciones)
+    # One statement gives the list and totals the same database snapshot.
+    row=db.session.execute(text(f"""WITH filtradas AS (
+        SELECT id_cobro,creado_en,mesa,tipo,metodo,total,comprobante->>'usuario' AS usuario
+        FROM salon_cobro WHERE {where}
+    ), pagina AS (SELECT * FROM filtradas ORDER BY creado_en DESC,id_cobro DESC LIMIT 20 OFFSET :offset)
+    SELECT (SELECT count(*) FROM filtradas) AS cantidad,
+        (SELECT coalesce(sum(total),0) FROM filtradas) AS total,
+        (SELECT coalesce(sum(total) FILTER (WHERE metodo='EFECTIVO'),0) FROM filtradas) AS efectivo,
+        (SELECT coalesce(sum(total) FILTER (WHERE metodo='TARJETA'),0) FROM filtradas) AS tarjeta,
+        coalesce((SELECT jsonb_agg(to_jsonb(pagina) ORDER BY creado_en DESC,id_cobro DESC) FROM pagina),'[]'::jsonb) AS ventas
+    """),params).mappings().one()
+    ventas=[]
+    for venta in row['ventas']:
+        ventas.append({**venta,'numero':f"INT-{venta['id_cobro']:08d}"})
+    return jsonify(local=sesion['local'],ventas=ventas,pagina=filtros['pagina'],por_pagina=20,
+        cantidad=row['cantidad'],total=float(row['total']),efectivo=float(row['efectivo']),tarjeta=float(row['tarjeta']))
+
+
 @salon_payments_bp.get('/comprobantes/<int:identidad>')
 @jwt_required()
 def comprobante(identidad):
@@ -164,6 +220,15 @@ def emitir(mesa):
     sesion = contexto(mesa)
     preparado()
     datos = validar(request.get_json(silent=True))
+    cliente_id=(request.get_json(silent=True) or {}).get('id_cliente')
+    if cliente_id:
+        from app.modules.clientes.service import obtener as obtener_cliente
+        try: cliente_id=str(uuid.UUID(str(cliente_id)))
+        except ValueError: raise BadRequest('Cliente invalido')
+        registro=obtener_cliente(sesion['id_local'],cliente_id)
+        if not registro or registro['numero_documento']!=datos['documento'] or registro['nombre']!=datos['cliente']:
+            raise Conflict('Los datos cambiaron. Selecciona nuevamente el cliente del local.')
+        datos['id_cliente']=cliente_id
     solicitud_hash = huella({**datos, 'mesa': mesa})
     try:
         # Reintentos y operaciones sobre la mesa se serializan antes de consultar el estado.
@@ -208,6 +273,8 @@ def emitir(mesa):
             RETURNING *'''), {**datos, 'local': sesion['id_local'], 'usuario': sesion['id_usuario'], 'mesa': mesa,
                 'hash': solicitud_hash, 'total': total, 'snapshot': json.dumps(snapshot, ensure_ascii=False),
                 'movimiento': movimiento}).mappings().one()
+        if cliente_id:
+            db.session.execute(text('UPDATE salon_cobro SET id_cliente=CAST(:cliente AS uuid) WHERE id_cobro=:id'), {'cliente':cliente_id,'id':cobro['id_cobro']})
         for p in pedidos:
             db.session.execute(text('INSERT INTO salon_cobro_pedido(id_cobro,id_pedido) VALUES(:cobro,:pedido)'),
                                {'cobro': cobro['id_cobro'], 'pedido': p['id_pedido']})

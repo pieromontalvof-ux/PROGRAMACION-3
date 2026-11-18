@@ -4716,3 +4716,31 @@ ALTER TABLE ONLY public.usuario_pin_salon
 --
 
 \unrestrict 62q2QsHlK6aKHhJja8xLhUwfAelwFC2pLFS4i0U6kBhiDkIz8hdd0RpK6iB9hiF
+
+-- One-to-one optional physical measurements; no invented capacities or owner changes.
+CREATE TABLE IF NOT EXISTS public.menaje_medida (
+    -- Parent existence and removal are enforced transactionally by tableware_admin.
+    -- The restricted application role lacks REFERENCES on the legacy table.
+    id_menaje integer PRIMARY KEY,
+    capacidad numeric(12,3),
+    unidad_capacidad varchar(16),
+    diametro_cm numeric(10,3),
+    altura_cm numeric(10,3),
+    CONSTRAINT ck_menaje_medidas CHECK (
+            ((capacidad IS NULL AND unidad_capacidad IS NULL) OR
+             (capacidad IS NOT NULL AND capacidad>0 AND capacidad<=1000000 AND unidad_capacidad IS NOT NULL AND unidad_capacidad IN ('MLT','LTR','FLOZ_US','FLOZ_UK')))
+            AND (diametro_cm IS NULL OR (diametro_cm>0 AND diametro_cm<=10000))
+            AND (altura_cm IS NULL OR (altura_cm>0 AND altura_cm<=10000))
+    )
+);
+
+ALTER TABLE public.menaje_medida
+    ADD COLUMN IF NOT EXISTS largo_cm numeric(10,3),
+    ADD COLUMN IF NOT EXISTS ancho_cm numeric(10,3),
+    ADD COLUMN IF NOT EXISTS origen_medidas varchar(16);
+ALTER TABLE public.menaje_medida DROP CONSTRAINT IF EXISTS ck_menaje_rectangular;
+ALTER TABLE public.menaje_medida ADD CONSTRAINT ck_menaje_rectangular CHECK (
+    (largo_cm IS NULL OR (largo_cm>0 AND largo_cm<=10000))
+    AND (ancho_cm IS NULL OR (ancho_cm>0 AND ancho_cm<=10000))
+    AND (origen_medidas IS NULL OR origen_medidas IN ('DEMO','REGISTRADO'))
+);

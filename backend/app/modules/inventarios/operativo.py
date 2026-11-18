@@ -181,7 +181,51 @@ def demanda():
         raise Conflict('Falta instalar el registro de cobros de Salón para analizar demanda')
     if hasta > datetime.now(timezone(timedelta(hours=-5))).date():
         raise BadRequest('El análisis de ventas no admite fechas futuras')
+    if request.args.get('detalle') == 'productos':
+        from .product_outlook import report as product_report
+        return jsonify(product_report(local,desde,hasta))
     return jsonify(report(local, desde, hasta))
+
+
+@operativo_bp.get('/demanda-global')
+@requiere_permiso(14, 'consultar')
+def demanda_global():
+    from .demand_global import report
+    from datetime import datetime,timedelta,timezone
+    if get_jwt().get('id_perfil') != 1:
+        raise Forbidden('El análisis global requiere Administrador del sistema')
+    if set(request.args)-{'desde','hasta'}:
+        raise BadRequest('El análisis global considera todas las tiendas; no admite cambiar el local')
+    today=datetime.now(timezone(timedelta(hours=-5))).date()
+    try:
+        start=date.fromisoformat(request.args.get('desde',(today-timedelta(days=29)).isoformat()))
+        end=date.fromisoformat(request.args.get('hasta',today.isoformat()))
+    except ValueError:
+        raise BadRequest('Indica fechas válidas') from None
+    if end<start or end>today or (end-start).days>366:
+        raise BadRequest('Selecciona hasta 367 días sin fechas futuras')
+    return jsonify(report(start,end))
+
+
+@operativo_bp.get('/plan-semanal')
+@requiere_permiso(37, 'consultar')
+@requiere_permiso(15, 'consultar')
+def plan_semanal():
+    from .weekly import report, validate_days
+    local, _, _ = contexto((2, 3))
+    try:
+        dias = validate_days(request.args.get("dias", "7"))
+    except ValueError as exc:
+        raise BadRequest(str(exc))
+    try:
+        porcentaje = Decimal(request.args.get('porcentaje', '0'))
+    except InvalidOperation:
+        raise BadRequest('El porcentaje debe estar entre 0 y 1000')
+    if not porcentaje.is_finite() or not 0 <= porcentaje <= 1000:
+        raise BadRequest('El porcentaje debe estar entre 0 y 1000')
+    if not db.session.execute(text("SELECT to_regclass('public.salon_cobro') IS NOT NULL")).scalar():
+        raise Conflict('Falta instalar el registro de cobros de Salón para analizar demanda')
+    return jsonify(report(local, porcentaje=porcentaje, dias=dias))
 
 
 def equipo(local):

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 // Render a small, safe Markdown subset as React elements. Never interpret HTML.
 function inline(text: string): ReactNode[] {
@@ -19,9 +19,36 @@ function inline(text: string): ReactNode[] {
   })
 }
 
-const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(v => v.trim())
+// An escaped pipe is cell content, including when it ends the row.
+const cells = (line: string) => {
+  const parts = line.trim().split(/(?<!\\)(?:\\\\)*\|/)
+  if (!parts[0]?.trim()) parts.shift()
+  if (!parts.at(-1)?.trim()) parts.pop()
+  return parts.map(value => value.trim().replace(/\\\|/g, '|'))
+}
 const listItem = /^\s*(?:[-*+] |\d+[.)] )/
 const separator = (line: string) => cells(line).every(c => /^:?-{3,}:?$/.test(c))
+
+function AnswerTable({ headings, rows }: { headings: string[]; rows: string[][] }) {
+  const [limit, setLimit] = useState('5')
+  const id = useId()
+  const eventTable = headings.length === 4 && headings.some(h => /evento/i.test(h)) && headings.some(h => /lugar/i.test(h))
+  const expandable = !eventTable && rows.length > 5
+  const shown = expandable && limit !== 'all' ? rows.slice(0, Number(limit)) : rows
+  return <div className="assistant-answer-table">
+    <div className="assistant-table-wrap" tabIndex={0} role="region" aria-label="Tabla de respuesta">
+      <table className="assistant-data-table" id={id}><thead><tr>{headings.map((h, n) => <th scope="col" key={n}>{inline(h)}</th>)}</tr></thead>
+        <tbody>{shown.map((r, n) => <tr key={n}>{headings.map((_, col) => <td key={col}>{inline(r[col] ?? '')}</td>)}</tr>)}</tbody></table>
+    </div>
+    {expandable && <div className="assistant-table-controls">
+      <label htmlFor={`${id}-limit`}>Mostrar filas</label>
+      <select id={`${id}-limit`} aria-controls={id} value={limit} onChange={event => setLimit(event.target.value)}>
+        <option value="5">5</option><option value="10">10</option><option value="20">20</option><option value="all">Todos</option>
+      </select>
+      <span role="status">Mostrando {shown.length} de {rows.length}</span>
+    </div>}
+  </div>
+}
 
 export function FormattedAnswer({ text }: { text: string }) {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
@@ -36,9 +63,7 @@ export function FormattedAnswer({ text }: { text: string }) {
       i += 2
       const rows: string[][] = []
       while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(cells(lines[i++]))
-      blocks.push(<div className="assistant-table-wrap" key={key} tabIndex={0} role="region" aria-label="Tabla de respuesta">
-        <table className="assistant-data-table"><thead><tr>{headings.map((h, n) => <th scope="col" key={n}>{inline(h)}</th>)}</tr></thead>
-          <tbody>{rows.map((r, n) => <tr key={n}>{headings.map((_, col) => <td key={col}>{inline(r[col] ?? '')}</td>)}</tr>)}</tbody></table></div>)
+      blocks.push(<AnswerTable key={`${key}-${text}`} headings={headings} rows={rows} />)
     } else if (/^#{1,6}\s/.test(line)) {
       blocks.push(<h3 key={key}>{inline(line.replace(/^#{1,6}\s+/, ''))}</h3>); i++
     } else if (listItem.test(line)) {

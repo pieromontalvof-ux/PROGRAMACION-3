@@ -67,7 +67,7 @@
 .agent-atlas-administration p { margin:8px 0 16px; font-size:14px; line-height:1.6; }
 .agent-atlas-admin-source,.agent-atlas-admin-save { display:flex; align-items:center; justify-content:center; gap:12px; padding:16px 10px; border-radius:12px; background:#e4f1e8; font-size:15px; }
 .agent-atlas-admin-arrow { display:block; text-align:center; font-size:26px; line-height:36px; color:#5b8069; }
-.agent-atlas-admin-node { display:flex; align-items:center; gap:12px; width:100%; padding:18px 14px; border:1px solid #acc8b5; border-radius:14px; background:white; color:#0a563b; cursor:pointer; text-align:left; }
+.assistant-page .agent-atlas-admin-node { display:flex; align-items:center; gap:12px; width:100%; padding:18px 14px; border:1px solid #acc8b5; border-radius:14px; background:white; color:#0a563b; cursor:pointer; text-align:left; }
 .agent-atlas-admin-node span { flex:1; display:grid; gap:7px; }
 .agent-atlas-admin-node strong { font-size:17px; }
 .agent-atlas-admin-node small { font-size:14px; }
@@ -77,3 +77,18 @@
 .assistant-page .agent-atlas-node,.assistant-page .agent-atlas-core { cursor:grab; touch-action:none; user-select:none; }
 .assistant-page .agent-atlas-node.is-held,.assistant-page .agent-atlas-core.is-held { cursor:grabbing; z-index:5; }
 .agent-atlas-node:focus-visible,.agent-atlas-core:focus-visible { outline:3px solid var(--ui-accent); outline-offset:9px; }
+/* Keep the overview quiet; detail belongs to the selected agent. */
+.agent-atlas-viewport { background:radial-gradient(circle at 50% 46%,color-mix(in srgb,var(--ui-accent) 5%,var(--ui-surface)),var(--ui-surface) 68%); }
+.agent-atlas-rings circle { opacity:.12; }.agent-atlas-rings circle:first-child { opacity:.22; }.agent-atlas-rings path { opacity:.08; }
+.agent-atlas-root-wire { opacity:.2; stroke-width:1.5; }.agent-atlas-root-wire.is-lit { opacity:.35; stroke-width:1.5; }
+.agent-atlas-role-summary { position:absolute; top:22px; left:24px; z-index:1; pointer-events:none; display:grid; gap:8px; color:var(--ui-text); padding:14px 16px; border:1px solid var(--ui-border); border-radius:14px; background:var(--ui-surface); box-shadow:0 4px 16px #163e2806; }
+.agent-atlas-summary-eyebrow { color:var(--ui-accent); font-size:10px; letter-spacing:.14em; font-weight:750; }.agent-atlas-role-summary>strong { font-size:19px; letter-spacing:-.025em; }.agent-atlas-role-summary>div { display:flex; flex-wrap:wrap; gap:6px 12px; }.agent-atlas-role-summary>div>span { display:flex; align-items:center; gap:5px; color:var(--ui-muted); font-size:12px; }
+.agent-atlas-pan-hint { left:auto; right:24px; top:24px; transform:none; max-width:37%; font-size:12px; text-align:right; line-height:1.6; background:transparent; }
+.agent-atlas-floating-legend small { display:block; margin-top:7px; font-size:11px; color:var(--ui-muted); line-height:1.5; }
+.agent-atlas-floating-legend .agent-atlas-edge-legend b { border-color:var(--ui-accent); }.agent-atlas-floating-legend .agent-atlas-edge-legend b.is-requirement { border-color:var(--ui-warning); }
+.assistant-page .agent-atlas-node { box-shadow:0 0 0 5px color-mix(in srgb,var(--ui-accent) 5%,var(--ui-surface)),0 4px 12px #254f2910; }
+.assistant-page .agent-atlas-node.is-selected { border-color:var(--ui-accent); box-shadow:0 0 0 6px color-mix(in srgb,var(--ui-accent) 16%,var(--ui-surface)),0 7px 20px #254f2918; }
+.agent-atlas-node-body { width:196px; padding:7px 8px; gap:5px; border:1px solid color-mix(in srgb,var(--ui-border) 55%,transparent); border-radius:10px; }.agent-atlas-node-body strong { text-wrap:balance; }.agent-atlas-node-body>small { color:var(--ui-muted); }.agent-atlas-node-meta { color:var(--ui-muted); font-size:11px; }.agent-atlas-node-meta>span { color:var(--ui-accent); }
+.agent-atlas-administration { background:var(--ui-surface); border-color:var(--ui-border); color:var(--ui-text); box-shadow:0 8px 24px #163e2808; }.agent-atlas-admin-source,.agent-atlas-admin-save { background:var(--ui-raised); }.assistant-page .agent-atlas-admin-node { background:var(--ui-surface); color:var(--ui-text); border-color:var(--ui-border); }.agent-atlas-admin-node small { color:var(--ui-muted); }.agent-atlas-admin-arrow { color:var(--ui-accent); }.agent-atlas-administration footer { border-color:var(--ui-border); color:var(--ui-muted); }
+.agent-atlas :is(button,select,summary):focus-visible { outline:3px solid var(--ui-accent); outline-offset:4px; }
+@container(max-width:780px) { .agent-atlas-role-summary { top:16px; left:16px; right:16px; padding:12px 14px; gap:6px; }.agent-atlas-role-summary>strong { font-size:17px; }.agent-atlas-pan-hint { display:none; }.agent-atlas-floating-legend small { max-width:240px; }.agent-atlas-floating-legend { font-size:12px; } }

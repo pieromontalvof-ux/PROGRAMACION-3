@@ -55,7 +55,20 @@ export interface RespuestaPresentacionesVenta {
   resumen: ResumenPresentacionesVenta
 }
 
-export interface MenajeDetalle {
+export type UnidadCapacidad = 'MLT' | 'LTR' | 'FLOZ_US' | 'FLOZ_UK'
+
+export interface MedidasMenaje {
+  capacidad: number | null
+  unidad_capacidad: UnidadCapacidad | null
+  diametro_cm: number | null
+  altura_cm: number | null
+    largo_cm: number | null
+    ancho_cm: number | null
+}
+
+export interface MenajeDetalle extends Partial<MedidasMenaje> {
+  capacidad_ml?: number | null
+    origen_medidas?: 'DEMO' | 'REGISTRADO' | null
   id_menaje: number
   nombre: string
   activo: boolean

@@ -13,6 +13,14 @@ function catalog(agentes: AgenteAsistente[]): CatalogoAgentes {
 }
 
 describe('manifest graph compatibility', () => {
+  it('removes duplicate and dangling server connections', () => {
+    const graph = { ...catalog([agent({ id: 'menajes' })]), conexiones: [
+      { origen: 'orquestador', destino: 'menajes', tipo: 'coordinacion' },
+      { origen: 'orquestador', destino: 'menajes', tipo: 'coordinacion' },
+      { origen: 'menajes', destino: 'recetas', tipo: 'dependencia' },
+    ] } as CatalogoAgentes
+    expect(agentGraph(graph)).toEqual([{ origen: 'orquestador', destino: 'menajes', tipo: 'coordinacion' }])
+  })
   it('assigns legacy product dependencies to their catalog owner rather than a querying agent', () => {
     const legacy = catalog([
       agent({ id: 'compras', recursos: ['productos', 'presentaciones'] }),

@@ -13,14 +13,29 @@ import { ReviewDetails } from './ReviewDetails'
 import { etiqueta, textoRevision } from './labels'
 import { AnswerContent } from './AnswerContent'
 import { AgentActivity } from './AgentActivity'
+import type {PurchaseAdjustment} from './PurchaseOrderReview'
+import { conversationReference, appendConversation } from './conversationContext'
+import {purchaseSummary} from './purchaseSummary'
+import {promotionSummary} from './PromotionReview'
 
 function summary(result: RespuestaAsistente) {
   const b = result.borrador
+  if(b?.recurso==='ordenes_compra' && Array.isArray(b.vista.productos))return purchaseSummary(b.vista.productos)
+  if(b?.recurso==='promociones') return promotionSummary(b.vista) ?? result.respuesta
   return b ? `${etiqueta(b.accion)} ${etiqueta(b.recurso)}${b.id ? ` (registro ${b.id})` : ''}\n` +
     textoRevision(b.vista) : result.respuesta
 }
 
 export function AssistantWorkspace() {
+  const { token, usuario, perfilActivo, localActivo, puestoActivo, cambiandoPerfil, cambiandoLocal, cargando } = useAuth()
+  // A separate component instance owns every request, draft and conversation.
+  // Unmount immediately while switching, before the new credentials arrive.
+  if (cambiandoPerfil || cambiandoLocal || cargando) return <p role="status">Cambiando contexto del asistente...</p>
+  const scope = JSON.stringify([token, usuario, perfilActivo?.id_perfil, localActivo?.id_local, puestoActivo])
+  return <ScopedAssistantWorkspace key={scope} />
+}
+
+function ScopedAssistantWorkspace() {
   const { token, perfilActivo, localActivo } = useAuth()
   const [estado, setEstado] = useState<EstadoAsistente | null>(null)
   const [error, setError] = useState('')
@@ -38,6 +53,7 @@ export function AssistantWorkspace() {
   const [dependencyOpen, setDependencyOpen] = useState(false)
   const [formPanelOpen, setFormPanelOpen] = useState(false)
   const [checked, setChecked] = useState(false)
+  const [purchaseDirty,setPurchaseDirty]=useState(false)
   const [editing, setEditing] = useState(false)
   const latest = useRef<HTMLDivElement>(null)
   const controllers = useRef(new Set<AbortController>())
@@ -46,6 +62,7 @@ export function AssistantWorkspace() {
   const progress = useWorkspacePersistence(token, hasWorkspace(state) ? state : null, saved => {
     const restored = normalizeWorkspace(saved)
     workspace.restore(restored); setContinuation(restored.result?.continuacion)
+    setPurchaseDirty(false)
     setChecked(false); setEditing(false); setDependencyOpen(Boolean(restored.workflow && restored.workflow.frames.length > 1))
   })
   const locked = busy || voiceBusy || workflowBusy || dependencyOpen || progress.status === 'loading' || progress.status === 'conflict'
@@ -59,8 +76,8 @@ export function AssistantWorkspace() {
     ...(estado?.capacidades?.conteos?.includes('crear') ? ['Quiero abrir un nuevo conteo'] : []),
   ] : catalogFormsEnabled ? ['Crear categoría de productos', 'Crear proveedor', 'Crear producto'] : ['Consultar productos de la carta', 'Revisar una receta', 'Preparar un cambio de precio']),
   ]
-  const modified = review !== original || Boolean(instruction.trim()) || formDirty
-  const sendDisabled = locked || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000
+  const modified = review !== original || Boolean(instruction.trim()) || formDirty || purchaseDirty
+  const sendDisabled = locked || purchaseDirty || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000
   useEffect(() => { if (original) latest.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [original])
   useEffect(() => {
     alive.current = true
@@ -83,6 +100,7 @@ export function AssistantWorkspace() {
   }
 
   function prepare(selectedInstruction?: string) {
+    if (purchaseDirty) return
     const prompt = selectedInstruction ?? instruction.trim()
     void action(async signal => {
       setChecked(false)
@@ -92,7 +110,8 @@ export function AssistantWorkspace() {
       const data = await solicitar<RespuestaAsistente>(token!, 'preparar', {
         modo: 'conversacion',
         instruccion: prompt || 'Prepara nuevamente este borrador con las correcciones del texto.',
-        borrador_previo: confirmed ? `YA REALIZADO: ${review}` : review, contexto_previo: context, reemplaza: old,
+        borrador_previo: confirmed ? `YA REALIZADO: ${conversationReference(review)}` : review === original ? conversationReference(review) : review,
+        contexto_previo: conversationReference(context), reemplaza: old,
         continuacion: continuation,
         flujo_compra: confirmed ? undefined : result?.flujo_compra,
       }, signal)
@@ -104,7 +123,7 @@ export function AssistantWorkspace() {
       setLastPrompt(prompt || 'Corregir el borrador con el texto editado.')
       setTime(new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }))
       setEditing(false)
-      setContext(current => `${current}\nUsuario: ${prompt}\nAsistente: ${text}`.slice(-16000))
+      setContext(current => appendConversation(current,prompt,text))
       setResult(data); setReview(text); setOriginal(text); setInstruction(''); setConfirmed(false)
       setContinuation(data.continuacion); setResumeDraft(null)
       setCatalogForm(data.formulario ?? null); setWorkflow(null); setDraftId(data.borrador?.id_borrador ?? null); setFormVersion(v => v + 1); setFormDirty(false)
@@ -157,7 +176,13 @@ export function AssistantWorkspace() {
       const data = await solicitar<{ mensaje: string }>(token!, 'realizar', {
         id: draftId, confirmar: true,
       }, signal)
-      if (alive.current) { setConfirmed(true); setChecked(false); setCatalogForm(null); setWorkflow(null); setFormDirty(false); setSuccess(data.mensaje); setResult({ ...result, borrador: null }); setContext(current => `${current}\nOPERACIÓN CONFIRMADA Y REALIZADA: ${data.mensaje}`.slice(-16000)) }
+      if (alive.current) {
+        // Rebuild from the confirmed data before removing the editable draft.
+        // This also upgrades drafts restored with an older text summary.
+        const savedSummary=summary(result)
+        setReview(savedSummary);setOriginal(savedSummary);setEditing(false)
+        setConfirmed(true); setChecked(false); setCatalogForm(null); setWorkflow(null); setFormDirty(false); setSuccess(data.mensaje); setResult({ ...result, borrador: null }); setContext(current => `${current}\nOPERACIÓN CONFIRMADA Y REALIZADA: ${data.mensaje}`.slice(-16000))
+      }
       if (alive.current && continuation && result.tarea_pendiente) {
         setResumeDraft(draftId)
         await resumeTask(draftId, signal)
@@ -165,6 +190,21 @@ export function AssistantWorkspace() {
         setContinuation(undefined)
         setResult(current => current ? { ...current, continuacion: undefined } : null)
       }
+    })
+  }
+
+  async function adjustPurchase(changes:PurchaseAdjustment[]) {
+    if (!result?.borrador || result.borrador.recurso!=='ordenes_compra') return
+    await action(async signal=>{
+      const data=await solicitar<RespuestaAsistente>(token!,'compras/ajustar',{
+        id_borrador:result.borrador!.id_borrador,cantidades:changes,
+      },signal)
+      if (!alive.current) return
+      const next={...result,...data,flujo_compra:result.flujo_compra,continuacion:result.continuacion}
+      const text=summary(next)
+      setResult(next);setReview(text);setOriginal(text);setDraftId(data.borrador?.id_borrador??null)
+      setChecked(false);setPurchaseDirty(false);setConfirmed(false);setEditing(false)
+      setContext(current=>appendConversation(current,'Ajusté manualmente las cantidades del pedido.',text))
     })
   }
 
@@ -184,7 +224,8 @@ export function AssistantWorkspace() {
     void action(async signal => {
       if (result?.borrador) await solicitar(token!, 'cancelar', { id: result.borrador.id_borrador }, signal)
       await progress.clear()
-      if (alive.current) { workspace.reset(); setResult(null); setContinuation(undefined); setResumeDraft(null); setCatalogForm(null); setFormDirty(false); setReview(''); setOriginal(''); setInstruction(''); setContext(''); setConfirmed(false); setChecked(false); setHistory([]); setLastPrompt(''); setEditing(false) }
+      setFormPanelOpen(false); setDependencyOpen(false)
+      if (alive.current) { workspace.reset(); setResult(null); setContinuation(undefined); setResumeDraft(null); setCatalogForm(null); setFormDirty(false); setPurchaseDirty(false); setReview(''); setOriginal(''); setInstruction(''); setContext(''); setConfirmed(false); setChecked(false); setHistory([]); setLastPrompt(''); setEditing(false) }
     })
   }
 
@@ -246,30 +287,34 @@ export function AssistantWorkspace() {
               onCheckpoint={async (snapshot: WorkflowSnapshot) => { setWorkflow(snapshot); await progress.flush({ ...state, workflow: snapshot }) }}
               onNestedChange={setDependencyOpen} onBusy={setWorkflowBusy} onSaved={message => { setSuccess(message); setContext(current => `${current}\nREQUISITO CREADO: ${message}`.slice(-16000)) }} />
             </details>}
-            {editing ? <div className="assistant-editor"><label htmlFor="assistant-review">Editar resumen</label>
+            {editing ? <div className="assistant-editor"><label htmlFor="assistant-review">Editar texto de la propuesta</label>
               <textarea id="assistant-review" rows={7} maxLength={16000} disabled={locked} value={review} onChange={e => { setReview(e.target.value); setChecked(false) }} />
               <small>Pulsa Enviar para preparar una nueva propuesta con tus correcciones.</small></div> :
               !result?.borrador && <AnswerContent text={review}
                 queries={!confirmed && review === original ? result?.consultas ?? [] : []}
               />}
             {!confirmed && Boolean(result?.opciones?.length) && <div className="assistant-suggestions" aria-label="Opciones para continuar">
-              {result?.opciones?.map(option => <button key={option.instruccion} className="assistant-secondary" disabled={locked} onClick={() => prepare(option.instruccion)}>{option.etiqueta}</button>)}
+              {result?.opciones?.map(option => <button key={option.instruccion} className="assistant-secondary" disabled={locked || purchaseDirty} onClick={() => prepare(option.instruccion)}>{option.etiqueta}</button>)}
             </div>}
             {result?.borrador && <section className="assistant-proposal"><header><span className="assistant-eyebrow">{etiqueta(result.borrador.accion)}</span><h3>{etiqueta(result.borrador.recurso)}</h3></header>
-              <ReviewDetails value={result.borrador.vista} />
+              <ReviewDetails key={result.borrador.id_borrador} resource={result.borrador.recurso} value={result.borrador.vista}
+                purchase={result.borrador.recurso==='ordenes_compra'?{
+                  details:result.borrador.datos.detalles,disabled:locked || editing || review!==original,
+                  onDirtyChange:dirty=>{setPurchaseDirty(dirty);setChecked(false)},onApply:adjustPurchase,
+                }:undefined} />
               {!catalogForm && result.borrador.accion === 'crear' && ['productos', 'proveedores', 'categorias_productos', 'categorias_carta', 'menajes', 'presentaciones'].includes(result.borrador.recurso) &&
                 <button className="assistant-secondary" disabled={locked} onClick={editProposalInSheet}>Editar ficha (opcional)</button>}
-              <p className="assistant-note">Puedes corregir esta propuesta por conversación antes de confirmar.</p>
+              {result.borrador.recurso!=='ordenes_compra' && <p className="assistant-note">Puedes corregir esta propuesta por conversación antes de confirmar.</p>}
               {result.borrador.recurso === 'presentaciones' && <p className="assistant-note">Nombre, tipo y categoría se comparten con las demás presentaciones del artículo.</p>}
               {result.borrador.anterior && <details><summary>Ver datos antes del cambio</summary><ReviewDetails value={result.borrador.anterior} /></details>}
             </section>}
             {result?.borrador && <label className="assistant-confirm"><input type="checkbox" checked={checked} disabled={locked || modified} onChange={e => setChecked(e.target.checked)} />Revisé los datos que se guardarán.</label>}
-            {modified && result?.borrador && <p className="assistant-note">Hay correcciones pendientes. {formDirty ? 'Pulsa Revisar propuesta en el formulario.' : 'Pulsa Enviar para revisar la nueva propuesta.'}</p>}
+            {modified && result?.borrador && <p className="assistant-note">Hay correcciones pendientes. {purchaseDirty?'Pulsa Actualizar propuesta en el cuadro.':formDirty ? 'Pulsa Revisar propuesta en el formulario.' : 'Pulsa Enviar para revisar la nueva propuesta.'}</p>}
             <footer className="assistant-answer-actions"><div>
-              <button className="assistant-secondary" disabled={locked} onClick={() => { input.current?.focus(); input.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }}><PencilLine size={16} />Corregir / más instrucciones</button>
-              <button className="assistant-text-button" disabled={locked} onClick={() => setEditing(v => !v)}>{editing ? 'Ver respuesta' : 'Editar resumen'}</button>
+              <button className="assistant-secondary" title="Escribe en el chat qué quieres cambiar" disabled={locked} onClick={() => { input.current?.focus(); input.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }}><PencilLine size={16} />Pedir cambios por chat</button>
+              <button className="assistant-text-button" title="Edita el texto y envíalo para revisar una nueva propuesta" disabled={locked || purchaseDirty} onClick={() => setEditing(v => !v)}>{editing ? 'Ver respuesta' : 'Editar texto de la propuesta'}</button>
             </div>{confirmed ? <span className="assistant-completed"><CheckCheck size={18} />Realizado</span> : result?.borrador &&
-              <button onClick={execute} disabled={locked || modified || !checked || !estado?.ejecucion_disponible}>Realizar</button>}
+              <button onClick={execute} disabled={locked || modified || !checked || !estado?.ejecucion_disponible}>{result.borrador.recurso==='ordenes_compra' && result.borrador.datos.accion==='ENVIAR'?'Enviar pedido':'Realizar'}</button>}
             </footer>
           </section>
         </div>

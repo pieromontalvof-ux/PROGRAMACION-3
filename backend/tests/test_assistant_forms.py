@@ -4,8 +4,8 @@ from unittest.mock import patch
 from flask_jwt_extended import create_access_token
 
 from app import create_app
-from app.modules.asistente_ia import forms, routes
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.api import forms, routes
+from app.multiagente.api.provider import AssistantError
 
 
 CATEGORY = {'id_categoria': 1, 'nombre': 'Bebidas', 'prefijo': 'BEB', 'activo': True}

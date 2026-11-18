@@ -1,9 +1,10 @@
 import unittest
+from datetime import datetime,timedelta,timezone
 from unittest.mock import patch
 from flask import Flask
 
-from app.agents.orchestrator import purchase_flow as flow
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.agents.orchestrator import purchase_flow as flow
+from app.multiagente.api.provider import AssistantError
 
 
 REQUEST = ('Quiero preparar el pedido de insumos de Sheraton. Revisa los eventos cercanos de los próximos siete días '
@@ -28,6 +29,20 @@ STOCK = {'productos':[{'id_producto':1,'nombre':'Limón','unidad':'KGM','stock_a
 
 
 class PurchaseReviewTests(unittest.TestCase):
+    def test_natural_product_analysis_uses_the_same_weekly_review_before_margin(self):
+        instruction=('quiero hacer un nuevo pedido semanal, que entrará el lunes 23 de este mes, '
+                     'analiza los eventos hasta esa fecha y un análisis de los productos para saber como hacer los pedidos')
+        from app.multiagente.agents.orchestrator import purchase_review
+        self.assertTrue(purchase_review.requested(instruction))
+        # The semantic interpreter supplies the confirmed delivery date.
+        today=datetime.now(timezone(timedelta(hours=-5))).date()
+        result,_,demand,_=self.review(instruction=f'Eventos del {today} al {today+timedelta(days=6)}. '+instruction)
+        demand.assert_called_once()
+        self.assertTrue(demand.call_args.kwargs['bounded'])
+        self.assertTrue(demand.call_args.kwargs['filters']['semanal'])
+        self.assertTrue(flow.load(result['flujo_compra'])['revision_completada'])
+        self.assertNotIn('¿Quieres revisar las ventas',result['respuesta'])
+
     def setUp(self):
         self.app = Flask(__name__)
         self.app.config['SECRET_KEY'] = 'purchase-review-test-secret'
@@ -35,9 +50,9 @@ class PurchaseReviewTests(unittest.TestCase):
         self.ctx.push()
         self.addCleanup(self.ctx.pop)
         for target, kwargs in (
-            ('app.modules.asistente_ia.drafts.scope', {'return_value':{'usuario':1,'perfil':2,'local':4}}),
-            ('app.modules.asistente_ia.tools.authorize', {}),
-            ('app.modules.asistente_ia.configuration.authorize', {}),
+            ('app.multiagente.api.drafts.scope', {'return_value':{'usuario':1,'perfil':2,'local':4}}),
+            ('app.multiagente.api.tools.authorize', {}),
+            ('app.multiagente.api.configuration.authorize', {}),
         ):
             p = patch(target, **kwargs)
             p.start()
@@ -55,7 +70,7 @@ class PurchaseReviewTests(unittest.TestCase):
         result, search, demand, native = self.review()
         self.assertEqual(demand.call_count, 1)
         self.assertTrue(demand.call_args.kwargs['bounded'])
-        self.assertEqual(native.call_args.args[0], '/ordenes-compra/pedido-sugerido?porcentaje=0')
+        self.assertEqual(native.call_args.args[0], '/ordenes-compra/pedido-sugerido?porcentaje=0&horizonte=semanal')
         self.assertIn('IPA', result['respuesta'])
         self.assertIn('Limón', result['respuesta'])
         self.assertIn('5 kg', result['respuesta'])
@@ -124,7 +139,7 @@ class PurchaseReviewTests(unittest.TestCase):
         result, _, demand, native = self.review(instruction='Quiero hacer un pedido')
         self.assertEqual(demand.call_count, 0)
         self.assertEqual(native.call_count, 0)
-        self.assertTrue(result['opciones'])
+        self.assertIn('¿Hasta qué fecha necesitas que alcance este pedido?',result['respuesta'])
 
     def test_excluded_analysis_is_not_run_just_because_events_were_requested(self):
         result, _, demand, native = self.review(instruction='Quiero hacer un pedido. Revisa eventos, pero no analices ventas y stock todavía.')
@@ -133,7 +148,7 @@ class PurchaseReviewTests(unittest.TestCase):
 
     def test_explicit_sales_dates_on_a_followup_are_not_replaced_by_the_old_request(self):
         token = flow.serializer().dumps({'scope':{'usuario':1,'perfil':2,'local':4},'paso':'analisis','margen':None,
-            'solicitud':'Quiero hacer un pedido', 'eventos':'Búsqueda completada.'})
+            'solicitud':'Quiero hacer un pedido', 'eventos':'Búsqueda completada.','dias_abastecimiento':7})
         _, _, demand, _ = self.review(instruction='Analiza ventas del 2026-10-01 al 2026-10-10 y el stock', token=token)
         self.assertEqual(demand.call_args.kwargs['filters'], {'desde':'2026-10-01','hasta':'2026-10-10'})
 
@@ -171,7 +186,7 @@ class PurchaseReviewTests(unittest.TestCase):
         def authorize(agent, resource, *args):
             if agent == 'inventario' and resource == 'stock':
                 raise AssistantError('Sin permiso para revisar stock', 403)
-        with patch('app.modules.asistente_ia.configuration.authorize', side_effect=authorize):
+        with patch('app.multiagente.api.configuration.authorize', side_effect=authorize):
             result, _, demand, native = self.review()
         self.assertIn('Sin permiso para revisar stock', result['respuesta'])
         self.assertEqual(demand.call_count, 1)
@@ -189,14 +204,14 @@ class PurchaseReviewTests(unittest.TestCase):
         self.assertEqual(query['contexto']['resumen']['AGOTADO'], 0)
 
     def test_sales_can_be_excluded_while_stock_and_base_are_requested(self):
-        result, _, demand, native = self.review(instruction='Quiero hacer un pedido. Revisa el stock, pero no analices ventas todavía.')
+        result, _, demand, native = self.review(instruction='Quiero hacer un pedido para 7 días. Revisa el stock, pero no analices ventas todavía.')
         self.assertEqual(demand.call_count, 0)
         self.assertEqual(native.call_count, 2)
         self.assertNotIn('IPA', result['respuesta'])
         self.assertIn('stock', [q['recurso'] for q in result['consultas']])
 
     def test_sales_only_excludes_stock_summary_and_base_without_leaking_stock_details(self):
-        result, _, demand, native = self.review(instruction='Quiero preparar el pedido. Analiza ventas, pero no revises stock ni reposición todavía.')
+        result, _, demand, native = self.review(instruction='Quiero preparar el pedido para 7 días. Analiza ventas, pero no revises stock ni reposición todavía.')
         self.assertEqual(demand.call_count, 1)
         self.assertEqual(native.call_count, 0)
         self.assertIn('IPA', result['respuesta'])
@@ -204,7 +219,7 @@ class PurchaseReviewTests(unittest.TestCase):
         self.assertNotIn('stock_actual', str(result['consultas']))
 
     def test_events_can_be_excluded_without_blocking_the_requested_internal_analysis(self):
-        result, search, demand, native = self.review(instruction='Quiero preparar el pedido. Sin análisis de eventos; analiza ventas y stock.')
+        result, search, demand, native = self.review(instruction='Quiero preparar el pedido para 7 días. Sin análisis de eventos; analiza ventas y stock.')
         self.assertEqual(search.call_count, 0)
         self.assertEqual(demand.call_count, 1)
         self.assertEqual(native.call_count, 2)

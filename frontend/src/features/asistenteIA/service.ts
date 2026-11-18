@@ -22,7 +22,7 @@ export interface Consulta {
 }
 export type AgenteId = 'carta_recetas' | 'inventario' | 'compras' | 'recepcion' | 'eventos' | 'demanda' | 'categorias_carta' | 'menajes' | 'presentaciones' | 'subproductos' | 'recetas' | 'promociones'
 export const nombresAgentes: Record<AgenteId | 'orquestador', string> = {
-  carta_recetas: 'Catálogo de insumos', inventario: 'Inventario', compras: 'Compras y reposición',
+  carta_recetas: 'Catálogos y usuarios', inventario: 'Inventario', compras: 'Compras y reposición',
   recepcion: 'Recepción', eventos: 'Eventos cercanos', demanda: 'Demanda y rotación',
   categorias_carta: 'Categorías de carta', menajes: 'Menajes', presentaciones: 'Presentaciones de venta',
   subproductos: 'Subproductos', recetas: 'Recetas', promociones: 'Promociones', orquestador: 'Coordinador',

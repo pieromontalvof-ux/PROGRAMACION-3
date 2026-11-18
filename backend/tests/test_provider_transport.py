@@ -1,14 +1,41 @@
 import io
+import json
 import ssl
 import socket
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError, HTTPError
 
-from app.modules.asistente_ia import provider
+from app.multiagente.api import provider
 
 
 class ProviderTransportTests(unittest.TestCase):
+    def test_output_limit_retries_once_and_discards_all_partial_tool_calls(self):
+        partial={'status':'incomplete','incomplete_details':{'reason':'max_output_tokens'},
+                 'output':[{'type':'function_call','name':'preparar_cambio','arguments':'{"broken"'}]}
+        complete={'status':'completed','output':[{'type':'message','content':[]}]}
+        with patch.object(provider,'call',side_effect=[partial,complete]) as call:
+            self.assertEqual(provider.respond([{'role':'user','content':'Tres semanas'}],[],3500),complete['output'])
+        first=json.loads(call.call_args_list[0].args[1]);second=json.loads(call.call_args_list[1].args[1])
+        self.assertEqual(first['input'],second['input'])
+        self.assertEqual(second['max_output_tokens'],7000)
+        self.assertFalse(second['store'])
+        self.assertNotIn(partial['output'][0],second['input'])
+
+    def test_incomplete_retry_is_bounded_and_does_not_blame_user(self):
+        data={'status':'incomplete','incomplete_details':{'reason':'max_output_tokens'},'output':[]}
+        with patch.object(provider,'call',return_value=data) as call:
+            with self.assertRaises(provider.AssistantError) as error:provider.respond([],[],7000)
+        self.assertEqual(call.call_count,2)
+        self.assertEqual(json.loads(call.call_args.args[1])['max_output_tokens'],12000)
+        self.assertNotIn('Divide',str(error.exception))
+
+    def test_other_incomplete_reasons_are_not_retried(self):
+        for reason in ('content_filter',None):
+            with patch.object(provider,'call',return_value={'status':'incomplete','incomplete_details':{'reason':reason},'output':[]}) as call:
+                with self.assertRaises(provider.AssistantError):provider.respond([],[])
+                self.assertEqual(call.call_count,1)
+
     def setUp(self):
         p = patch.dict('os.environ', {'OPENAI_API_KEY': 'test-only-secret'})
         p.start()

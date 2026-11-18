@@ -104,6 +104,7 @@ def listar_menajes_detallados():
             m.id_menaje,
             m.nombre,
             m.activo,
+            md.capacidad,md.unidad_capacidad,md.diametro_cm,md.altura_cm,md.largo_cm,md.ancho_cm,md.origen_medidas,
 
             COUNT(pv.id_presentacion_venta)
                 AS total_presentaciones,
@@ -128,6 +129,7 @@ def listar_menajes_detallados():
             ) AS items
 
         FROM menaje AS m
+        LEFT JOIN menaje_medida md ON md.id_menaje=m.id_menaje
 
         LEFT JOIN presentacion_venta AS pv
             ON pv.id_menaje = m.id_menaje
@@ -137,6 +139,7 @@ def listar_menajes_detallados():
 
         GROUP BY
             m.id_menaje,
+            md.id_menaje,
             m.nombre,
             m.activo
 

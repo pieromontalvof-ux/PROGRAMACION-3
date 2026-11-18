@@ -1,3 +1,4 @@
+import { SalesJournalPage } from './features/salonPayments/SalesJournalPage'
 import { AssistantPage } from './features/asistenteIA/AssistantPage'
 import { AgentAdminPage } from './features/asistenteIA/AgentAdminPage'
 import { SalonLayoutPage } from './pages/SalonLayoutPage'
@@ -61,6 +62,7 @@ function App() {
   return (
     <Routes>
       <Route path="/salon" element={<SalonPage />} />
+      <Route path="/salon/ventas" element={<SalesJournalPage />} />
       <Route path="/salon/mesa/:mesa" element={<SalonOrderPage />} />
       <Route path="/salon/mesa/:mesa/pagar" element={<SalonPaymentPage />} />
       <Route path="/salon/comprobante/:id" element={<SalonPaymentPage />} />

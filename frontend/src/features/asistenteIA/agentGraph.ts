@@ -3,7 +3,17 @@ import type { AgenteId, CatalogoAgentes, ConexionAgentes } from './service'
 // Older servers expose the same ownership and prerequisites in each agent.
 // Never infer dependencies from the visual arrangement of nodes.
 export function agentGraph(catalog: CatalogoAgentes): ConexionAgentes[] {
-  if (catalog.conexiones) return catalog.conexiones
+  if (catalog.conexiones) {
+    const identities = new Set<string>([catalog.coordinador.id, ...catalog.agentes.map(agent => agent.id),
+      ...(catalog.administracion ?? []).map(agent => agent.id)])
+    const seen = new Set<string>()
+    return catalog.conexiones.filter(edge => {
+      const key = `${edge.tipo}:${edge.origen}:${edge.destino}`
+      if (!identities.has(edge.origen) || !identities.has(edge.destino) || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
   const owners = new Map<string, AgenteId>()
   const catalogOwner = catalog.agentes.find(agent => agent.id === 'carta_recetas')
   for (const resource of catalogOwner?.recursos ?? []) owners.set(resource, 'carta_recetas')

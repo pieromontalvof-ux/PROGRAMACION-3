@@ -2,8 +2,8 @@ import json
 import unittest
 from unittest.mock import patch
 import test_agent_library
-from app.modules.asistente_ia import configuration
-from app.agents.demanda import agent as demand_agent
+from app.multiagente.api import configuration
+from app.multiagente.agents.demanda import agent as demand_agent
 
 
 class AgentConnectionTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class AgentConnectionTests(unittest.TestCase):
     def test_add_connection_persists_without_changing_skill_or_defaults(self):
         path = '/api/asistente-ia/biblioteca/demanda'
         before = self.client.get(path, headers=self.headers).json
-        self.assertEqual(before['configuracion']['accesos'], {'demanda_rotacion': ['consultar']})
+        self.assertEqual(before['configuracion']['accesos'], {'demanda_rotacion': ['consultar'], 'demanda_global': ['consultar']})
         self.assertEqual(before['accesos_disponibles']['promociones'], ['consultar'])
         accesses = {**before['configuracion']['accesos'], 'promociones': ['consultar']}
         saved = self.client.put(path + '/accesos', headers=self.headers, json={'accesos': accesses, 'revision': 0})
@@ -34,28 +34,28 @@ class AgentConnectionTests(unittest.TestCase):
         config['accesos']['promociones'] = ['consultar']
         calls = [{'type': 'function_call', 'name': 'consultar', 'call_id': '1', 'arguments': json.dumps({'recurso': 'promociones', 'busqueda': '', 'desde': 0})}]
         answer = [{'content': [{'type': 'output_text', 'text': 'Promoción consultada.'}]}]
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', return_value=True), patch('app.agents.runtime.tools.query', return_value={'registros': []}) as query, patch('app.agents.runtime.provider.respond', side_effect=[calls, answer]) as respond:
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', return_value=True), patch('app.multiagente.agents.runtime.tools.query', return_value={'registros': []}) as query, patch('app.multiagente.agents.runtime.provider.respond', side_effect=[calls, answer]) as respond:
             demand_agent.run({'local_activo': None}, 'Consultar promociones')
             names = next(t for t in respond.call_args_list[0].args[1] if t['name'] == 'consultar')['parameters']['properties']['recurso']['enum']
             self.assertIn('promociones', names)
             query.assert_called_once()
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', side_effect=lambda session, resource, action='consultar': resource != 'promociones'), patch('app.agents.runtime.tools.query') as query, patch('app.agents.runtime.provider.respond', side_effect=[calls, answer]):
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', side_effect=lambda session, resource, action='consultar': resource != 'promociones'), patch('app.multiagente.agents.runtime.tools.query') as query, patch('app.multiagente.agents.runtime.provider.respond', side_effect=[calls, answer]):
             demand_agent.run({'local_activo': None}, 'Consultar promociones')
             query.assert_not_called()
 
     def test_removed_connection_cannot_be_called_by_model(self):
         config = configuration.effective('demanda')
         calls = [{'type': 'function_call', 'name': 'consultar', 'call_id': '1', 'arguments': json.dumps({'recurso': 'promociones', 'busqueda': '', 'desde': 0})}]
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', return_value=True), patch('app.agents.runtime.tools.query') as query, patch('app.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]):
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', return_value=True), patch('app.multiagente.agents.runtime.tools.query') as query, patch('app.multiagente.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]):
             demand_agent.run({'local_activo': None}, 'Consultar promociones')
             query.assert_not_called()
 
     def test_inventory_specialist_receives_added_generic_connection(self):
-        from app.agents.inventario import agent
+        from app.multiagente.agents.inventario import agent
         config = configuration.effective('inventario')
         config['accesos']['promociones'] = ['consultar']
         calls = [{'type': 'function_call', 'name': 'consultar', 'call_id': '1', 'arguments': json.dumps({'recurso': 'promociones', 'busqueda': '', 'desde': 0})}]
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', return_value=True), patch('app.agents.runtime.tools.query', return_value={'registros': []}) as query, patch('app.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]):
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', return_value=True), patch('app.multiagente.agents.runtime.tools.query', return_value={'registros': []}) as query, patch('app.multiagente.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]):
             agent.run({'local_activo': None}, 'Consultar promociones')
             query.assert_called_once()
 
@@ -68,15 +68,15 @@ class AgentConnectionTests(unittest.TestCase):
         config['accesos']['mix_ventas'] = ['consultar']
         filters = {'desde': '2026-10-01', 'hasta': '2026-10-07'}
         calls = [{'type': 'function_call', 'name': 'consultar_inventario', 'call_id': '1', 'arguments': json.dumps({'recurso': 'mix_ventas', 'filtros_json': json.dumps(filters)})}]
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', return_value=True), patch('app.agents.runtime.inventory.read', return_value={}) as read, patch('app.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]) as model:
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', return_value=True), patch('app.multiagente.agents.runtime.inventory.read', return_value={}) as read, patch('app.multiagente.agents.runtime.provider.respond', side_effect=[calls, [{'content': []}]]) as model:
             demand_agent.run({'local_activo': None}, 'Comparar ventas')
             read.assert_called_once_with({'local_activo': None}, 'mix_ventas', filters)
             self.assertIn('consultar_inventario', [tool['name'] for tool in model.call_args_list[0].args[1]])
 
     def test_only_generic_inventory_connection_never_emits_empty_enum(self):
-        from app.agents.inventario import agent
+        from app.multiagente.agents.inventario import agent
         config = configuration.effective('inventario')
         config['accesos'] = {'promociones': ['consultar']}
-        with patch.object(configuration, 'saved', return_value=config), patch('app.agents.runtime.tools.allowed', return_value=True), patch('app.agents.runtime.provider.respond', return_value=[{'content': []}]) as model:
+        with patch.object(configuration, 'saved', return_value=config), patch('app.multiagente.agents.runtime.tools.allowed', return_value=True), patch('app.multiagente.agents.runtime.provider.respond', return_value=[{'content': []}]) as model:
             agent.run({'local_activo': None}, 'Consultar promociones')
             self.assertNotIn('consultar_inventario', [tool['name'] for tool in model.call_args.args[1]])

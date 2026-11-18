@@ -28,7 +28,7 @@ def formulario():
         "unidades_presentacion": valores_unidades("presentacion"),
         "unidades_medida": catalogo_unidades(),
         "categorias": filas("SELECT id_categoria_carta, nombre, activo FROM categoria_carta ORDER BY nombre"),
-        "menajes": filas("SELECT id_menaje, nombre, activo FROM menaje ORDER BY nombre"),
+        "menajes": filas("SELECT m.*,d.capacidad,d.unidad_capacidad,d.diametro_cm,d.altura_cm,d.largo_cm,d.ancho_cm,d.origen_medidas FROM menaje m LEFT JOIN menaje_medida d USING(id_menaje) ORDER BY m.nombre"),
         "items": filas("SELECT id_item_carta, codigo, nombre, id_categoria_carta, tipo, activo FROM item_carta ORDER BY nombre"),
         "presentaciones": filas("""
             SELECT pv.id_presentacion_venta, pv.id_item_carta, pv.id_menaje,

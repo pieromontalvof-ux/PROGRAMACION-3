@@ -23,6 +23,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('agent map navigation', () => {
+  it('uses catalog names in dependency details after an agent is renamed', () => {
+    render(<AgentMap catalog={{ ...catalog, agentes: catalog.agentes.map(agent =>
+      agent.id === 'carta_recetas' ? { ...agent, nombre: 'Catálogos y usuarios' } : agent) }} onClose={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Subproductos.*Preparaciones internas/ }))
+    expect(within(screen.getByRole('complementary')).getByRole('button', { name: 'Catálogos y usuarios' })).toBeTruthy()
+  })
+  it('counts actual roles and reveals prerequisite edges when a specialist is selected', () => {
+    const { container } = render(<AgentMap catalog={catalog} onClose={() => {}} />)
+    expect(screen.getByLabelText('Roles del ecosistema').textContent).toContain('3 especialistas')
+    expect(container.querySelectorAll('.agent-atlas-branch')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: /Subproductos.*Preparaciones internas/ }))
+    expect(container.querySelectorAll('.agent-atlas-branch')).toHaveLength(1)
+    expect(screen.getByText('Requiere recursos de')).toBeTruthy()
+    expect(screen.getByText('Recurso requerido →')).toBeTruthy()
+  })
   it('drags a bubble, pushes its neighbour, updates wires and suppresses the drag click', () => {
     vi.stubGlobal('PointerEvent', MouseEvent)
     const { container } = render(<AgentMap catalog={catalog} onClose={() => {}} />)

@@ -2,7 +2,7 @@ import io
 from unittest.mock import patch
 import unittest
 import test_agent_library
-from app.modules.asistente_ia import configuration, library
+from app.multiagente.api import configuration, library
 
 
 REPORT = {'resumen': 'Sin bloqueos.', 'informacion_faltante': [],
@@ -16,7 +16,7 @@ class AgentConfigurationTests(unittest.TestCase):
         return self.client.get('/api/asistente-ia/biblioteca/' + agent, headers=self.headers).json['configuracion']
 
     def review(self, config, revision=0, agent='compras'):
-        with patch('app.agents.configuracion.agent.review', return_value=REPORT):
+        with patch('app.multiagente.agents.configuracion.agent.review', return_value=REPORT):
             return self.client.post(f'/api/asistente-ia/biblioteca/{agent}/skills/validar', headers=self.headers,
                                     json={'skills': config['skills'], 'revision': revision})
 
@@ -85,7 +85,7 @@ class AgentConfigurationTests(unittest.TestCase):
         self.assertEqual(applied.status_code, 200, applied.json)
 
     def test_disabled_owner_access_blocks_all_form_paths_and_direct_drafts(self):
-        from app.modules.asistente_ia import tools
+        from app.multiagente.api import tools
         config = self.config('carta_recetas')
         config['accesos']['productos'] = []
         self.publish(config, 'carta_recetas')
@@ -95,7 +95,7 @@ class AgentConfigurationTests(unittest.TestCase):
                                 ('formulario/preparar', {'recurso': 'productos', 'datos': {}})):
                 result = self.client.post('/api/asistente-ia/' + route, headers=self.headers, json=data)
                 self.assertEqual(result.status_code, 403, result.json)
-            from app.modules.asistente_ia.provider import AssistantError
+            from app.multiagente.api.provider import AssistantError
             with self.assertRaises(AssistantError):
                 tools.prepare({}, 'productos', 'crear', None, {})
             with self.assertRaises(AssistantError):
@@ -103,9 +103,9 @@ class AgentConfigurationTests(unittest.TestCase):
             native.assert_not_called()
 
     def test_effective_prompts_and_selected_accesses_reach_runtime_and_map(self):
-        from app.agents.compras.agent import SKILLS, RESOURCES, INSTRUCTIONS
-        from app.agents.runtime import run_specialist
-        from app.modules.asistente_ia import tools
+        from app.multiagente.agents.compras.agent import SKILLS, RESOURCES, INSTRUCTIONS
+        from app.multiagente.agents.runtime import run_specialist
+        from app.multiagente.api import tools
         config = self.config()
         original_instruction = config['instrucciones']
         config['instrucciones'] = 'Consultar plazos vigentes.'
@@ -113,7 +113,7 @@ class AgentConfigurationTests(unittest.TestCase):
         config['accesos']['ordenes_compra'] = ['consultar']
         self.publish(config)
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Consulta.'}]}]
-        with patch.object(tools, 'allowed', return_value=True), patch('app.modules.asistente_ia.provider.respond', return_value=answer) as model:
+        with patch.object(tools, 'allowed', return_value=True), patch('app.multiagente.api.provider.respond', return_value=answer) as model:
             run_specialist({'local_activo': None}, 'Consultar', '', '', RESOURCES, INSTRUCTIONS, SKILLS, writable_resources=('ordenes_compra',))
         self.assertIn(original_instruction.strip(), model.call_args.args[0][0]['content'])
         self.assertIn('Pedir horizonte de reposición.', model.call_args.args[0][0]['content'])
@@ -125,7 +125,7 @@ class AgentConfigurationTests(unittest.TestCase):
 
     def test_reviewer_invalid_output_cannot_authorize_a_change(self):
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'No es JSON.'}]}]
-        with patch('app.modules.asistente_ia.provider.respond', return_value=answer) as model:
+        with patch('app.multiagente.api.provider.respond', return_value=answer) as model:
             response = self.client.post('/api/asistente-ia/biblioteca/compras/skills/validar', headers=self.headers,
                                         json={'skills': self.config()['skills'], 'revision': 0})
         self.assertEqual(response.status_code, 502)
@@ -145,14 +145,14 @@ class AgentConfigurationTests(unittest.TestCase):
     def test_reviewer_refuses_oversized_complete_input_without_calling_model(self):
         from werkzeug.datastructures import FileStorage
         library.upload('compras', FileStorage(stream=io.BytesIO(b'a' * 120001), filename='grande.txt'), 0)
-        with patch('app.agents.configuracion.agent.review') as model:
+        with patch('app.multiagente.agents.configuracion.agent.review') as model:
             response = self.client.post('/api/asistente-ia/biblioteca/compras/skills/validar', headers=self.headers,
                                         json={'skills': self.config()['skills'], 'revision': 1})
         self.assertEqual(response.status_code, 413)
         model.assert_not_called()
 
     def test_disabled_dependency_catalogs_are_not_exposed_by_aggregate_forms(self):
-        from app.modules.asistente_ia import tools
+        from app.multiagente.api import tools
         config = self.config('carta_recetas')
         config['accesos']['proveedores'] = []
         self.publish(config, 'carta_recetas')
@@ -162,9 +162,9 @@ class AgentConfigurationTests(unittest.TestCase):
             native.assert_not_called()
 
     def test_recipe_form_tool_cannot_expose_disabled_product_catalog(self):
-        from app.agents.catalog_specialists import SPECIALISTS
-        from app.agents.runtime import run_specialist
-        from app.modules.asistente_ia import tools
+        from app.multiagente.agents.catalog_specialists import SPECIALISTS
+        from app.multiagente.agents.runtime import run_specialist
+        from app.multiagente.api import tools
         import json
         config = self.config('recetas')
         config['accesos']['productos'] = []
@@ -172,7 +172,7 @@ class AgentConfigurationTests(unittest.TestCase):
         specialist = SPECIALISTS['recetas']
         forged = [{'type': 'function_call', 'call_id': 'form', 'name': 'formulario', 'arguments': json.dumps({'recurso': 'recetas'})}]
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Falta acceso.'}]}]
-        with patch.object(tools, 'allowed', return_value=True), patch.object(tools, 'native') as native, patch('app.modules.asistente_ia.provider.respond', side_effect=[forged, answer]):
+        with patch.object(tools, 'allowed', return_value=True), patch.object(tools, 'native') as native, patch('app.multiagente.api.provider.respond', side_effect=[forged, answer]):
             run_specialist({'local_activo': None}, 'Crear receta', '', '', specialist.resources,
                            specialist.instructions, specialist.skills, writable_resources=('recetas',))
             native.assert_not_called()

@@ -3,7 +3,7 @@ import io
 import unittest
 from unittest.mock import patch
 import test_agent_library
-from app.modules.asistente_ia import library, configuration
+from app.multiagente.api import library, configuration
 
 OK = {'resumen': 'Sin problemas.', 'informacion_faltante': [], 'accesos_necesarios': [], 'recomendaciones': [], 'conflictos': []}
 BLOCKED = {**OK, 'accesos_necesarios': ['Consultar stock para calcular cobertura.']}
@@ -20,7 +20,7 @@ class SkillWorkflowTests(unittest.TestCase):
     def test_skill_validation_save_preserves_permissions_and_instructions(self):
         before = self.folder()['configuracion']
         skills = [{**skill, 'contenido': 'Consultar plazos reales antes de proponer reposición.'} for skill in before['skills']]
-        with patch('app.agents.configuracion.agent.review', return_value=OK):
+        with patch('app.multiagente.agents.configuracion.agent.review', return_value=OK):
             checked = self.client.post('/api/asistente-ia/biblioteca/compras/skills/validar', headers=self.headers, json={'skills': skills, 'revision': 0})
         self.assertEqual(checked.status_code, 200, checked.json)
         self.assertTrue(checked.json['puede_guardar'])
@@ -34,7 +34,7 @@ class SkillWorkflowTests(unittest.TestCase):
 
     def test_missing_permission_blocks_save_instead_of_granting_it(self):
         config = self.folder()['configuracion']
-        with patch('app.agents.configuracion.agent.review', return_value=BLOCKED):
+        with patch('app.multiagente.agents.configuracion.agent.review', return_value=BLOCKED):
             checked = self.client.post('/api/asistente-ia/biblioteca/compras/skills/validar', headers=self.headers, json={'skills': config['skills'], 'revision': 0})
         self.assertFalse(checked.json['puede_guardar'])
         response = self.client.post('/api/asistente-ia/biblioteca/compras/skills/guardar', headers=self.headers,
@@ -58,7 +58,7 @@ class SkillWorkflowTests(unittest.TestCase):
         from werkzeug.datastructures import FileStorage
         library.upload('compras', FileStorage(stream=io.BytesIO(b'Entrega los jueves.'), filename='entregas.txt'), 0)
         folder = self.folder()
-        with patch('app.agents.actualizador_skills.agent.update', return_value={'contenido': 'Verificar entrega los jueves.', 'resumen': 'Añadido día de entrega.', 'informacion_faltante': []}):
+        with patch('app.multiagente.agents.actualizador_skills.agent.update', return_value={'contenido': 'Verificar entrega los jueves.', 'resumen': 'Añadido día de entrega.', 'informacion_faltante': []}):
             result = self.client.post('/api/asistente-ia/biblioteca/compras/skills/actualizar', headers=self.headers,
                                       json={'skills': folder['configuracion']['skills'], 'archivo_skill': folder['configuracion']['skills'][0]['archivo'],
                                             'documentos': [folder['documentos'][0]['id']], 'revision': 1})
@@ -86,7 +86,7 @@ class SkillWorkflowTests(unittest.TestCase):
 
     def test_originals_are_attached_as_media_not_base64_text_for_both_agents(self):
         from werkzeug.datastructures import FileStorage
-        from app.agents.document_inputs import messages
+        from app.multiagente.agents.document_inputs import messages
         library.upload('compras', FileStorage(stream=io.BytesIO(PNG), filename='foto.png'), 0)
         library.upload('compras', FileStorage(stream=io.BytesIO(b'%PDF-1.4\n%%EOF'), filename='manual.pdf'), 1)
         payload = messages('Reglas protegidas.', {'documentos': library.read('compras')['documentos']})
@@ -108,10 +108,10 @@ class SkillWorkflowTests(unittest.TestCase):
         self.assertEqual(self.client.put('/api/asistente-ia/biblioteca/compras/accesos', headers=self.token(3), json={}).status_code, 403)
 
     def test_updater_cannot_return_permissions_or_write_configuration(self):
-        from app.agents.actualizador_skills.agent import update
-        from app.modules.asistente_ia.provider import AssistantError
+        from app.multiagente.agents.actualizador_skills.agent import update
+        from app.multiagente.api.provider import AssistantError
         import json
         response = [{'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({'contenido': 'Cambiar', 'resumen': 'Cambios', 'informacion_faltante': [], 'accesos': {'usuarios': ['editar']}})}]}]
-        with patch('app.modules.asistente_ia.provider.respond', return_value=response), self.assertRaises(AssistantError):
+        with patch('app.multiagente.api.provider.respond', return_value=response), self.assertRaises(AssistantError):
             update({'documentos': []})
         self.assertEqual(library.read('compras')['revision'], 0)

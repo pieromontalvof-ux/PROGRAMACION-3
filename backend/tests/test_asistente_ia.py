@@ -6,7 +6,7 @@ from flask_jwt_extended import create_access_token
 from sqlalchemy import text
 from app import create_app
 from app.core.extensions import db
-from app.modules.asistente_ia import routes, tools
+from app.multiagente.api import routes, tools
 
 
 def proposal(resource='menajes', action='crear', identity=None, data=None):
@@ -49,7 +49,7 @@ class AssistantIntegrationTests(unittest.TestCase):
             'tipo_token': 'operativo', 'id_perfil': user, 'id_local': local})}
 
     def prepare(self, output=None, **data):
-        with patch('app.modules.asistente_ia.provider.respond', return_value=output or proposal()):
+        with patch('app.multiagente.api.provider.respond', return_value=output or proposal()):
             return self.client.post('/api/asistente-ia/preparar', headers=self.headers,
                                     json={'instruccion': 'Crear un menaje IA prueba', **data})
 
@@ -112,7 +112,7 @@ class AssistantIntegrationTests(unittest.TestCase):
 
     def test_manager_cannot_prepare_catalog_change_even_when_menu_grants_write(self):
         self.headers = self.token(2)
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=[proposal(),
+        with patch('app.multiagente.api.provider.respond', side_effect=[proposal(),
                 [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Tu perfil no permite crear menajes.'}]}]]):
             r = self.client.post('/api/asistente-ia/preparar', headers=self.headers, json={'instruccion': 'Crear menaje'})
         self.assertEqual(r.status_code, 200, r.json)
@@ -123,7 +123,7 @@ class AssistantIntegrationTests(unittest.TestCase):
         output = [{'type': 'function_call', 'call_id': 'query', 'name': 'consultar',
                    'arguments': json.dumps({'recurso': 'usuarios', 'busqueda': '', 'desde': 0})}]
         self.headers = self.token(2)
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=[output,
+        with patch('app.multiagente.api.provider.respond', side_effect=[output,
                 [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Usuarios del local.'}]}]]):
             r = self.client.post('/api/asistente-ia/preparar', headers=self.headers, json={'instruccion': 'Consultar usuarios'})
         self.assertEqual(r.status_code, 200, r.json)
@@ -133,7 +133,7 @@ class AssistantIntegrationTests(unittest.TestCase):
 
     def test_catalog_agent_receives_only_catalog_tools(self):
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Consulta terminada.'}]}]
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=[answer]) as model:
+        with patch('app.multiagente.api.provider.respond', side_effect=[answer]) as model:
             response = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
                 json={'instruccion': 'Consulta promociones'})
         self.assertEqual(response.status_code, 200, response.json)
@@ -158,7 +158,7 @@ class AssistantIntegrationTests(unittest.TestCase):
                   'name': 'consultar_inventario', 'arguments': json.dumps({
                       'recurso': 'stock', 'filtros_json': json.dumps({'busqueda': 'Producto compartido'})})}]
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Stock consultado.'}]}]
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=[calls, answer]) as model:
+        with patch('app.multiagente.api.provider.respond', side_effect=[calls, answer]) as model:
             response = self.client.post('/api/asistente-ia/preparar', headers=self.headers,
                 json={'instruccion': 'Consulta el stock de Producto compartido'})
         self.assertEqual(response.status_code, 200, response.json)
@@ -179,15 +179,15 @@ class AssistantIntegrationTests(unittest.TestCase):
             with self.assertRaises(ValueError): tools.prepare(session, 'menajes', 'crear', None, {'nombre': 'IA prueba', 'sql': 'anything'})
 
     def test_provider_failure_returns_safe_message_and_no_writes(self):
-        from app.modules.asistente_ia.provider import AssistantError
-        with patch('app.modules.asistente_ia.provider.respond', side_effect=AssistantError('Sin saldo', 502)):
+        from app.multiagente.api.provider import AssistantError
+        with patch('app.multiagente.api.provider.respond', side_effect=AssistantError('Sin saldo', 502)):
             r = self.client.post('/api/asistente-ia/preparar', headers=self.headers, json={'instruccion': 'Consulta'})
         self.assertEqual(r.status_code, 502); self.assertEqual(r.json['mensaje'], 'Sin saldo')
 
     def test_unknown_write_outcome_remains_claimed_and_is_not_replayed(self):
-        from app.modules.asistente_ia.provider import AssistantError
+        from app.multiagente.api.provider import AssistantError
         identity = self.prepare().json['borrador']['id_borrador']
-        with patch('app.modules.asistente_ia.tools.execute', side_effect=AssistantError('Fallo interno', 500)) as execute:
+        with patch('app.multiagente.api.tools.execute', side_effect=AssistantError('Fallo interno', 500)) as execute:
             self.assertEqual(self.perform(identity).status_code, 503)
             self.assertEqual(self.perform(identity).status_code, 409)
             execute.assert_called_once()
@@ -197,7 +197,7 @@ class AssistantIntegrationTests(unittest.TestCase):
         from io import BytesIO
         self.assertEqual(self.client.post('/api/asistente-ia/transcribir').status_code, 401)
         self.assertEqual(self.client.post('/api/asistente-ia/transcribir', headers=self.headers).status_code, 400)
-        with patch('app.modules.asistente_ia.provider.transcribe', return_value='Consulta las recetas') as audio:
+        with patch('app.multiagente.api.provider.transcribe', return_value='Consulta las recetas') as audio:
             r = self.client.post('/api/asistente-ia/transcribir', headers=self.headers,
                 data={'audio': (BytesIO(b'fake audio'), 'dictado.webm', 'audio/webm')})
         self.assertEqual(r.status_code, 200, r.json)

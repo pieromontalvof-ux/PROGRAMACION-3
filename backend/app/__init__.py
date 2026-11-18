@@ -1,4 +1,4 @@
-from app.modules.asistente_ia.routes import asistente_ia_bp
+from app.multiagente.api.routes import asistente_ia_bp
 from app.modules.auth.salon_control import salon_control_bp
 from app.modules.auth.salon_payments import salon_payments_bp
 from app.modules.inventarios.operativo import operativo_bp
@@ -42,6 +42,9 @@ def create_app():
     app.register_blueprint(asistente_ia_bp, url_prefix="/api/asistente-ia")
     app.register_blueprint(locales_bp, url_prefix="/api/locales")
     db.init_app(app)
+    from app.modules.clientes.routes import clientes_bp, salon_clientes_bp
+    app.register_blueprint(clientes_bp, url_prefix="/api/v1/clientes")
+    app.register_blueprint(salon_clientes_bp, url_prefix="/api/salon")
     JWTManager(app)
     app.register_blueprint(deletion_bp, url_prefix='/api/eliminaciones')
 

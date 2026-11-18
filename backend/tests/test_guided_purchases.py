@@ -2,8 +2,8 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 from flask import Flask
-from app.agents.orchestrator import purchase_flow as flow
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.agents.orchestrator import purchase_flow as flow
+from app.multiagente.api.provider import AssistantError
 
 
 class GuidedPurchaseTests(unittest.TestCase):
@@ -25,6 +25,9 @@ class GuidedPurchaseTests(unittest.TestCase):
     def start(self):
         with patch.object(flow.event_agent, 'run', return_value={'respuesta': 'Eventos verificados', 'consultas': [], 'plan': None}) as events:
             result = flow.handle({}, 'Quiero hacer un pedido')
+            events.assert_not_called()
+            self.assertIn('¿Hasta qué fecha',result['respuesta'])
+            result=flow.handle({},'para 7 días',token=result['flujo_compra'])
             events.assert_called_once()
         return result['flujo_compra']
 
@@ -129,7 +132,7 @@ class GuidedPurchaseTests(unittest.TestCase):
 
     def test_disabled_optional_events_still_offers_purchase_continuation(self):
         with patch.object(flow.event_agent, 'run', side_effect=AssistantError('Eventos deshabilitados', 403)):
-            result = flow.handle({}, 'Quiero hacer un pedido')
+            result = flow.handle({}, 'Quiero hacer un pedido para 7 días')
         self.assertIn('flujo_compra', result)
         self.assertIn('Continuar con el pedido', [option['instruccion'] for option in result['opciones']])
         self.assertIsNone(result['plan'])

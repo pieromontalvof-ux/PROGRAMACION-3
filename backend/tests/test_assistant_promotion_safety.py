@@ -3,8 +3,8 @@ import copy
 import unittest
 from unittest.mock import patch
 
-from app.modules.asistente_ia import tools
-from app.modules.asistente_ia.provider import AssistantError
+from app.multiagente.api import tools
+from app.multiagente.api.provider import AssistantError
 
 
 PROMOTION = {

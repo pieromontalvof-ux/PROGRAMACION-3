@@ -5,7 +5,7 @@ from flask import Flask
 from flask_jwt_extended import JWTManager, create_access_token
 from unittest.mock import patch
 from app.core.extensions import db
-from app.modules.asistente_ia import routes, library
+from app.multiagente.api import routes, library
 
 
 def concurrent_instruction_update(root, barrier, results):
@@ -57,7 +57,7 @@ class AgentLibraryTests(unittest.TestCase):
         self.assertEqual(first.status_code, 200)
         config = first.json['configuracion']
         config['skills'][0]['contenido'] = 'Consultar plazos reales del proveedor.'
-        with patch('app.agents.configuracion.agent.review', return_value={'resumen': 'Listo', 'informacion_faltante': [], 'accesos_necesarios': [], 'recomendaciones': [], 'conflictos': []}):
+        with patch('app.multiagente.agents.configuracion.agent.review', return_value={'resumen': 'Listo', 'informacion_faltante': [], 'accesos_necesarios': [], 'recomendaciones': [], 'conflictos': []}):
             checked = self.client.post(path + '/skills/validar', headers=self.headers, json={'skills': config['skills'], 'revision': 0}).json
         saved = self.client.post(path + '/skills/guardar', headers=self.headers, json={'skills': config['skills'], 'revision': 0, 'revision_ia': checked['revision_ia']})
         self.assertEqual(saved.status_code, 200, saved.json)
@@ -89,11 +89,11 @@ class AgentLibraryTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400, response.json)
 
     def test_specialist_receives_saved_references_on_next_consultation(self):
-        from app.agents.compras.agent import SKILLS, INSTRUCTIONS, RESOURCES
-        from app.agents.runtime import run_specialist
+        from app.multiagente.agents.compras.agent import SKILLS, INSTRUCTIONS, RESOURCES
+        from app.multiagente.agents.runtime import run_specialist
         library.set_instructions('compras', 'Consultar los plazos antes de recomendar.', 0)
         answer = [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Consulta lista.'}]}]
-        with patch.object(routes.tools, 'allowed', return_value=True), patch('app.modules.asistente_ia.provider.respond', return_value=answer) as model:
+        with patch.object(routes.tools, 'allowed', return_value=True), patch('app.multiagente.api.provider.respond', return_value=answer) as model:
             run_specialist({'local_activo': None}, 'Consultar compras', '', '', RESOURCES, INSTRUCTIONS, SKILLS, writable_resources=())
         system = model.call_args.args[0][0]['content']
         self.assertIn('Consultar los plazos antes de recomendar.', system)
@@ -107,7 +107,7 @@ class AgentLibraryTests(unittest.TestCase):
         self.assertIn('Procedimiento registrado', library.extract('manual.docx', content.getvalue()))
 
     def test_unreadable_empty_and_oversized_documents_are_rejected(self):
-        from app.modules.asistente_ia.provider import AssistantError
+        from app.multiagente.api.provider import AssistantError
         for name, raw in (('manual.docx', b'no es docx'), ('manual.txt', b'\xff\xfe'), ('manual.md', b''), ('grande.txt', b'a' * (library.MAX_BYTES + 1))):
             with self.subTest(name=name), self.assertRaises(AssistantError):
                 library.extract(name, raw)
@@ -124,7 +124,7 @@ class AgentLibraryTests(unittest.TestCase):
 
     def test_coordinator_instructions_survive_large_documents_in_specialist_context(self):
         from werkzeug.datastructures import FileStorage
-        from app.agents.compras.agent import SKILLS
+        from app.multiagente.agents.compras.agent import SKILLS
         library.set_instructions('orquestador', 'Mantener siempre los plazos de entrega.', 0)
         library.upload('orquestador', FileStorage(stream=io.BytesIO(b'a' * 30000), filename='manual.txt'), 1)
         state = library.read('orquestador')

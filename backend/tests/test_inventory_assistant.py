@@ -6,7 +6,7 @@ from unittest.mock import patch
 from flask import g
 from sqlalchemy import text
 from app.core.extensions import db
-from app.modules.asistente_ia import routes
+from app.multiagente.api import routes
 import test_count_positions as positions
 from test_asistente_ia import proposal
 
@@ -38,7 +38,7 @@ class InventoryAssistantTests(unittest.TestCase):
 
     def ask(self, calls, headers=None):
         g.pop('local_operativo',None)
-        with patch('app.modules.asistente_ia.provider.respond',side_effect=[calls,ANSWER]) as model:
+        with patch('app.multiagente.api.provider.respond',side_effect=[calls,ANSWER]) as model:
             result=self.client.post('/api/asistente-ia/preparar',headers=headers or self.manager,
                                     json={'instruccion':'Consulta de inventario: solicitud del usuario'})
             self.assertEqual(result.status_code,200,result.json)

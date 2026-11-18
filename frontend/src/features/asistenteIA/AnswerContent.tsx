@@ -1,8 +1,10 @@
 import { formatearUnidad } from '../../utils/unitHelpers'
-import { Boxes, Info } from 'lucide-react'
+import { Boxes, ChevronRight, Info } from 'lucide-react'
 import type { Consulta } from './service'
 import { RecipeCards } from './RecipeCards'
 import { FormattedAnswer } from './FormattedAnswer'
+import {legacyPurchaseSummary} from './purchaseSummary'
+import {legacyPromotionSummary} from './PromotionReview'
 
 const number = (value: unknown) => typeof value === 'number'
   ? value.toLocaleString('es-PE', { maximumFractionDigits: 3 }) : '—'
@@ -10,15 +12,26 @@ const number = (value: unknown) => typeof value === 'number'
 export function AnswerContent({ text, queries = [] }: { text: string; queries?: Consulta[] }) {
   const last = queries.at(-1)
   const eventReport = queries.filter(q => q.recurso === 'eventos_cercanos').at(-1)?.registros[0]
+  const purchaseSummary = queries.some(q => q.recurso === 'demanda_rotacion' || q.recurso === 'pedido_sugerido')
   const fallback = <>
-    <FormattedAnswer text={text} />
+    <FormattedAnswer text={legacyPromotionSummary(text)??legacyPurchaseSummary(text)??text} />
     {typeof eventReport?.detalle === 'string' && eventReport.detalle && <details className="assistant-event-details">
-      <summary>Ver revisión de eventos</summary>
+      <summary><ChevronRight size={16} aria-hidden="true" />Ver revisión de eventos</summary>
       <FormattedAnswer text={eventReport.detalle} />
     </details>}
   </>
-  if (last?.recurso === 'recetas') return <RecipeCards queries={queries} fallback={fallback} />
-  if (last?.recurso !== 'stock' || eventReport || !last.registros.length) return fallback
+  if (last?.recurso === 'recetas') {
+    if (!last.registros.length || last.registros.length > 3) return fallback
+    const cards = <RecipeCards queries={queries} fallback={null} />
+    return <>
+      {fallback}
+      {<details className="assistant-event-details">
+        <summary><ChevronRight size={16} aria-hidden="true" />Ver recetas consultadas</summary>
+        {cards}
+      </details>}
+    </>
+  }
+  if (last?.recurso !== 'stock' || eventReport || purchaseSummary || !last.registros.length) return fallback
 
   // Keep the most recent result and its preceding pages, not earlier searches.
   const pages = [last]
@@ -35,7 +48,7 @@ export function AnswerContent({ text, queries = [] }: { text: string; queries?: 
   const explanation = text.split('\n').filter(line => {
     const listing = /^\s*(?:[-*+] |\d+[.)] |\|)/.test(line)
     const productRow = names.some(name => line.toLocaleLowerCase().includes(name))
-    const tableHeader = /^\s*\|/.test(line) && (/producto|stock|disponible|mínimo/i.test(line) || /^[\s|:\-]+$/.test(line))
+    const tableHeader = /^\s*\|/.test(line) && (/producto|stock|disponible|mínimo/i.test(line) || /^[\s|:-]+$/.test(line))
     return !(listing && productRow) && !tableHeader
   }).join('\n').trim()
   return <>
