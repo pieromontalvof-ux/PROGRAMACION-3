@@ -1,6 +1,8 @@
+from app.modules.recepciones import invoice_storage
 from collections import OrderedDict
 from datetime import date
 from decimal import Decimal, InvalidOperation
+import re
 
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
@@ -237,6 +239,21 @@ def registrar_recepcion(
                 )
             }, 409
 
+        financiera = None
+        if datos.get('factura') is not None:
+            if not re.fullmatch(r'[A-Za-z0-9]{1,10}-[0-9]{1,20}', numero_factura):
+                db.session.rollback()
+                return {'mensaje': 'Indica serie y número de factura, por ejemplo F001-258.'}, 400
+            try:
+                financiera = invoice_storage.preparar(datos['factura'], id_orden, id_proveedor)
+            except ValueError as error:
+                db.session.rollback()
+                return {'mensaje': str(error)}, 400
+            financiera['serie'], financiera['numero'] = numero_factura.upper().split('-', 1)
+            if financiera['fecha_emision'] > fecha_recepcion.isoformat():
+                db.session.rollback()
+                return {'mensaje': 'La fecha de emision no puede ser posterior a la recepcion.'}, 400
+
         validados = []
         ids = set()
 
@@ -312,6 +329,12 @@ def registrar_recepcion(
                     )
                 }, 400
 
+            if financiera:
+                linea = next((l for l in financiera['lineas'] if l['id_producto'] == id_producto), None)
+                if linea is None or cantidad > Decimal(str(linea['cantidad_facturada'])):
+                    db.session.rollback()
+                    return {'mensaje': 'Lo recibido supera la cantidad facturada.'}, 400
+
             ids.add(id_producto)
             validados.append((
                 id_producto,
@@ -332,6 +355,11 @@ def registrar_recepcion(
                 id_producto,
                 cantidad,
             )
+
+        if financiera:
+            invoice_storage.guardar(id_factura, financiera)
+            invoice_storage.anotar_entrega(id_factura, fecha_recepcion.isoformat(), id_usuario,
+                [{'id_producto': i, 'cantidad_recibida': float(c)} for i, c in validados])
 
         # Calcula nuevamente el estado utilizando
         # todas las recepciones de la orden.
@@ -430,6 +458,8 @@ def obtener_historial_recepciones(
                 "estado_orden_compra": fila[
                     "estado_orden_compra"
                 ],
+                "total_factura": float(fila['total_factura']) if fila.get('total_factura') is not None else None,
+                "moneda": fila.get('moneda'),
                 "numero_factura": fila[
                     "numero_factura"
                 ],
@@ -473,8 +503,12 @@ def obtener_detalle_recepcion(
         id_factura
     )
 
+    financiera, entregas = invoice_storage.obtener(id_factura)
     return {
         "recepcion": {
+            "factura": financiera,
+            "entregas": entregas,
+
             "id_factura_recepcion": factura[
                 "id_factura_recepcion"
             ],
@@ -662,6 +696,12 @@ def corregir_recepcion(
             for fila in actuales
         }
 
+        financiera, _ = invoice_storage.obtener(id_factura)
+        if financiera and fecha_nueva.isoformat() < financiera['fecha_emision']:
+            db.session.rollback()
+            return {'mensaje': 'La recepcion no puede ser anterior a la emision.'}, 400
+        limites_factura = {l['id_producto']: Decimal(str(l['cantidad_facturada'])) for l in financiera['lineas']} if financiera else {}
+
         cambios = []
         ids_recibidos = set()
 
@@ -734,6 +774,8 @@ def corregir_recepcion(
                 - recibido_otras
             )
 
+            if fila['id_producto'] in limites_factura:
+                maximo = min(maximo, limites_factura[fila['id_producto']])
             if cantidad > maximo:
                 db.session.rollback()
                 return {

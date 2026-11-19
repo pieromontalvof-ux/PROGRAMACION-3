@@ -22,3 +22,5 @@
 .receipt-save { margin-top:18px; min-height:45px; padding:0 20px; border:0; border-radius:10px; color:#fff; background:#06432f; font-weight:900; cursor:pointer; }
 .receipt-empty,.receipt-state { padding:45px; color:var(--ui-muted); text-align:center; background:var(--ui-surface); }
 @media(max-width:760px){.receipt-summary,.receipt-fields{grid-template-columns:1fr}.receipt-row{grid-template-columns:auto 1fr auto}.receipt-row span{grid-column:2}.receipt-products>div{grid-template-columns:1fr}.receipt-header{padding:28px 24px}}
+.receipt-detail{min-width:0}.receipt-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:650px){.receipt-fields{grid-template-columns:1fr}}

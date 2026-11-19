@@ -23,12 +23,14 @@ import {
   cambiarEstadoProveedor,
   consultarDependenciasProveedor,
   crearProveedor,
+  consultarRucProveedor,
   editarProveedor,
   obtenerProveedores,
   reasignarProveedor,
 } from '../services/catalogService'
 import type {
   ProveedorDetalle,
+  DatosComercialesProveedor,
   RespuestaProveedores,
 } from '../types/catalog'
 import { permisosDe } from '../utils/permissionHelpers'
@@ -49,6 +51,8 @@ export function SuppliersPage() {
   const [proveedorEditado, setProveedorEditado] =
     useState<ProveedorDetalle | null>(null)
   const [nombre, setNombre] = useState('')
+  const [comercial, setComercial] = useState<DatosComercialesProveedor>({})
+  const [consultandoRuc, setConsultandoRuc] = useState(false)
   const [idsCategorias, setIdsCategorias] = useState<number[]>([])
   const [procesando, setProcesando] = useState(false)
 
@@ -140,6 +144,7 @@ export function SuppliersPage() {
     setError('')
     setProveedorEditado(proveedor ?? null)
     setNombre(proveedor?.nombre ?? '')
+    setComercial(proveedor?.datos_comerciales ?? {})
     setIdsCategorias(proveedor?.ids_categorias ?? [])
     setModal(true)
   }
@@ -172,10 +177,10 @@ export function SuppliersPage() {
         await editarProveedor(
           token,
           proveedorEditado.id_proveedor,
-          { nombre: nombreLimpio, ids_categorias: idsCategorias },
+          { nombre: nombreLimpio, ids_categorias: idsCategorias, datos_comerciales: comercial },
         )
       } else {
-        await crearProveedor(token, { nombre: nombreLimpio, ids_categorias: idsCategorias })
+        await crearProveedor(token, { nombre: nombreLimpio, ids_categorias: idsCategorias, datos_comerciales: comercial })
       }
 
       setModal(false)
@@ -508,6 +513,7 @@ export function SuppliersPage() {
                             </span>
 
                             <strong>{proveedor.nombre}</strong>
+                            <small>{proveedor.datos_comerciales?.ruc}</small>
                             </div>
                         </td>
 
@@ -600,6 +606,7 @@ export function SuppliersPage() {
                         {estaAbierto && (
                         <tr className="suppliers-detail-row">
                             <td colSpan={mostrarAcciones ? 7 : 6}>
+                            <dl className="supplier-commercial-summary">{Object.entries(proveedor.datos_comerciales ?? {}).filter(([,v]) => v).map(([k,v]) => <div key={k}><dt>{k.replaceAll('_',' ')}</dt><dd>{v}</dd></div>)}</dl>
                             <div className="suppliers-detail">
                                 <div className="suppliers-detail__title">
                                 <Layers3 aria-hidden="true" />
@@ -680,6 +687,27 @@ export function SuppliersPage() {
             onChange={(evento) => setNombre(evento.target.value)}
           />
         </label>
+
+        <div className="supplier-commercial-fields">
+          <label>RUC<input inputMode="numeric" maxLength={11} value={comercial.ruc ?? ''} onChange={e => setComercial(a => ({ ...a, ruc: e.target.value.replace(/\D/g, '') }))} /></label>
+          <button type="button" disabled={consultandoRuc || procesando || comercial.ruc?.length !== 11} onClick={async () => {
+            if (!token || !comercial.ruc) return
+            const rucConsultado = comercial.ruc
+            try {
+              setConsultandoRuc(true); setError('')
+              const respuesta = await consultarRucProveedor(token, rucConsultado)
+              setComercial(a => a.ruc === rucConsultado ? { ...a, razon_social: respuesta.nombre } : a)
+            } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo consultar el RUC.') }
+            finally { setConsultandoRuc(false) }
+          }}>{consultandoRuc ? 'Consultando...' : 'Consultar RUC'}</button>
+          {([
+            ['razon_social', 'Razón social', 200], ['nombre_comercial', 'Nombre comercial', 200],
+            ['direccion', 'Dirección', 250], ['contacto', 'Persona de contacto', 200],
+            ['telefono', 'Teléfono', 40], ['email', 'Correo', 200],
+          ] as const).map(([campo, titulo, limite]) => <label key={campo}>{titulo}<input
+            type={campo === 'email' ? 'email' : 'text'} maxLength={limite} value={comercial[campo] ?? ''}
+            onChange={e => setComercial(a => ({ ...a, [campo]: e.target.value }))} /></label>)}
+        </div>
 
         <fieldset className="suppliers-category-picker">
           <legend>Categorías que atiende</legend>

@@ -410,7 +410,9 @@ CREATE TABLE public.factura_recepcion (
     id_proveedor integer NOT NULL,
     numero_factura character varying(40) NOT NULL,
     fecha_recepcion date NOT NULL,
-    usuario_recepcion integer NOT NULL
+    usuario_recepcion integer NOT NULL,
+    datos_factura jsonb,
+    entregas jsonb NOT NULL DEFAULT '[]'::jsonb
 );
 
 
@@ -1527,11 +1529,14 @@ CREATE TABLE public.promocion_reposicion (
 --
 
 CREATE TABLE public.proveedor (
+    datos_comerciales jsonb NOT NULL DEFAULT '{}'::jsonb,
     id_proveedor integer NOT NULL,
     nombre character varying(200) NOT NULL,
     activo boolean DEFAULT true NOT NULL
 );
 
+
+CREATE UNIQUE INDEX uq_proveedor_ruc ON public.proveedor ((datos_comerciales->>'ruc')) WHERE COALESCE(datos_comerciales->>'ruc','') <> '';
 
 --
 -- Name: proveedor_categoria; Type: TABLE; Schema: public; Owner: -

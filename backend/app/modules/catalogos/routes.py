@@ -28,6 +28,20 @@ from app.modules.catalogos.service import (
 catalogos_bp = Blueprint("catalogos", __name__)
 
 
+@catalogos_bp.post('/proveedores/consultar-ruc')
+@requiere_permiso(6, 'consultar')
+def consultar_ruc_proveedor():
+    from app.modules.clientes.identity import consultar
+    from werkzeug.exceptions import HTTPException
+    datos = request.get_json(silent=True) or {}
+    if not isinstance(datos, dict):
+        return jsonify({'mensaje': 'Envía un RUC válido.'}), 400
+    try:
+        return jsonify(consultar('RUC', datos.get('ruc'))), 200
+    except HTTPException as error:
+        return jsonify({'mensaje': error.description}), error.code
+
+
 @catalogos_bp.errorhandler(CategoriasProveedorNoDisponibles)
 def categorias_proveedor_sin_migracion(error):
     return jsonify({"mensaje": str(error)}), 503

@@ -250,3 +250,7 @@ export const cambiarEstadoProveedor = (
     token,
     { method: 'PATCH', body: cuerpo({ motivo }) },
   )
+
+export const consultarRucProveedor = (token: string, ruc: string) =>
+  solicitud<{ nombre: string; numero_documento: string }>('/catalogos/proveedores/consultar-ruc', token,
+    { method: 'POST', body: cuerpo({ ruc }) })

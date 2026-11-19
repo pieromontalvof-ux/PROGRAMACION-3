@@ -30,6 +30,7 @@ export interface RespuestaPendientesRecepcion {
 }
 
 export interface DatosRegistrarRecepcion {
+  factura?: FacturaProveedorEntrada
   id_proveedor: number
   numero_factura: string
   fecha_recepcion: string
@@ -40,6 +41,8 @@ export interface DatosRegistrarRecepcion {
 }
 
 export interface RecepcionHistorial {
+  total_factura?: number | null
+  moneda?: string | null
   id_factura_recepcion: number
   id_orden_compra: number
   codigo_orden: string
@@ -67,6 +70,8 @@ export interface DetalleRecepcionHistorial {
 
 export interface RespuestaDetalleRecepcion {
   recepcion: {
+    factura?: FacturaProveedor | null
+    entregas?: EntregaProveedor[]
     id_factura_recepcion: number
     id_orden_compra: number
     codigo_orden: string
@@ -78,6 +83,36 @@ export interface RespuestaDetalleRecepcion {
     recibido_por: string
     detalles: DetalleRecepcionHistorial[]
   }
+}
+
+export interface LineaFacturaProveedor {
+  id_producto: number
+  cantidad_facturada: number
+  precio_unitario: number
+  descuento: number
+  afectacion_igv?: 'GRAVADO' | 'EXONERADO' | 'INAFECTO'
+  igv_porcentaje: number
+}
+export interface FacturaProveedorEntrada {
+  fecha_emision: string
+  moneda: 'PEN' | 'USD'
+  lineas: LineaFacturaProveedor[]
+}
+export interface FacturaProveedor extends FacturaProveedorEntrada {
+  datos_ficticios?: boolean
+  proveedor: Record<string, string>
+  base_gravada?: number
+  base_exonerada?: number
+  base_inafecta?: number
+  subtotal: number
+  igv: number
+  total: number
+  lineas: Array<LineaFacturaProveedor & { nombre: string; codigo: string; unidad: string; subtotal: number; igv: number; total: number }>
+}
+export interface EntregaProveedor {
+  fecha: string
+  usuario: number
+  detalles: Array<{ id_producto: number; cantidad_recibida: number }>
 }
 
 export interface DatosCorregirRecepcion {

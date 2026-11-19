@@ -256,6 +256,8 @@ def listar_historial_recepciones(
             fr.id_orden_compra,
             oc.codigo AS codigo_orden,
             oc.estado_orden_compra,
+            fr.datos_factura->>'total' AS total_factura,
+            fr.datos_factura->>'moneda' AS moneda,
             fr.numero_factura,
             fr.fecha_recepcion,
             fr.id_proveedor,

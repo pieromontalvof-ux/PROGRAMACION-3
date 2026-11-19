@@ -1,6 +1,6 @@
 # Respaldo completo cifrado
 
-`barbarito-completo-2026-11-18.dump.enc` contiene la estructura y todos los datos de la base local al crear la copia. No incluye roles ni privilegios del servidor PostgreSQL. No se actualiza automaticamente con nuevas ventas.
+`barbarito-completo-2026-11-19.dump.enc` contiene la estructura y todos los datos de la base local al crear la copia. No incluye roles ni privilegios del servidor PostgreSQL. No se actualiza automaticamente con nuevas ventas.
 
 La clave esta exclusivamente en `.local/database-backup.key` del equipo original y no se publica. Guarda otra copia de esa clave en un lugar privado: sin ella no es posible recuperar este respaldo.
 
@@ -10,7 +10,7 @@ La clave esta exclusivamente en `.local/database-backup.key` del equipo original
 2. Desde la raiz del proyecto, descifrar hacia un archivo local ignorado por Git:
 
 ```powershell
-python database/backups/descifrar.py database/backups/barbarito-completo-2026-11-18.dump.enc --clave .local/database-backup.key --salida .local/barbarito-restaurar.dump
+python database/backups/descifrar.py database/backups/barbarito-completo-2026-11-19.dump.enc --clave .local/database-backup.key --salida .local/barbarito-restaurar.dump
 ```
 
 3. Crear una base vacia en PostgreSQL 18 y restaurar con un usuario autorizado:

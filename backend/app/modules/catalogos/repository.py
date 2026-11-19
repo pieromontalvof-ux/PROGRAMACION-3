@@ -115,6 +115,7 @@ def listar_proveedores():
             id_proveedor,
             nombre,
             activo,
+            datos_comerciales,
             ARRAY(SELECT pc.id_categoria FROM {origen} pc
                   WHERE pc.id_proveedor = proveedor.id_proveedor
                   ORDER BY pc.id_categoria) AS ids_categorias
@@ -289,7 +290,7 @@ def obtener_proveedor(id_proveedor, bloquear=False):
     bloqueo = " FOR UPDATE" if bloquear else ""
     return db.session.execute(
         text("""
-            SELECT id_proveedor, nombre, activo
+            SELECT id_proveedor, nombre, activo, datos_comerciales
             FROM proveedor
             WHERE id_proveedor = :id_proveedor
         """ + bloqueo),
@@ -530,3 +531,22 @@ def guardar_historial_proveedor_producto(
         ) VALUES (:producto, :anterior, :nuevo, :usuario, :motivo)
     """), {"producto": id_producto, "anterior": anterior,
             "nuevo": nuevo, "usuario": id_usuario, "motivo": motivo})
+
+
+def guardar_comercial_proveedor(identidad, datos):
+    import json
+    from sqlalchemy.exc import IntegrityError
+    from werkzeug.exceptions import Conflict
+    try:
+        db.session.execute(text("UPDATE proveedor SET datos_comerciales=CAST(:datos AS jsonb) WHERE id_proveedor=:id"),
+                           {'id': identidad, 'datos': json.dumps(datos)})
+    except IntegrityError as error:
+        db.session.rollback()
+        if getattr(getattr(error.orig, 'diag', None), 'constraint_name', '') == 'uq_proveedor_ruc':
+            raise Conflict('Ese RUC ya pertenece a otro proveedor.') from None
+        raise
+
+
+def ruc_proveedor_repetido(ruc, excluir=None):
+    return bool(ruc) and db.session.execute(text("SELECT EXISTS(SELECT 1 FROM proveedor WHERE datos_comerciales->>'ruc'=:ruc AND (:id IS NULL OR id_proveedor<>:id))"),
+                         {'ruc': ruc, 'id': excluir}).scalar()

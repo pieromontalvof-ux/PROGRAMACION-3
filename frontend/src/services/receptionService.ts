@@ -111,3 +111,12 @@ export async function corregirRecepcion(
     }),
   )
 }
+
+export async function registrarEntrega(token: string, idFactura: number, datos: {
+  fecha: string; clave?: string; detalles: Array<{ id_producto: number; cantidad_recibida: number }>
+}) {
+  return procesar<{ mensaje: string }>(await fetch(`${API_URL}/recepciones/${idFactura}/entregas`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(datos),
+  }))
+}

@@ -1,3 +1,4 @@
+from app.modules.recepciones.invoices import validar_comercial
 from decimal import Decimal
 
 from app.modules.catalogos.repository import (
@@ -294,6 +295,13 @@ def _validar_categorias_proveedor(ids, anteriores=()):
 
 
 def crear_proveedor_catalogo(id_usuario, datos):
+    try:
+        comercial = validar_comercial(datos.get('datos_comerciales', {})) if 'datos_comerciales' in datos else None
+    except ValueError as error:
+        return {'mensaje': str(error)}, 400
+    if comercial and repo.ruc_proveedor_repetido(comercial['ruc'], None):
+        return {'mensaje': 'Ese RUC ya pertenece a otro proveedor.'}, 409
+
     nombre = _texto(datos, "nombre", 200)
     ids = _categorias_proveedor_validas(datos)
     if ids is None:
@@ -307,6 +315,8 @@ def crear_proveedor_catalogo(id_usuario, datos):
             db.session.rollback()
             return {"mensaje": "Selecciona categorías activas válidas"}, 409
         identidad = repo.crear_proveedor(nombre)
+        if comercial is not None:
+            repo.guardar_comercial_proveedor(identidad, comercial)
         repo.asignar_categorias_proveedor(identidad, ids)
         nuevo = dict(repo.obtener_proveedor(identidad))
         nuevo["ids_categorias"] = ids
@@ -322,6 +332,13 @@ def crear_proveedor_catalogo(id_usuario, datos):
 
 
 def editar_proveedor_catalogo(id_proveedor, id_usuario, datos):
+    try:
+        comercial = validar_comercial(datos.get('datos_comerciales', {})) if 'datos_comerciales' in datos else None
+    except ValueError as error:
+        return {'mensaje': str(error)}, 400
+    if comercial and repo.ruc_proveedor_repetido(comercial['ruc'], id_proveedor):
+        return {'mensaje': 'Ese RUC ya pertenece a otro proveedor.'}, 409
+
     nombre = _texto(datos, "nombre", 200)
     ids = _categorias_proveedor_validas(datos)
     if ids is None:
@@ -345,6 +362,8 @@ def editar_proveedor_catalogo(id_proveedor, id_usuario, datos):
         anterior["ids_categorias"] = anteriores
         repo.asignar_categorias_proveedor(id_proveedor, ids)
         repo.actualizar_proveedor(id_proveedor, nombre)
+        if comercial is not None:
+            repo.guardar_comercial_proveedor(id_proveedor, comercial)
         nuevo = dict(repo.obtener_proveedor(id_proveedor))
         nuevo["ids_categorias"] = ids
         registrar_cambio(id_usuario, "CATALOGOS", "EDITAR",

@@ -15,6 +15,14 @@ from app.modules.recepciones.service import (
 recepciones_bp = Blueprint("recepciones", __name__)
 
 
+@recepciones_bp.post('/<int:id_factura>/entregas')
+@requiere_permiso(id_opcion_menu=24, accion='crear')
+def completar_entrega(id_factura):
+    from .invoice_storage import entregar
+    respuesta, estado = entregar(id_factura, int(get_jwt_identity()), request.get_json(silent=True))
+    return jsonify(respuesta), estado
+
+
 @recepciones_bp.get("/pendientes")
 @requiere_permiso(id_opcion_menu=24, accion="consultar")
 def consultar_pendientes():

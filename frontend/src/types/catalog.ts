@@ -24,10 +24,21 @@ export interface CategoriaProducto {
 }
 
 export interface ProveedorCatalogo {
+  datos_comerciales?: DatosComercialesProveedor
   ids_categorias: number[]
   id_proveedor: number
   nombre: string
   activo: boolean
+}
+
+export interface DatosComercialesProveedor {
+  ruc?: string
+  razon_social?: string
+  nombre_comercial?: string
+  direccion?: string
+  telefono?: string
+  email?: string
+  contacto?: string
 }
 
 export interface ResumenCatalogoProductos {
@@ -137,6 +148,7 @@ export interface CategoriaEntrada {
 }
 
 export interface ProveedorEntrada {
+  datos_comerciales?: DatosComercialesProveedor
   ids_categorias: number[]
   nombre: string
 }
