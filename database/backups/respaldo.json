@@ -1,0 +1,10 @@
+{
+  "archivo": "barbarito-completo-2026-11-18.dump.enc",
+  "fecha": "2026-11-18T19:14:37.186632-05:00",
+  "formato": "PostgreSQL custom archive cifrado con Fernet",
+  "postgresql": 18,
+  "contenido": "Estructura y datos completos de barbarito. Sin roles ni privilegios del servidor.",
+  "sha256_cifrado": "84567f0d7b190d1b158bfd1e08181aac0598b2d69f36691fe79b08c416c8a979",
+  "bytes_cifrados": 2309176,
+  "verificacion": "Lectura completa mediante pg_restore y descifrado comparado byte a byte."
+}
