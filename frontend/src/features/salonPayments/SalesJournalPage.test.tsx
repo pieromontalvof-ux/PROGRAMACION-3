@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest'
-import {cleanup,fireEvent,render,screen} from '@testing-library/react'
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
 import {SalesJournalPage} from './SalesJournalPage'
 import {salonApi} from '../../services/salonService'
@@ -31,6 +31,10 @@ it('lists sales, opens persisted detail, and filters by payment method',async()=
  })
  render(<MemoryRouter><SalesJournalPage/></MemoryRouter>)
  expect(await screen.findByText('Mojito')).toBeTruthy()
+ const lista=screen.getByRole('region',{name:'Ventas registradas'})
+ const detalle=screen.getByRole('region',{name:'Detalle de la venta'})
+ expect(lista.nextElementSibling).toBe(detalle)
+ expect(within(detalle).queryByRole('complementary',{name:'Visor del comprobante'})).toBeNull()
  fireEvent.change(screen.getByLabelText('Método de pago'),{target:{value:'TARJETA'}})
  fireEvent.click(screen.getByRole('button',{name:'Buscar'}))
  await screen.findByText('Mojito')

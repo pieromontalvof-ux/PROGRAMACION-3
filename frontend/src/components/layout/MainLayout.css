@@ -606,13 +606,15 @@
 
 .topbar-user__dropdown
   > button.topbar-user__logout {
-  color: var(--ui-danger);
+  color: white;
+  background: var(--ui-danger);
 }
 
 .topbar-user__dropdown
   > button.topbar-user__logout:hover {
-  color: var(--ui-danger);
-  background: var(--ui-surface);
+  color: white;
+  background: var(--ui-danger);
+  filter: brightness(.88);
 }
 
 /* =====================================================

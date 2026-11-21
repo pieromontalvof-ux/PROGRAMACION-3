@@ -1,16 +1,32 @@
-import {useEffect,useState} from 'react'
+import {useCallback,useEffect,useRef,useState} from 'react'
+import {createPortal} from 'react-dom'
+import {FactApiPdfPreview} from './FactApiPdfPreview'
 import './FactApiPanel.css'
 
 type Operation={id_operacion:string;version:number;estado:string;intentos:number;obsoleto?:boolean;ultimo_error?:string;numero?:string;archivos:{id:string;formato:string}[]}
 type Status={disponible:boolean;modo?:string;operaciones:Operation[];originales?:{id_adjunto:string;formato:string}[]}
 const names:Record<string,string>={PENDIENTE:'En cola',PROCESANDO:'Generando documento',REINTENTO:'Esperando reintento',COMPLETADO:'PDF disponible',RECHAZADO:'Datos rechazados',BLOQUEADO:'Requiere configuración',REVISION:'Requiere revisión'}
 
-export function FactApiPanel({origin,source,token,salon=false}:{origin:'VENTA'|'COMPRA';source:number;token?:string;salon?:boolean}) {
+export function FactApiPanel({origin,source,token,salon=false,showAvailability=false,previewTarget,previewModal=false}:{
+  origin:'VENTA'|'COMPRA';source:number;token?:string;salon?:boolean;showAvailability?:boolean
+  previewTarget?: HTMLDivElement | null
+  previewModal?: boolean
+}) {
   const [status,setStatus]=useState<Status|null>(null)
   const [loadedScope,setLoadedScope]=useState('')
+  const [failedScope,setFailedScope]=useState('')
   const [error,setError]=useState('')
   const [busy,setBusy]=useState(false)
   const [revision,setRevision]=useState(0)
+  const [preview,setPreview]=useState<{scope:string;id:string}|null>(null)
+  const previewButton=useRef<HTMLButtonElement|null>(null)
+  const dialogRef=useRef<HTMLDialogElement|null>(null)
+  const mountDialog=useCallback((dialog:HTMLDialogElement|null)=>{
+    dialogRef.current=dialog
+    if(!dialog||dialog.open)return
+    if(typeof dialog.showModal==='function')dialog.showModal()
+    else dialog.setAttribute('open','')
+  },[])
   const auth=token??sessionStorage.getItem('salon_token')??''
   const base=(import.meta.env.VITE_API_URL??'http://127.0.0.1:5000/api')+(salon?'/salon/fact-api':'/v1/fact-api')
   const scope=`${auth}:${base}:${origin}:${source}`
@@ -21,13 +37,16 @@ export function FactApiPanel({origin,source,token,salon=false}:{origin:'VENTA'|'
     async function load(){
       try{
         const response=await fetch(`${base}/${origin}/${source}`,{headers:{Authorization:`Bearer ${auth}`},signal:controller.signal})
-        if(!response.ok)return
+        if(!response.ok)throw new Error('No se pudo consultar el comprobante')
         const data=await response.json() as Status
         if(controller.signal.aborted)return
         setStatus(data)
         setLoadedScope(`${auth}:${base}:${origin}:${source}`)
+        setFailedScope('')
         if(data.operaciones?.some(o=>['PENDIENTE','PROCESANDO','REINTENTO'].includes(o.estado)))timer=setTimeout(()=>void load(),4000)
-      }catch{/* Existing pages remain usable when the optional integration is unavailable. */}
+      }catch{
+        if(!controller.signal.aborted)setFailedScope(`${auth}:${base}:${origin}:${source}`)
+      }
     }
     void load()
     return ()=>{controller.abort();clearTimeout(timer)}
@@ -72,17 +91,64 @@ export function FactApiPanel({origin,source,token,salon=false}:{origin:'VENTA'|'
     }catch(e){setError(e instanceof Error?e.message:'Error al adjuntar.')}
     finally{setBusy(false)}
   }
-  if(loadedScope!==scope||!status?.disponible)return null
+  if(loadedScope!==scope||!status?.disponible||(showAvailability&&failedScope===scope)){
+    if(!showAvailability||!auth)return null
+    return <section className="fact-api-panel" aria-label="Comprobante de prueba">
+      <strong>Comprobante de prueba</strong>
+      {failedScope===scope?<><p role="status">El cobro está registrado. No se pudo consultar el comprobante.</p>
+        <button type="button" onClick={()=>setRevision(v=>v+1)}>Volver a consultar</button></>
+      :loadedScope===scope?<p role="status">La generación de comprobantes de prueba no está disponible en este local.</p>
+      :<p role="status">Consultando el comprobante…</p>}
+    </section>
+  }
   const operation=status.operaciones[0]
+  const archivos=operation?.archivos ?? []
+  const visto=preview?.scope===scope ? archivos.find(file=>file.id===preview.id) : undefined
+  const formato=(value:string)=>value==='80mm'?'ticket de 80 mm':'PDF '+value
+  function cerrarVista(){
+    dialogRef.current?.close?.()
+    setPreview(null)
+    previewButton.current?.focus({preventScroll:true})
+  }
+  const acciones=(enModal=false)=><div className="fact-api-actions">
+    <div role="group" aria-label="Vista previa">{archivos.map(file=><button type="button" key={file.id}
+      aria-pressed={visto?.id===file.id} onClick={event=>{
+        if(!enModal)previewButton.current=event.currentTarget
+        setPreview({scope,id:file.id})
+      }}>Ver {formato(file.formato)}</button>)}</div>
+    <div role="group" aria-label="Descargas">{archivos.map(file=><button type="button" disabled={busy}
+      key={file.id} onClick={()=>void download(file)}>Descargar {formato(file.formato)}</button>)}</div>
+  </div>
+  const archivo=visto&&<FactApiPdfPreview key={visto.id} url={`${base}/archivos/${visto.id}`} token={auth} format={formato(visto.formato)}/>
+  const visor=visto && <div className="fact-api-preview-section">
+    <div className="fact-api-preview-toolbar">
+      <strong>{formato(visto.formato)}</strong>
+      <button type="button" onClick={cerrarVista}>Cerrar vista previa</button>
+    </div>
+    {archivo}
+  </div>
   return <section className="fact-api-panel" aria-label="Documento fact_api">
-    <strong>Documento de prueba · fact_api</strong><p>Sin validez tributaria. Sin envío a SUNAT.{origin==='COMPRA'?' Vista interna; no sustituye el original del proveedor.':''}</p>
-    {operation?<><p role="status">{operation.obsoleto?'Documento histórico de una fuente modificada o anulada':names[operation.estado]??operation.estado}{operation.numero?` · ${operation.numero}`:''}</p><small>Seguimiento: {operation.id_operacion} · Intentos: {operation.intentos}</small>
+    <div className="fact-api-heading"><strong>{origin==='VENTA'?'Comprobante':'Factura recibida'}</strong>
+      <span>Sin validez tributaria</span></div>
+    {operation?<><p role="status">{operation.obsoleto?'Documento histórico de una fuente modificada o anulada':names[operation.estado]??operation.estado}{operation.numero?` · ${operation.numero}`:''}</p>
       {operation.ultimo_error&&<p>{operation.ultimo_error}</p>}
-      <div>{operation.archivos.map(file=><button type="button" disabled={busy} key={file.id} onClick={()=>void download(file)}>Descargar PDF {file.formato}</button>)}</div>
+      {!!archivos.length&&<>
+        {acciones()}
+        {previewModal ? visto && <dialog className="fact-api-preview-dialog" ref={mountDialog}
+          aria-label="Vista previa del comprobante" onCancel={event=>{event.preventDefault();cerrarVista()}}>
+          <div className="fact-api-preview-dialog-layout">
+            <div className="fact-api-preview-dialog-header"><strong>Comprobante {operation.numero}</strong>
+              <button className="fact-api-preview-exit" type="button" onClick={cerrarVista}>Salir</button></div>
+            {acciones(true)}
+            {error&&<p role="alert">{error}</p>}
+            {archivo}
+          </div>
+        </dialog> : visor && (previewTarget ? createPortal(visor,previewTarget) : previewTarget===undefined ? visor : null)}
+      </>}
       {!operation.obsoleto&&['REVISION','REINTENTO','BLOQUEADO','RECHAZADO'].includes(operation.estado)&&<button type="button" disabled={busy} onClick={()=>void retry(operation.id_operacion)}>Reintentar con la misma referencia</button>}
-    </>:<button type="button" disabled={busy} onClick={()=>void generate()}>{busy?'Encolando…':'Generar PDF de prueba'}</button>}
+    </>:<button type="button" disabled={busy} onClick={()=>void generate()}>{busy?'Encolando…':origin==='VENTA'?'Generar comprobante de prueba':'Generar PDF de prueba'}</button>}
     {origin==='COMPRA'&&!salon&&<div><label>Adjuntar original del proveedor (PDF o XML, máximo 5 MB)<input type="file" accept=".pdf,.xml" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.target.value=''}}/></label>
       {status.originales?.map(file=><button type="button" key={file.id_adjunto} disabled={busy} onClick={()=>void download({id:file.id_adjunto,formato:file.formato},true)}>Descargar original {file.formato}</button>)}</div>}
-    {error&&<p role="alert">{error}</p>}
+    {error&&!(previewModal&&visto)&&<p role="alert">{error}</p>}
   </section>
 }
