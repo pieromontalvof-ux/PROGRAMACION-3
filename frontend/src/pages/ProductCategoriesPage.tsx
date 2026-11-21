@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
@@ -14,7 +15,7 @@ import {
 } from 'react'
 
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   cambiarEstadoCategoria,
   consultarDependenciasCategoria,
@@ -101,9 +102,10 @@ export function ProductCategoriesPage() {
     [token],
   )
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     void cargarCategorias()
-  }, [cargarCategorias])
+
+    }), [cargarCategorias])
 
   const categoriasFiltradas = useMemo(() => {
     if (!datos) {

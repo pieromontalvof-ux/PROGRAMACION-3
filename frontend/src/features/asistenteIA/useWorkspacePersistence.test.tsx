@@ -86,6 +86,7 @@ describe('scoped assistant workspace persistence', () => {
     const restore = vi.fn()
     const { result, rerender } = renderHook(({ token }) => useWorkspacePersistence(token, null, restore),
       { initialProps: { token: 'old-profile' } })
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
     rerender({ token: 'new-profile' })
     await waitFor(() => expect(result.current.status).toBe('ready'))
     await act(async () => { finish(answer({ workspace: { ...blankWorkspace(), instruction: 'OLD' }, revision: 9 })) })

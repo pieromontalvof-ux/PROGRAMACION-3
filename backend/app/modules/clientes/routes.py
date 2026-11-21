@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from werkzeug.exceptions import BadRequest, Forbidden, NotFound
 from app.core.local_scope import local_actual
-from app.modules.auth.salon import validar_sesion_salon
+from app.modules.salon.salon import validar_sesion_salon
 from .service import buscar, crear, obtener
 
 clientes_bp=Blueprint('clientes',__name__)

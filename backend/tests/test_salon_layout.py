@@ -5,7 +5,7 @@ from flask_jwt_extended import create_access_token
 from sqlalchemy import text
 import test_salon_orders as orders
 from app.core.extensions import db
-from app.modules.auth.salon_layout import predeterminado,validar
+from app.modules.salon.salon_layout import predeterminado,validar
 from werkzeug.exceptions import BadRequest
 
 class LayoutValidation(unittest.TestCase):
@@ -48,6 +48,6 @@ class LayoutTests(unittest.TestCase):
   token=create_access_token(identity='2',additional_claims={'tipo_token':'operativo','id_perfil':2,'id_local':2})
   self.assertEqual(self.client.get('/api/salon/distribucion',headers={'Authorization':'Bearer '+token}).status_code,403)
  def test_audit_failure_is_atomic(self):
-  with patch('app.modules.auth.salon_layout.registrar_actividad',side_effect=RuntimeError('fallo')):
+  with patch('app.modules.salon.salon_layout.registrar_actividad',side_effect=RuntimeError('fallo')):
    with self.assertRaises(RuntimeError),db.session.begin_nested():self.save(predeterminado())
   self.assertEqual(db.session.execute(text('SELECT count(*) FROM salon_distribucion')).scalar(),0)

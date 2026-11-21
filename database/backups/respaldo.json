@@ -1,10 +1,38 @@
 {
-  "archivo": "barbarito-completo-2026-11-19.dump.enc",
-  "fecha": "2026-11-19T06:55:03.634336-05:00",
-  "formato": "PostgreSQL custom archive cifrado con Fernet",
-  "postgresql": 18,
-  "contenido": "Estructura y datos completos de barbarito. Sin roles ni privilegios del servidor.",
-  "sha256_cifrado": "0603587fe692a456852242877c0b0424ab3471c822730588e022a851fb1b9802",
-  "bytes_cifrados": 2621260,
-  "verificacion": "Lectura completa mediante pg_restore y descifrado comparado byte a byte."
+  "fecha": "2026-11-21T07:40:29.621283-05:00",
+  "generacion": "2026-11-21-074029-5c592675",
+  "formato": "PostgreSQL custom + documentos ZIP, cifrados con Fernet",
+  "clave": "Exclusivamente .local/database-backup.key; no publicada",
+  "bases": [
+    {
+      "base": "barbarito",
+      "archivo": "barbarito-completo-2026-11-21-074029-5c592675.dump.enc",
+      "bytes_cifrados": 2724344,
+      "sha256_cifrado": "a781acf337c6d0bf4e65de0ca48508e0979ec99f6eb32c1447770bc051d43763",
+      "lectura_pg_restore": "Correcta",
+      "descifrado": "Comparado byte a byte",
+      "roles_y_privilegios": false,
+      "restauracion": "Correcta en base temporal independiente",
+      "tablas_restauradas": 81
+    },
+    {
+      "base": "fact_api_demo",
+      "archivo": "fact-api-demo-completo-2026-11-21-074029-5c592675.dump.enc",
+      "bytes_cifrados": 113976,
+      "sha256_cifrado": "c7dfe7420eaf2a7af55874d74189b88e31380248f361faacfc6715cf2060c6ae",
+      "lectura_pg_restore": "Correcta",
+      "descifrado": "Comparado byte a byte",
+      "roles_y_privilegios": false,
+      "restauracion": "Correcta en base temporal independiente",
+      "tablas_restauradas": 25
+    }
+  ],
+  "documentos": {
+    "archivo": "fact-api-documentos-2026-11-21-074029-5c592675.zip.enc",
+    "archivos": 39,
+    "bytes_cifrados": 1045348,
+    "sha256_cifrado": "a406f83ed085dc756eaaba1f06c8a544c986ebd1ac07123845a0e7567c2d512b",
+    "verificacion": "ZIP CRC y descifrado correctos"
+  },
+  "archivo": "barbarito-completo-2026-11-21-074029-5c592675.dump.enc"
 }

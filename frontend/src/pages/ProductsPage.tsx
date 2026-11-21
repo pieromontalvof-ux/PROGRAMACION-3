@@ -8,27 +8,25 @@ import {
   Truck,
 } from 'lucide-react'
 import {
-  useCallback,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
 
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   cambiarEstadoProducto,
   crearProducto,
   editarProducto,
-  obtenerProductosCatalogo,
 } from '../services/catalogService'
 import type {
   ProductoCatalogo,
-  RespuestaCatalogoProductos,
   UnidadProducto,
 } from '../types/catalog'
 import { permisosDe } from '../utils/permissionHelpers'
 import { formatearUnidad } from '../utils/unitHelpers'
+
+import { useProducts } from '../features/products/useProducts'
 
 import './ProductsPage.css'
 
@@ -60,8 +58,6 @@ export function ProductsPage() {
     presentacion: '1',
   })
 
-  const [datos, setDatos] =
-    useState<RespuestaCatalogoProductos | null>(null)
 
   const [busqueda, setBusqueda] = useState('')
   const [categoria, setCategoria] = useState('todas')
@@ -70,49 +66,7 @@ export function ProductsPage() {
   const [estado, setEstado] =
     useState<FiltroEstado>('todos')
 
-  const [cargando, setCargando] = useState(true)
-  const [actualizando, setActualizando] = useState(false)
-  const [error, setError] = useState('')
-
-  const cargarProductos = useCallback(
-    async (esActualizacion = false) => {
-      if (!token) {
-        setError('No existe una sesión válida.')
-        setCargando(false)
-        return
-      }
-
-      try {
-        setError('')
-
-        if (esActualizacion) {
-          setActualizando(true)
-        } else {
-          setCargando(true)
-        }
-
-        const respuesta =
-          await obtenerProductosCatalogo(token)
-
-        setDatos(respuesta)
-      } catch (errorDesconocido) {
-        const mensaje =
-          errorDesconocido instanceof Error
-            ? errorDesconocido.message
-            : 'No fue posible cargar los productos.'
-
-        setError(mensaje)
-      } finally {
-        setCargando(false)
-        setActualizando(false)
-      }
-    },
-    [token],
-  )
-
-  useEffect(() => {
-    void cargarProductos()
-  }, [cargarProductos])
+  const { datos, cargando, actualizando, setActualizando, error, setError, cargarProductos } = useProducts(token)
 
   const productosFiltrados = useMemo(() => {
     if (!datos) {

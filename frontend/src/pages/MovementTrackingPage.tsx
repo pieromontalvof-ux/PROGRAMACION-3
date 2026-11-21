@@ -1,51 +1,43 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { permisosDe } from '../utils/permissionHelpers'
+import { obtenerSeguimientoMovimientos, recibirMovimiento } from '../services/movementService'
+import type { GuiaMovimiento } from '../types/movement'
 import './MovementTrackingPage.css'
 
-interface Guia {
-  id: number; codigo: string; fecha: string; id_local: number; id_local_destino: number | null;
-  estado: string; motivo: string; origen: string; destino: string | null; proveedor: string | null;
-  observacion: string | null; registrado_por: string;
-  detalles: {id_producto: number; codigo: string; nombre: string; unidad: string; cantidad: number; recibido: number}[];
-  recepciones: {codigo: string; guia_proveedor: string | null; fecha: string; nombre: string; unidad: string; cantidad: number}[];
-}
 const estados: Record<string, string> = {
   PENDIENTE_RECEPCION: 'Pendiente de recepción', ACEPTADO: 'Aceptado',
   DEVUELTO: 'Devuelto · pendiente de reintegro', REINTEGRO_PARCIAL: 'Reintegro parcial', REINTEGRADO: 'Reintegrado',
 }
-const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
 
 export function MovementTrackingPage() {
   const { token, localActivo, menu } = useAuth()
-  const [guias, setGuias] = useState<Guia[]>([])
+  const [guias, setGuias] = useState<GuiaMovimiento[]>([])
   const [tab, setTab] = useState('enviados')
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
-  const [seleccion, setSeleccion] = useState<Guia | null>(null)
+  const [seleccion, setSeleccion] = useState<GuiaMovimiento | null>(null)
   const [cantidades, setCantidades] = useState<Record<number, string>>({})
   const [documento, setDocumento] = useState('')
   const [mensaje, setMensaje] = useState('')
   const cargar = useCallback(async () => {
-    const r = await fetch(`${api}/movimientos/seguimiento`, {headers: {Authorization: `Bearer ${token}`}})
-    const d = await r.json()
-    if (!r.ok) throw new Error(d.mensaje ?? 'No se pudo cargar el seguimiento')
-    setGuias(d.movimientos)
+    if (!token) return
+    const datos = await obtenerSeguimientoMovimientos(token)
+    setGuias(datos.movimientos)
   }, [token])
-  useEffect(() => { cargar().catch(e => setError(e.message)) }, [cargar])
+  useEffect(() => scheduleEffect(() => { cargar().catch(e => setError(e.message))
+    }), [cargar])
   async function recibir() {
-    if (!seleccion) return
+    if (!seleccion || !token) return
     setOcupado(true); setError(''); setMensaje('')
     try {
-      const r = await fetch(`${api}/movimientos/${seleccion.id}/recibir`, {
-        method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-        body: JSON.stringify({guia_proveedor: documento, detalles: Object.entries(cantidades)
-          .filter(([,c]) => Number(c) > 0).map(([id,c]) => ({id_producto: Number(id), cantidad: Number(c)}))}),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.mensaje ?? 'No se pudo recibir')
+      const detalles = Object.entries(cantidades)
+        .filter(([, cantidad]) => Number(cantidad) > 0)
+        .map(([id, cantidad]) => ({ id_producto: Number(id), cantidad: Number(cantidad) }))
+      const d = await recibirMovimiento(token, seleccion.id, documento, detalles)
       setSeleccion(null); setMensaje(d.mensaje); await cargar()
     } catch (e) { setError(e instanceof Error ? e.message : 'Error de recepción') }
     finally { setOcupado(false) }

@@ -997,37 +997,6 @@ def registrar_revision_inventario(
         db.session.rollback()
         raise
 
-    def _convertir_stock_correccion(valor, nombre_producto):
-        if valor is None or valor == "":
-            return None, None
-
-        try:
-            stock = Decimal(str(valor))
-        except (InvalidOperation, TypeError, ValueError):
-            return None, (
-                f"El nuevo conteo de {nombre_producto} "
-                "no es válido"
-            )
-
-        if not stock.is_finite() or stock < 0:
-            return None, (
-                f"El nuevo conteo de {nombre_producto} "
-                "debe ser cero o un número positivo"
-            )
-
-        return stock, None
-
-
-def _stocks_son_iguales(stock_anterior, stock_nuevo):
-    if stock_anterior is None and stock_nuevo is None:
-        return True
-
-    if stock_anterior is None or stock_nuevo is None:
-        return False
-
-    return Decimal(str(stock_anterior)) == stock_nuevo
-
-
 def _convertir_stock_correccion(
     valor,
     nombre_producto,

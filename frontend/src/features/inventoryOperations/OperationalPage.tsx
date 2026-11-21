@@ -1,4 +1,4 @@
-import {useAuth} from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import {DayPanel} from './DayPanel'
 import {MixPanel} from './MixPanel'
 import {CountsPanel} from './CountsPanel'

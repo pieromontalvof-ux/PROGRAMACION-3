@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
@@ -18,7 +19,7 @@ import {
   useState,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { PromotionEditor } from '../components/recipes/PromotionEditor'
 import { permisosDe } from '../utils/permissionHelpers'
 import {
@@ -92,9 +93,10 @@ export function PromotionsPage() {
     [token],
   )
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     void cargar()
-  }, [cargar])
+
+    }), [cargar])
 
   const promocionesFiltradas = useMemo(() => {
     const texto = busqueda

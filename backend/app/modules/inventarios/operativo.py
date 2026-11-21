@@ -69,7 +69,7 @@ def ventas(local, jornada=None, desde=None, hasta=None, horas=None, separar=Fals
         sum((linea->>'cantidad')::numeric*(linea->>'precio')::numeric) AS total
         FROM salon_cobro c LEFT JOIN inventario_jornada j USING(id_jornada)
         CROSS JOIN LATERAL jsonb_array_elements(c.comprobante->'lineas') linea
-        WHERE c.id_local=:local AND
+        WHERE c.comprobante->'anulacion' IS NULL AND c.id_local=:local AND
         ((CAST(:jornada AS bigint) IS NOT NULL AND c.id_jornada=:jornada) OR
          (CAST(:jornada AS bigint) IS NULL AND coalesce(j.fecha,(c.creado_en AT TIME ZONE 'America/Lima')::date) BETWEEN :desde AND :hasta))
         AND (:todas OR extract(hour FROM c.creado_en AT TIME ZONE 'America/Lima')::int=ANY(:horas))

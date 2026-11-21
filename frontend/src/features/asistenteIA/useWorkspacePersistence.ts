@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../../utils/scheduleEffect'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { blankWorkspace, type WorkspaceState } from './workspaceState'
 
@@ -24,7 +25,7 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
   const [reloadKey, setReloadKey] = useState(0)
   const latest = useRef(value)
   const restoreRef = useRef(restore)
-  latest.current = value; restoreRef.current = restore
+  useEffect(() => { latest.current = value; restoreRef.current = restore }, [value, restore])
   const active = useRef<object | null>(null)
   const phase = useRef<Status>('loading')
   const revision = useRef(0)
@@ -40,7 +41,7 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
     timer.current = null
   }, [])
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     const identity = {}; active.current = identity
     const controller = new AbortController()
     phase.current = 'loading'; setStatus('loading'); setMessage('')
@@ -66,7 +67,8 @@ export function useWorkspacePersistence(token: string | null, value: WorkspaceSt
       setMessage(error instanceof Error ? error.message : 'No se pudo recuperar el progreso.')
     })
     return () => { active.current = null; controller.abort(); cancelTimer() }
-  }, [token, reloadKey, cancelTimer])
+
+    }), [token, reloadKey, cancelTimer])
 
   const enqueue = useCallback((next: WorkspaceState | null, force = false) => {
     cancelTimer()

@@ -1,3 +1,4 @@
+import { useScopedCatalog } from '../hooks/useScopedCatalog'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
 import {
@@ -11,14 +12,12 @@ import {
 
 import {
   Fragment,
-  useCallback,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
 
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   cambiarEstadoProveedor,
   consultarDependenciasProveedor,
@@ -56,59 +55,16 @@ export function SuppliersPage() {
   const [idsCategorias, setIdsCategorias] = useState<number[]>([])
   const [procesando, setProcesando] = useState(false)
 
-  const [datos, setDatos] =
-    useState<RespuestaProveedores | null>(null)
 
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] =
     useState<FiltroEstado>('todos')
 
-  const [cargando, setCargando] = useState(true)
-  const [actualizando, setActualizando] = useState(false)
-  const [error, setError] = useState('')
 
   const [proveedorAbierto, setProveedorAbierto] =
   useState<number | null>(null)
 
-  const cargarProveedores = useCallback(
-    async (esActualizacion = false) => {
-      if (!token) {
-        setError('No existe una sesión válida.')
-        setCargando(false)
-        return
-      }
-
-      try {
-        setError('')
-
-        if (esActualizacion) {
-          setActualizando(true)
-        } else {
-          setCargando(true)
-        }
-
-        const respuesta =
-          await obtenerProveedores(token)
-
-        setDatos(respuesta)
-      } catch (errorDesconocido) {
-        const mensaje =
-          errorDesconocido instanceof Error
-            ? errorDesconocido.message
-            : 'No se pudieron cargar los proveedores.'
-
-        setError(mensaje)
-      } finally {
-        setCargando(false)
-        setActualizando(false)
-      }
-    },
-    [token],
-  )
-
-  useEffect(() => {
-    void cargarProveedores()
-  }, [cargarProveedores])
+  const {datos, cargando, actualizando, setActualizando, error, setError, cargar: cargarProveedores} = useScopedCatalog<RespuestaProveedores>(token, obtenerProveedores, 'No se pudieron cargar los proveedores.')
 
   const proveedoresFiltrados = useMemo(() => {
     if (!datos) {

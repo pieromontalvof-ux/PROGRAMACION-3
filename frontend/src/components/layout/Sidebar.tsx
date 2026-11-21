@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { X, Search, LayoutGrid, Store } from 'lucide-react'
 
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import {
   construirArbolMenu,
   type OpcionMenuConHijos,

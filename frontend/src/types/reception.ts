@@ -11,6 +11,7 @@ export interface ProductoPendienteRecepcion {
 }
 
 export interface PendienteRecepcion {
+  datos_comerciales?: Record<string,string>
   id_orden_compra: number
   codigo_orden: string
   estado_orden_compra: string
@@ -86,6 +87,7 @@ export interface RespuestaDetalleRecepcion {
 }
 
 export interface LineaFacturaProveedor {
+  costo_total?: number
   id_producto: number
   cantidad_facturada: number
   precio_unitario: number

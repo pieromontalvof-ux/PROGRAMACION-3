@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
@@ -11,7 +12,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { obtenerRecetas } from '../services/recipeService'
 import type { Receta, RespuestaRecetas } from '../types/recipe'
 import { RecipeEditor } from '../components/recipes/RecipeEditor'
@@ -66,9 +67,10 @@ export function RecipesPage() {
     [token],
   )
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     void cargar()
-  }, [cargar])
+
+    }), [cargar])
 
   const recetasFiltradas = useMemo(() => {
     const texto = busqueda.trim().toLocaleLowerCase('es')

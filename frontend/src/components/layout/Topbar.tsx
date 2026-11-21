@@ -11,7 +11,7 @@ import {
   UserRound,
 } from 'lucide-react'
 
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 
 interface TopbarProps {
   abrirMenu: () => void
@@ -263,6 +263,8 @@ export function Topbar({ abrirMenu }: TopbarProps) {
               </div>
               <div className="topbar-user__separator" />
             </div>}
+
+            {perfilActivo?.id_perfil === 1 && <button type="button" onClick={() => {setMenuUsuarioAbierto(false);navigate('/home/diagnostico')}}>Diagn?stico del sistema</button>}
 
             <button
               type="button"

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { AuthContext, useAuth } from '../context/AuthContext'
+import { AuthContext, useAuth } from '../context/authState'
 import { StockLimitsPage } from './StockLimitsPage'
 import { StoresPage } from './StoresPage'
 

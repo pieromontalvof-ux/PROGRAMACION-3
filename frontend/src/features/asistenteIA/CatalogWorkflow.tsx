@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronRight, CheckCheck } from 'lucide-react'
-import { CatalogForm, type FormValues } from './CatalogForm'
+import { CatalogForm } from './CatalogForm'
+import type { FormValues } from './catalogFormValues'
 import { ReviewDetails } from './ReviewDetails'
 import { solicitar, type FormularioCatalogo, type RecursoFormulario, type RespuestaAsistente } from './service'
 

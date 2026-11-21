@@ -41,3 +41,12 @@ frontend/dist/
 
 # Portable local fiscal service and private runtime
 /.local/
+/services/fact_api/vendor/
+/backend/instance/fact_api_documents/
+/backend/instance/fact_api_workers/
+/services/fact_api/storage/app/private/
+/services/fact_api/storage/app/public/
+/services/fact_api/bootstrap/cache/*.php
+/services/fact_api/**/*.pem
+/services/fact_api/**/*.pfx
+/services/fact_api/**/*.p12

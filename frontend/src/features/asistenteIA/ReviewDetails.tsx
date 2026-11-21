@@ -1,7 +1,8 @@
 import { etiqueta, valorDeCampo } from './labels'
 import { revisionVisible } from './reviewDisplay'
 import { PurchaseOrderReview,type PurchaseEditHandlers } from './PurchaseOrderReview'
-import { asPromotion, PromotionReview } from './PromotionReview'
+import { PromotionReview } from './PromotionReview'
+import { asPromotion } from './promotionSummary'
 
 export function ReviewDetails({ value,resource,purchase }: { value: unknown;resource?:string;purchase?:PurchaseEditHandlers }) {
   if (resource==='promociones' && asPromotion(value)) return <PromotionReview value={value} />

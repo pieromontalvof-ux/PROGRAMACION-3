@@ -2,10 +2,10 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react'
 import {MemoryRouter, Route, Routes} from 'react-router-dom'
 import {SalonPaymentPage} from './SalonPaymentPage'
-import {salonApi} from '../../components/SalonPinDialog'
+import {salonApi} from '../../services/salonService'
 
-vi.mock('../../components/SalonPinDialog',()=>({salonApi:vi.fn()}))
-vi.mock('../../context/AuthContext',()=>({useAuth:()=>({logout:vi.fn()})}))
+vi.mock('../../services/salonService',()=>({salonApi:vi.fn()}))
+vi.mock('../../context/authState',()=>({useAuth:()=>({logout:vi.fn()})}))
 const api=vi.mocked(salonApi)
 const uuid='f56f07c8-7348-4cc5-8a70-b58a8319967c'
 const lineas=[{nombre:'Hamburguesa',cantidad:1,precio:25,enviada:true,comentario:'',opciones:[]}]

@@ -1,5 +1,6 @@
 import type {
   DatosRegistrarMovimiento,
+  GuiaMovimiento,
   RespuestaFormularioMovimiento,
   RespuestaRegistrarMovimiento,
 } from '../types/movement'
@@ -16,6 +17,7 @@ interface RespuestaError {
 
 async function procesarRespuesta<T>(
   respuesta: Response,
+  mensajePredeterminado = 'No se pudo completar la operación.',
 ): Promise<T> {
   let datos: T | RespuestaError
 
@@ -35,11 +37,32 @@ async function procesarRespuesta<T>(
     throw new Error(
       error.mensaje ??
         error.msg ??
-        'No se pudo completar la operación.',
+        mensajePredeterminado,
     )
   }
 
   return datos as T
+}
+
+export async function obtenerSeguimientoMovimientos(token: string) {
+  const respuesta = await fetch(`${API_URL}/movimientos/seguimiento`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return procesarRespuesta<{ movimientos: GuiaMovimiento[] }>(respuesta, 'No se pudo cargar el seguimiento')
+}
+
+export async function recibirMovimiento(
+  token: string,
+  id: number,
+  guiaProveedor: string,
+  detalles: { id_producto: number; cantidad: number }[],
+) {
+  const respuesta = await fetch(`${API_URL}/movimientos/${id}/recibir`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ guia_proveedor: guiaProveedor, detalles }),
+  })
+  return procesarRespuesta<{ mensaje: string }>(respuesta, 'No se pudo recibir')
 }
 
 export async function obtenerFormularioMovimiento(

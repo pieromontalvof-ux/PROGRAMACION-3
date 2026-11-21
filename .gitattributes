@@ -1,2 +1,4 @@
 *.pdf binary
 *.docx binary
+*.enc binary
+*.sql text eol=lf

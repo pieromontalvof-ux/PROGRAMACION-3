@@ -5,6 +5,8 @@ export interface ReceiptLine {
   selecciones_promocion?: {nombre: string; opciones: {nombre: string}[]}[]
 }
 export interface Receipt {
+  prueba?: string
+  editable?: boolean; anulacion?: {motivo:string;referencia:string}; historial?: {accion:string;fecha:string;motivo:string}[]
   id: number; numero: string; fecha: string; tipo: string; metodo: string
   documento: string; cliente: string; local: string; mesa: string
   usuario: string; total: number; fiscal: boolean; lineas: ReceiptLine[]
@@ -37,6 +39,8 @@ export function receiptImage(receipt: Receipt) {
   const rule = () => { y += 8; rows.push(`<path d="M28 ${y}H452" stroke="#d0ddd5" stroke-dasharray="4 4"/>`); y += 28 }
   line('BARBARIAN', 26, true)
   line(receipt.local)
+  if (receipt.prueba) line('VENTA SIMULADA', 17, true)
+  if(receipt.anulacion){line('VENTA ANULADA',20,true);line(receipt.anulacion.motivo);if(receipt.anulacion.referencia)line('Reemplazo: '+receipt.anulacion.referencia)}
   line('Comprobante interno · Sin validez tributaria', 13)
   rule()
   line(`${documentNames[receipt.tipo]} · ${receipt.numero}`, 17, true)

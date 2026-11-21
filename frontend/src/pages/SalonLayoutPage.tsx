@@ -1,5 +1,6 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import {useEffect,useState} from 'react'
-import {useAuth} from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {SalonMap,type DistribucionSalon,type ElementoSalon} from '../components/SalonMap'
 const api=import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
 export function SalonLayoutPage(){
@@ -11,13 +12,14 @@ function SalonLayoutEditor(){
  const [datos,setDatos]=useState<DistribucionSalon|null>(null),[seleccion,setSeleccion]=useState<string|null>(null)
  const [error,setError]=useState(''),[mensaje,setMensaje]=useState(''),[ocupado,setOcupado]=useState(false),[cambios,setCambios]=useState(false)
  const permitido=perfilActivo?.id_perfil===2
- useEffect(()=>{
+ useEffect(()=>scheduleEffect(() => {
   setDatos(null);setSeleccion(null);setCambios(false);setError('');setMensaje('')
   if(!permitido)return
   const control=new AbortController()
   fetch(`${api}/salon/distribucion`,{headers:{Authorization:`Bearer ${token}`},signal:control.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.mensaje??'No se pudo cargar');return d}).then(d=>{if(!control.signal.aborted)setDatos(d)}).catch(e=>{if(!control.signal.aborted)setError(e.message)})
   return ()=>control.abort()
- },[token,permitido,localActivo?.id_local])
+
+    }),[token,permitido,localActivo?.id_local])
  const elegido=datos?.elementos.find(e=>e.codigo===seleccion)
  function modificar(codigo:string,parcial:Partial<ElementoSalon>){if(ocupado)return;setDatos(d=>d?{...d,elementos:d.elementos.map(e=>e.codigo===codigo?{...e,...parcial}:e)}:d);setCambios(true);setMensaje('')}
  function agregar(tipo:ElementoSalon['tipo']){

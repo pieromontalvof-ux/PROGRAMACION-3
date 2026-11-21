@@ -6,7 +6,7 @@ from sqlalchemy import text
 from werkzeug.exceptions import BadRequest
 from app import create_app
 from app.core.extensions import db
-from app.modules.auth.salon import guardar_pin
+from app.modules.salon.salon import guardar_pin
 
 
 @unittest.skipUnless(os.environ.get('LOCAL_SCOPE_TEST_DB')=='1','PostgreSQL temporal')

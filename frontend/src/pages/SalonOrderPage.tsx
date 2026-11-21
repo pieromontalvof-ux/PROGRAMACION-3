@@ -1,19 +1,14 @@
-import {SalonPinDialog,salonApi} from '../components/SalonPinDialog'
+import { scheduleEffect } from '../utils/scheduleEffect'
+import {SalonPinDialog} from '../components/SalonPinDialog'
+import { cancelarPedido, eliminarLineasPedido, enviarPedido, obtenerCartaPedido, obtenerPedido, obtenerSesionPedido } from '../features/salonOrders/pedidoService'
+import { ajustarSalsa, construirReposiciones, grupoCompleto, puedeAgregarSalsa, seleccionarProducto, seleccionesIniciales } from '../features/salonOrders/pedidoRules'
+import type { GrupoPromocion, Linea, Opcion, Pedido, Producto, Promocion, SeleccionBorrador, SeleccionPromocion, Sesion } from '../features/salonOrders/pedidoTypes'
 import './SalonPage.css'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './SalonOrderPage.css'
 
-interface Opcion {id:number;nombre:string;cantidad?:number;unidad?:string}
-interface Producto {id:number;nombre:string;precio:number;id_categoria:number;categoria:string;grupo:{maximo:number;repetir:boolean;opciones:Opcion[]}|null;reponible?:boolean}
-interface GrupoPromocion {id:number;cantidad:number;repetir:boolean;opciones:Producto[]}
-interface Promocion {id:number;nombre:string;precio:number;grupos:GrupoPromocion[]}
-interface SeleccionPromocion {id_grupo:number;id_presentacion:number;nombre:string;reponible:boolean;grupo:Producto['grupo'];opciones:Opcion[]}
-interface SeleccionBorrador extends SeleccionPromocion {clave:string}
-interface Linea {id_presentacion:number|null;id_promocion?:number|null;selecciones_promocion?:SeleccionPromocion[];cantidad_reposiciones?:number;id_barra_libre?:number|null;barra_nombre?:string|null;nombre:string;precio:number;cantidad:number;comentario:string;opciones:Opcion[];enviada:boolean;ids_lineas?:number[]}
-interface Pedido {puede_editar:boolean;mesa:string;version:number;id_borrador:number|null;lineas:Linea[];total:number}
 const dinero=(valor:number) => new Intl.NumberFormat('es-PE',{style:'currency',currency:'PEN'}).format(valor)
-const api=import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
 const firma=(opciones:Opcion[]) => opciones.map(o => o.id).sort((a,b) => a-b).join(',')
 const nombreSalsa=(nombre:string) => nombre.replace(/^Salsa\s+/i,'')
 function resumenReposiciones(barra:Linea,lineas:Linea[]) {
@@ -27,20 +22,10 @@ function resumenReposiciones(barra:Linea,lineas:Linea[]) {
   const total=[...cantidades.values()].reduce((s,c) => s+c,0)
   return total ? `${total} reposiciones · ${[...cantidades].map(([salsa,cantidad]) => `${cantidad} ${salsa}`).join(' · ')}` : ''
 }
-async function consultar(ruta:string,datos?:unknown,signal?:AbortSignal,metodo='PUT') {
-  const token=sessionStorage.getItem('salon_token')
-  if(!token) throw new Error('Inicia sesión en Salón para continuar.')
-  const r=await fetch(`${api}/salon/${ruta}`,{method:datos ? metodo:'GET',signal,
-    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:datos ? JSON.stringify(datos):undefined})
-  const d=await r.json()
-  if(!r.ok) throw new Error(d.mensaje ?? d.msg ?? 'No se pudo completar la operación')
-  return d
-}
-
 export function SalonOrderPage() {
   const {mesa}=useParams()
   const navigate=useNavigate()
-  const [sesion,setSesion]=useState<{local:string;usuario:string;perfil:number}|null>(null)
+  const [sesion,setSesion]=useState<Sesion|null>(null)
   const [eliminando,setEliminando]=useState(false)
   const [pedido,setPedido]=useState<Pedido|null>(null)
   const [productos,setProductos]=useState<Producto[]>([])
@@ -72,15 +57,20 @@ export function SalonOrderPage() {
   const lineaSeleccionada=seleccion===null ? undefined:lineas[seleccion]
   const editable=Boolean(lineaSeleccionada && !lineaSeleccionada.enviada && !ocupado && pedido?.puede_editar)
   const pendientes=lineas.filter(l => !l.enviada)
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     const controller=new AbortController()
     setPedido(null);setLineas([]);setError('');setCambios(false);setSeleccion(null)
     envioClave.current=crypto.randomUUID()
-    Promise.all([consultar(`mesas/${mesa}/pedido`,undefined,controller.signal),consultar('carta',undefined,controller.signal),consultar('me',undefined,controller.signal)])
+    Promise.all([
+      obtenerPedido(mesa, controller.signal),
+      obtenerCartaPedido(controller.signal),
+      obtenerSesionPedido(controller.signal),
+    ])
       .then(([p,c,s]) => {if(!controller.signal.aborted){setPedido(p);setLineas(p.lineas);setProductos(c.productos);setPromociones(c.promociones);setSesion(s)}})
       .catch(e => {if(!controller.signal.aborted)setError(e.message)})
     return () => controller.abort()
-  },[mesa])
+
+    }),[mesa])
   useEffect(() => {if(configurando)dialog.current?.showModal()},[configurando])
   useEffect(() => {if(configurandoPromo)promoDialog.current?.showModal()},[configurandoPromo])
   useEffect(() => {if(reposicionLinea && reposicionSeleccion)reposicionDialog.current?.showModal()},[reposicionLinea,reposicionSeleccion])
@@ -123,36 +113,20 @@ export function SalonOrderPage() {
   }
   function agregarPromo(promo:Promocion) {
     if(ocupado || !pedido?.puede_editar || pendientes.length>=100)return
-    const automaticas=promo.grupos.flatMap(grupo => grupo.cantidad===1 && grupo.opciones.length===1 ? [{
-      clave:crypto.randomUUID(),id_grupo:grupo.id,id_presentacion:grupo.opciones[0].id,
-      nombre:grupo.opciones[0].nombre,reponible:Boolean(grupo.opciones[0].reponible),
-      grupo:grupo.opciones[0].grupo,opciones:[],
-    }] : [])
-    setConfigurandoPromo(promo);setSeleccionesPromo(automaticas)
+    setConfigurandoPromo(promo)
+    setSeleccionesPromo(seleccionesIniciales(promo, () => crypto.randomUUID()))
   }
   function seleccionarOpcionPromo(grupo:GrupoPromocion,producto:Producto) {
-    const actual=seleccionesPromo.filter(s => s.id_grupo===grupo.id)
-    const repetida=actual.some(s => s.id_presentacion===producto.id)
-    if(actual.length>=grupo.cantidad || (!grupo.repetir && repetida))return
-    setSeleccionesPromo(items => [...items,{clave:crypto.randomUUID(),id_grupo:grupo.id,
-      id_presentacion:producto.id,nombre:producto.nombre,reponible:Boolean(producto.reponible),
-      grupo:producto.grupo,opciones:[]}])
+    const clave = crypto.randomUUID()
+    setSeleccionesPromo(items => seleccionarProducto(items, grupo, producto, clave))
   }
   function quitarOpcionPromo(clave:string) {setSeleccionesPromo(items => items.filter(s => s.clave!==clave))}
   function cambiarSalsaPromo(clave:string,opcion:Opcion,delta:number) {
-    setSeleccionesPromo(items => items.map(s => {
-      if(s.clave!==clave)return s
-      const count=s.opciones.filter(o => o.id===opcion.id).length
-      if(delta>0 && (!s.grupo || count>=s.grupo.maximo || (!s.grupo.repetir && count)))return s
-      if(delta<0 && count===0)return s
-      const next=delta>0 ? [...s.opciones,opcion] : [...s.opciones]
-      if(delta<0)next.splice(next.findIndex(o => o.id===opcion.id),1)
-      return {...s,opciones:next}
-    }))
+    setSeleccionesPromo(items => items.map(s => s.clave === clave ? ajustarSalsa(s, opcion, delta) : s))
   }
   function confirmarPromo() {
     if(!configurandoPromo || !pedido?.puede_editar)return
-    const completa=configurandoPromo.grupos.every(g => seleccionesPromo.filter(s => s.id_grupo===g.id).length===g.cantidad)
+    const completa=configurandoPromo.grupos.every(g => grupoCompleto(g, seleccionesPromo))
     if(!completa){setError('Completa las opciones incluidas en la promoción.');return}
     setLineas(actual => [...actual,{id_presentacion:null,id_promocion:configurandoPromo.id,
       selecciones_promocion:seleccionesPromo.map(({clave:_clave,...s}) => s),nombre:configurandoPromo.nombre,
@@ -169,16 +143,9 @@ export function SalonOrderPage() {
   }
   function confirmarReposiciones() {
     if(!reposicionLinea || !reposicionSeleccion || !pedido?.puede_editar)return
-    const barra=reposicionLinea.ids_lineas?.[0]
-    if(!barra){setError('No se pudo identificar la barra libre. Actualiza el pedido.');return}
-    const lineasNuevas=reposicionSeleccion.grupo?.opciones.flatMap(opcion => {
-      const cantidad=cantidadesReposicion[opcion.id] ?? 0
-      return cantidad ? [{id_presentacion:reposicionSeleccion.id_presentacion,nombre:reposicionSeleccion.nombre,
-        precio:0,cantidad,comentario:'',opciones:[opcion],enviada:false,id_barra_libre:barra,barra_nombre:reposicionLinea.nombre}] : []
-    }) ?? []
-    if(!lineasNuevas.length){setError('Agrega al menos una porción con el botón +.');return}
-    if(pendientes.length+lineasNuevas.length>100){setError('Se alcanzó el límite de líneas pendientes.');return}
-    setLineas(actual => [...actual,...lineasNuevas]);setCambios(true);setMensaje('');setError('')
+    const resultado = construirReposiciones(reposicionLinea, reposicionSeleccion, cantidadesReposicion, pendientes.length)
+    if ('error' in resultado) {setError(resultado.error);return}
+    setLineas(actual => [...actual,...resultado.lineas]);setCambios(true);setMensaje('');setError('')
     setReposicionLinea(null);setReposicionSeleccion(null);setCantidadesReposicion({})
   }
   function borrar() {
@@ -190,7 +157,7 @@ export function SalonOrderPage() {
     if(!pedido){navigate('/salon');return}
     enProceso.current=true;setOcupado(true);setError('')
     try {
-      if(pedido.puede_editar && pedido.id_borrador!==null)await consultar(`mesas/${mesa}/pedido`,{version:pedido.version},undefined,'DELETE')
+      if(pedido.puede_editar && pedido.id_borrador!==null)await cancelarPedido(mesa, pedido.version)
       setCambios(false);navigate('/salon')
     } catch(e){setError(e instanceof Error ? e.message:'No se pudo cancelar')}
     finally {enProceso.current=false;setOcupado(false)}
@@ -199,17 +166,12 @@ export function SalonOrderPage() {
     if(!pedido?.puede_editar || enProceso.current || !pendientes.length)return
     enProceso.current=true;setOcupado(true);setError('');setMensaje('')
     try {
-      const p:Pedido=await consultar(`mesas/${mesa}/pedido`,{version:pedido.version,enviar:true,envio_clave:envioClave.current,
-        lineas:pendientes.map(l => l.id_promocion ? ({id_promocion:l.id_promocion,cantidad:1,
-          selecciones:l.selecciones_promocion?.map(s => ({id_grupo:s.id_grupo,id_presentacion:s.id_presentacion,opciones:s.opciones.map(o => o.id)}))}) :
-          ({id_presentacion:l.id_presentacion,cantidad:l.cantidad,comentario:l.comentario,
-            opciones:l.opciones.map(o => o.id),id_barra_libre:l.id_barra_libre ?? null}))})
+      const p=await enviarPedido(mesa, pedido.version, envioClave.current, pendientes)
       setPedido(p);setLineas(p.lineas);setSeleccion(null);setCambios(false);envioClave.current=crypto.randomUUID()
       navigate('/salon')
     } catch(e){setError(e instanceof Error ? e.message:'No se pudo enviar')}
     finally {enProceso.current=false;setOcupado(false)}
   }
-  const grupoCompleto=(grupo:GrupoPromocion) => seleccionesPromo.filter(s => s.id_grupo===grupo.id).length===grupo.cantidad
   const grupoSalsaCompleto=(seleccionPromo:SeleccionBorrador) => !seleccionPromo.grupo || seleccionPromo.opciones.length<=seleccionPromo.grupo.maximo
 
   return <main className="salon-order">
@@ -272,7 +234,7 @@ export function SalonOrderPage() {
     </footer>
     {eliminando&&<SalonPinDialog accion="eliminar" onCancel={()=>setEliminando(false)} onAuthorized={autorizacion=>{
       setEliminando(false);setOcupado(true);enProceso.current=true;setError('')
-      salonApi(`mesas/${mesa}/eliminar`,{autorizacion,ids_lineas:lineaSeleccionada?.ids_lineas}).then(d=>{
+      eliminarLineasPedido(mesa, autorizacion, lineaSeleccionada?.ids_lineas).then(d=>{
         setPedido(d.pedido);setLineas(actual=>[...d.pedido.lineas.filter((l:Linea)=>l.enviada),...actual.filter((l:Linea)=>!l.enviada)]);setSeleccion(null);setMensaje('Producto eliminado con autorización.')
       }).catch(e=>setError(e.message)).finally(()=>{setOcupado(false);enProceso.current=false})
     }}/>}
@@ -324,14 +286,14 @@ export function SalonOrderPage() {
             {s.grupo?.opciones.map(o => <div className="order-option" key={o.id}><span>Salsa: {o.nombre}</span>
               <button type="button" aria-label={`Quitar salsa ${o.nombre}`} disabled={!s.opciones.some(x => x.id===o.id)} onClick={() => cambiarSalsaPromo(s.clave,o,-1)}>−</button>
               <span>{s.opciones.filter(x => x.id===o.id).length}</span>
-              <button type="button" aria-label={`Agregar salsa ${o.nombre}`} disabled={s.opciones.length>=s.grupo!.maximo || (!s.grupo!.repetir && s.opciones.some(x => x.id===o.id))}
+              <button type="button" aria-label={`Agregar salsa ${o.nombre}`} disabled={!puedeAgregarSalsa(s, o)}
                 onClick={() => cambiarSalsaPromo(s.clave,o,1)}>+</button>
             </div>)}
           </article>)}
           <small>{seleccionesPromo.filter(s => s.id_grupo===grupo.id).length} de {grupo.cantidad} seleccionadas</small>
         </section>)}
         <footer><button type="button" onClick={() => setConfigurandoPromo(null)}>Cancelar</button>
-          <button className="primary" disabled={!configurandoPromo.grupos.every(grupoCompleto) || !seleccionesPromo.every(grupoSalsaCompleto)}>Agregar a la cuenta</button></footer>
+          <button className="primary" disabled={!configurandoPromo.grupos.every(grupo => grupoCompleto(grupo, seleccionesPromo)) || !seleccionesPromo.every(grupoSalsaCompleto)}>Agregar a la cuenta</button></footer>
       </form>
     </dialog>}
     {comentando && <dialog ref={comentarioDialog} className="order-editor" onCancel={() => setComentando(false)}>

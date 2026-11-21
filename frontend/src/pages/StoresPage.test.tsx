@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { StoresPage } from './StoresPage'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 
-vi.mock('../context/AuthContext', () => ({ useAuth: vi.fn() }))
+vi.mock('../context/authState', () => ({ useAuth: vi.fn() }))
 const stores = [
   { id_local: 1, codigo: 'TDA-001', nombre: 'Centro', direccion: 'Calle Uno', estado_registro: 1 },
   { id_local: 2, codigo: 'TDA-002', nombre: 'Norte', direccion: 'Calle Dos', estado_registro: 0 },

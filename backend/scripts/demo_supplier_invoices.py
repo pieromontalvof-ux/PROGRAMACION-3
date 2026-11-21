@@ -29,11 +29,17 @@ def rows(sql, **params):
     return [dict(r) for r in db.session.execute(text(sql), params).mappings()]
 
 
+def ruc_ejemplo(identidad):
+    prefix=f'2099{identidad:06d}'
+    digit=11-sum(int(a)*b for a,b in zip(prefix,[5,4,3,2,7,6,5,4,3,2]))%11
+    return prefix+str(0 if digit==10 else 1 if digit==11 else digit)
+
+
 def amounts(products, day):
     lines = []
     for i, p in enumerate(products):
         # Synthetic examples of all treatments; not a claim about this product.
-        tipo = ('GRAVADO', 'EXONERADO', 'INAFECTO')[(p['id_producto'] + day.month) % 3]
+        tipo = 'GRAVADO'
         lines.append(dict(id_producto=p['id_producto'], cantidad_facturada=float(p['cantidad_recibida']),
                           precio_unitario=round(2.5 + (p['id_producto'] % 23) * 1.15, 2), descuento=0,
                           afectacion_igv=tipo, igv_porcentaje=18 if tipo == 'GRAVADO' else 0))
@@ -57,8 +63,8 @@ def main(apply=False):
         by_id = {}
         for p in providers:
             data = dict(p['datos_comerciales'] or {})
-            for k,v in dict(razon_social=p['nombre'], nombre_comercial=p['nombre'], direccion='Dirección ficticia de proveedor para demostración',
-                            contacto='Contacto de demostración', email=f"proveedor{p['id_proveedor']}@example.invalid").items():
+            for k,v in dict(ruc=ruc_ejemplo(p['id_proveedor']), razon_social=p['nombre'], nombre_comercial=p['nombre'], direccion=f"Av. Los Industriales {150+p['id_proveedor']*23}, Lima",
+                            contacto='Área comercial', email=f"proveedor{p['id_proveedor']}@example.invalid").items():
                 if not data.get(k): data[k] = v
             db.session.execute(text('UPDATE proveedor SET datos_comerciales=CAST(:d AS jsonb) WHERE id_proveedor=:id'), {'id':p['id_proveedor'],'d':json.dumps(data)})
             by_id[p['id_proveedor']] = {'nombre':p['nombre'], **data}
@@ -79,27 +85,29 @@ def main(apply=False):
         g.operaciones_por_local_listas=True
         new=0
         with patch.object(db.session, 'commit', lambda: None):
-            for supplier in missing:
-                products=rows('SELECT id_producto,presentacion FROM producto WHERE id_proveedor=:p ORDER BY id_producto LIMIT 3',p=supplier['id_proveedor'])
-                if not products: raise RuntimeError(f"Proveedor {supplier['id_proveedor']} sin productos: no se inventa un vínculo.")
-                for month in range(4):
-                    day=today-timedelta(days=7+month*30)
-                    if rows("""SELECT 1 FROM factura_recepcion WHERE id_proveedor=:p
-                               AND date_trunc('month',fecha_recepcion)=date_trunc('month',CAST(:d AS date))
-                               AND (numero_factura LIKE 'DEMO%' OR numero_factura LIKE 'DSHI-%') LIMIT 1""", p=supplier['id_proveedor'],d=day): continue
-                    code=f"DEMF-{supplier['id_proveedor']}-{day:%Y%m%d}"
-                    if rows('SELECT 1 FROM orden_compra WHERE codigo=:c',c=code): continue
-                    order=rows("""INSERT INTO orden_compra(codigo,estado_orden_compra,usuario_registro,fecha_registro,id_local)
-                                  VALUES(:c,'ENVIADA',:u,:d,:l) RETURNING id_orden_compra""",c=code,u=user,d=day-timedelta(days=2),l=g.local_operativo)[0]['id_orden_compra']
-                    details=[]
-                    for p in products:
-                        q=float(p['presentacion'] or 1)
-                        db.session.execute(text('INSERT INTO orden_compra_detalle(id_orden_compra,id_producto,cantidad_solicitada,id_proveedor) VALUES(:o,:p,:q,:v)'), {'o':order,'p':p['id_producto'],'q':q,'v':supplier['id_proveedor']})
-                        details.append(dict(id_producto=p['id_producto'],cantidad_recibida=q))
-                    result,status=registrar_recepcion(order,user,dict(id_proveedor=supplier['id_proveedor'],numero_factura=f"DEMO{supplier['id_proveedor']}-{day:%Y%m%d}", fecha_recepcion=day.isoformat(),detalles=details,factura=amounts(details,day)))
-                    if status != 201: raise RuntimeError(f'No se pudo crear el ejemplo: {result}')
-                    db.session.execute(text("UPDATE factura_recepcion SET datos_factura=datos_factura || CAST(:d AS jsonb) WHERE id_factura_recepcion=:id"), {'id':result['id_factura_recepcion'],'d':json.dumps({'origen':TAG,'datos_ficticios':True})})
-                    new+=1
+            for tienda in rows('SELECT id_local FROM local ORDER BY id_local'):
+                g.local_operativo=tienda['id_local']
+                for supplier in missing:
+                    products=rows('SELECT id_producto,presentacion FROM producto WHERE id_proveedor=:p ORDER BY id_producto LIMIT 3',p=supplier['id_proveedor'])
+                    if not products: raise RuntimeError(f"Proveedor {supplier['id_proveedor']} sin productos: no se inventa un vínculo.")
+                    for month in range(4):
+                        day=today-timedelta(days=7+month*30)
+                        if rows("""SELECT 1 FROM factura_recepcion f JOIN orden_compra o USING(id_orden_compra) WHERE f.id_proveedor=:p AND o.id_local=:local
+                                   AND date_trunc('month',fecha_recepcion)=date_trunc('month',CAST(:d AS date))
+                                   AND (numero_factura LIKE 'DEMO%' OR numero_factura LIKE 'DSHI-%') LIMIT 1""", p=supplier['id_proveedor'],d=day,local=g.local_operativo): continue
+                        code=f"DF{g.local_operativo}-{supplier['id_proveedor']}-{day:%Y%m%d}"
+                        if rows('SELECT 1 FROM orden_compra WHERE codigo=:c',c=code): continue
+                        order=rows("""INSERT INTO orden_compra(codigo,estado_orden_compra,usuario_registro,fecha_registro,id_local)
+                                      VALUES(:c,'ENVIADA',:u,:d,:l) RETURNING id_orden_compra""",c=code,u=user,d=day-timedelta(days=2),l=g.local_operativo)[0]['id_orden_compra']
+                        details=[]
+                        for p in products:
+                            q=float(p['presentacion'] or 1)
+                            db.session.execute(text('INSERT INTO orden_compra_detalle(id_orden_compra,id_producto,cantidad_solicitada,id_proveedor) VALUES(:o,:p,:q,:v)'), {'o':order,'p':p['id_producto'],'q':q,'v':supplier['id_proveedor']})
+                            details.append(dict(id_producto=p['id_producto'],cantidad_recibida=q))
+                        result,status=registrar_recepcion(order,user,dict(id_proveedor=supplier['id_proveedor'],numero_factura=f"DEMO{g.local_operativo}X{supplier['id_proveedor']}-{day:%Y%m%d}", fecha_recepcion=day.isoformat(),detalles=details,factura=amounts(details,day)))
+                        if status != 201: raise RuntimeError(f'No se pudo crear el ejemplo: {result}')
+                        db.session.execute(text("UPDATE factura_recepcion SET datos_factura=datos_factura || CAST(:d AS jsonb) WHERE id_factura_recepcion=:id"), {'id':result['id_factura_recepcion'],'d':json.dumps({'origen':TAG,'datos_ficticios':True})})
+                        new+=1
         db.session.execute(text("""INSERT INTO actividad_usuario(id_usuario,modulo,accion,descripcion,id_local)
                                VALUES(:u,'RECEPCIONES','CARGAR_DEMO',:d,:l)"""), {'u':user,'d':f'{TAG}: {len(invoices)} facturas completadas; {new} ejemplos nuevos. Importes e impuestos ficticios.','l':g.local_operativo})
         db.session.commit()

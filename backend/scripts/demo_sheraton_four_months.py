@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'backend'))
 from app import create_app
 from app.core.extensions import db
-from app.modules.auth.salon_payments import consumos
+from app.modules.salon.salon_payments import consumos
 from app.modules.inventarios.operativo import reporte
 from sqlalchemy import text
 from scripts.demo_sheraton_inventory import serial, digest, fictional_count, LIMA

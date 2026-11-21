@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { DeleteRecordButton } from '../components/catalogs/DeleteRecordButton'
@@ -15,7 +16,7 @@ import {
   useState,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   obtenerSubproductos,
 } from '../services/productionService'
@@ -79,9 +80,10 @@ export function SubproductsPage() {
     [token],
   )
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     void cargar()
-  }, [cargar])
+
+    }), [cargar])
 
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLocaleLowerCase('es')

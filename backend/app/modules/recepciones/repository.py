@@ -26,6 +26,7 @@ def listar_pendientes_recepcion():
             oc.fecha_registro,
             pr.id_proveedor,
             pr.nombre AS proveedor,
+            pr.datos_comerciales,
             p.id_producto,
             p.codigo AS codigo_producto,
             p.nombre AS producto,

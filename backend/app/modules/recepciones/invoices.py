@@ -59,9 +59,9 @@ def calcular_factura(datos):
             raise ValueError('Hay productos repetidos en la factura.')
         ids.add(identidad)
         cantidad = numero(linea.get('cantidad_facturada'), 'cantidad facturada', True)
-        precio = numero(linea.get('precio_unitario'), 'precio unitario', decimales=6)
+        precio = numero(linea.get('precio_unitario', 0), 'precio unitario', decimales=6)
         descuento = numero(linea.get('descuento', 0), 'descuento', decimales=2)
-        tasa = numero(linea.get('igv_porcentaje', 0), 'porcentaje de IGV', decimales=2)
+        tasa = numero(linea.get('igv_porcentaje', (18 if linea.get('afectacion_igv','GRAVADO') == 'GRAVADO' else 0) if 'costo_total' in linea else 0), 'porcentaje de IGV', decimales=2)
         tipo = linea.get('afectacion_igv', 'GRAVADO' if tasa else 'SIN_CLASIFICAR')
         if tipo not in bases or (tipo == 'SIN_CLASIFICAR' and 'afectacion_igv' in linea):
             raise ValueError('Selecciona gravado, exonerado o inafecto para cada producto.')
@@ -71,6 +71,12 @@ def calcular_factura(datos):
         if descuento > bruto or tasa > 100:
             raise ValueError('El descuento supera el importe o el impuesto supera el 100%.')
         base = bruto - descuento; impuesto = redondear(base * tasa / 100)
+        if 'costo_total' in linea:
+            if descuento: raise ValueError('El costo total ya debe incluir cualquier descuento de la factura.')
+            total_linea = numero(linea['costo_total'], 'costo total', decimales=2)
+            base = redondear(total_linea / (1 + tasa / 100))
+            impuesto = total_linea - base
+            precio = (base / cantidad).quantize(Decimal('.000001'), rounding=ROUND_HALF_UP)
         if base + impuesto > Decimal('999999999.99'):
             raise ValueError('El importe de la línea es demasiado grande.')
         total_base += base; total_igv += impuesto

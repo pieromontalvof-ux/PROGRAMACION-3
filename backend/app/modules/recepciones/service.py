@@ -105,6 +105,7 @@ def obtener_pendientes():
                 ),
                 "id_proveedor": fila["id_proveedor"],
                 "proveedor": fila["proveedor"],
+                "datos_comerciales": fila.get("datos_comerciales") or {},
                 "productos": [],
             }
 
@@ -366,6 +367,11 @@ def registrar_recepcion(
         estado = recalcular_estado_orden(
             id_orden
         )
+
+        if financiera:
+            from app.core.local_scope import local_actual
+            from app.modules.facturacion.service import enqueue_source
+            enqueue_source('COMPRA', id_factura, local_actual())
 
         registrar_actividad(
             id_usuario=id_usuario,
@@ -883,6 +889,10 @@ def corregir_recepcion(
                 f"Observación: {observacion}"
             ),
         )
+
+        from app.core.local_scope import local_actual
+        from app.modules.facturacion.service import enqueue_source
+        enqueue_source('COMPRA',id_factura,local_actual())
 
         db.session.commit()
 

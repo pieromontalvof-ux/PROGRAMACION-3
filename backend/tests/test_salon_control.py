@@ -5,7 +5,7 @@ from unittest.mock import patch
 from sqlalchemy import text
 import test_salon_orders as orders
 from app.core.extensions import db
-from app.modules.auth.salon import guardar_pin
+from app.modules.salon.salon import guardar_pin
 
 @unittest.skipUnless(os.environ.get('LOCAL_SCOPE_TEST_DB')=='1','PostgreSQL temporal')
 class ControlSalonTests(unittest.TestCase):
@@ -75,7 +75,7 @@ class ControlSalonTests(unittest.TestCase):
   self.assertEqual(self.autorizar('mover','0023').status_code,401)
  def test_audit_failure_rolls_back_annulment(self):
   ids=self.guardar(enviar=True).json['lineas'][0]['ids_lineas'];token=self.autorizar('eliminar').json['autorizacion']
-  with patch('app.modules.auth.salon_control.registrar_actividad',side_effect=RuntimeError('fallo')):
+  with patch('app.modules.salon.salon_control.registrar_actividad',side_effect=RuntimeError('fallo')):
    with self.assertRaises(RuntimeError),db.session.begin_nested():self.accion('eliminar',token,ids_lineas=ids)
   self.assertEqual(db.session.execute(text('SELECT count(*) FROM salon_linea_anulada')).scalar(),0)
   self.assertEqual(db.session.execute(text('SELECT count(*) FROM salon_autorizacion_usada')).scalar(),0)

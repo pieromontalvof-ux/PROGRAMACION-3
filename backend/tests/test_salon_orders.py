@@ -119,7 +119,7 @@ class SalonOrderTests(unittest.TestCase):
         self.assertEqual(r.status_code,200,r.json)
         self.assertEqual(len(r.json['lineas']),2)
         self.assertEqual(r.json['total'],46.5)
-        with patch('app.modules.auth.salon_orders.registrar_actividad',side_effect=RuntimeError('fallo')):
+        with patch('app.modules.salon.salon_orders.registrar_actividad',side_effect=RuntimeError('fallo')):
             with self.assertRaises(RuntimeError),db.session.begin_nested():self.guardar(1,True,lineas)
         r=self.client.get('/api/salon/mesas/M01/pedido',headers=self.headers).json
         self.assertEqual(r['estado'],'BORRADOR')

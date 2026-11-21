@@ -3,7 +3,7 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom'
 
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 
 import './MainLayout.css'
 

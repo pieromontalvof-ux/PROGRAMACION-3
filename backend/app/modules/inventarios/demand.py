@@ -42,7 +42,7 @@ def report(local, start, end):
     items = filas('''WITH lineas AS (
         SELECT c.creado_en,linea
         FROM salon_cobro c CROSS JOIN LATERAL jsonb_array_elements(c.comprobante->'lineas') linea
-        WHERE c.id_local=:local AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
+        WHERE c.comprobante->'anulacion' IS NULL AND c.id_local=:local AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
       ), demanda AS (
         SELECT creado_en,(linea->>'id_presentacion')::int id_presentacion,
           (linea->>'id_promocion')::int id_promocion,linea->>'nombre' nombre,

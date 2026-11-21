@@ -3,7 +3,7 @@ import './SalonPage.css'
 import { useState, type SyntheticEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 
 import loginBackground from '../assets/brand/login-background.png'
 import barbarianLogo from '../assets/brand/barbarian-logo.png'

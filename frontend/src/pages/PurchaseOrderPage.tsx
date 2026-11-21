@@ -1,8 +1,9 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { LoaderCircle, Plus, Save, Send, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   obtenerFormularioOrden,
   obtenerPedidoSugerido,
@@ -45,7 +46,8 @@ export function PurchaseOrderPage() {
     }
   }, [token])
 
-  useEffect(() => { void cargarFormulario() }, [cargarFormulario])
+  useEffect(() => scheduleEffect(() => { void cargarFormulario()
+    }), [cargarFormulario])
 
   const productos = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()

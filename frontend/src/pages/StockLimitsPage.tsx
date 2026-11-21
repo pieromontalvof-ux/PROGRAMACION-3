@@ -1,7 +1,8 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { obtenerLimitesStock, guardarLimitesStock, type ProductoLimitesStock } from '../services/catalogService'
 import './StockLimitsPage.css'
 
@@ -37,7 +38,7 @@ function StockLimitsContent() {
     }
   }, [editando])
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     if (!token || !autorizado) return
     let vigente = true
     setCargando(true)
@@ -49,7 +50,8 @@ function StockLimitsContent() {
       if (vigente) setError(e instanceof Error ? e.message : 'No se pudieron cargar los límites.')
     }).finally(() => { if (vigente) setCargando(false) })
     return () => { vigente = false }
-  }, [token, autorizado, revision])
+
+    }), [token, autorizado, revision])
 
   if (!autorizado) return <Navigate to="/home" replace />
 

@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../../utils/scheduleEffect'
 import { formatearUnidad } from '../../utils/unitHelpers'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { formularioPromocion, guardarPromocion, type PresentacionPromocion } from '../../services/promotionService'
@@ -29,13 +30,14 @@ export function PromotionEditor({ token, promocion: p, cerrar, guardado }: {
     opciones: g.opciones.map(o => o.id_presentacion_venta), busqueda: '' }))
     : [{ clave: 0, cantidad: '1', repetir: false, opciones: [], busqueda: '' }])
   useEffect(() => { dialogo.current?.showModal() }, [])
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     let vigente = true
     setError('')
     formularioPromocion(token).then(d => { if (vigente) setCatalogo(d.presentaciones) })
       .catch(e => { if (vigente) setError(e instanceof Error ? e.message : 'No se pudo cargar la carta') })
     return () => { vigente = false }
-  }, [token, intento])
+
+    }), [token, intento])
   function cambiar(clave: number, cambios: Partial<Grupo>) {
     setGrupos(actuales => actuales.map(g => g.clave === clave ? { ...g, ...cambios } : g))
   }

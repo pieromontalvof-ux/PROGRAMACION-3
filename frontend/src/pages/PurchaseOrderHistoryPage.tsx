@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import {
   ChevronDown,
@@ -9,7 +10,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   cambiarEstadoOrden,
   obtenerDetalleOrden,
@@ -77,7 +78,8 @@ export function PurchaseOrderHistoryPage() {
     }
   }, [token, desde, hasta, estado])
 
-  useEffect(() => { void cargar() }, [cargar])
+  useEffect(() => scheduleEffect(() => { void cargar()
+    }), [cargar])
 
   const desplegar = async (id: number) => {
     if (!token) return

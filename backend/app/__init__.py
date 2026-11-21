@@ -1,10 +1,10 @@
 from app.multiagente.api.routes import asistente_ia_bp
-from app.modules.auth.salon_control import salon_control_bp
-from app.modules.auth.salon_payments import salon_payments_bp
+from app.modules.salon.salon_control import salon_control_bp
+from app.modules.salon.salon_payments import salon_payments_bp
 from app.modules.inventarios.operativo import operativo_bp
-from app.modules.auth.salon_layout import salon_layout_bp
-from app.modules.auth.salon_orders import salon_orders_bp
-from app.modules.auth.salon import salon_bp
+from app.modules.salon.salon_layout import salon_layout_bp
+from app.modules.salon.salon_orders import salon_orders_bp
+from app.modules.salon.salon import salon_bp
 from flask import Flask, jsonify
 import os
 from pathlib import Path
@@ -14,6 +14,7 @@ from flask_jwt_extended import JWTManager
 from app.core.config import Config
 from app.core.extensions import db
 from app.core.units import registrar_medidas_api
+from app.core.telemetry import register_http_telemetry
 from app.modules.auditoria.routes import auditoria_bp
 from app.modules.auth.routes import auth_bp
 from app.modules.carta.routes import carta_bp
@@ -37,6 +38,7 @@ def create_app():
     instance = os.getenv('APP_DATA_DIR')
     app = Flask(__name__, **({'instance_path': str(Path(instance).resolve())} if instance else {}))
     app.config.from_object(Config)
+    register_http_telemetry(app)
     registrar_medidas_api(app)
 
     app.register_blueprint(asistente_ia_bp, url_prefix="/api/asistente-ia")
@@ -45,6 +47,9 @@ def create_app():
     from app.modules.clientes.routes import clientes_bp, salon_clientes_bp
     app.register_blueprint(clientes_bp, url_prefix="/api/v1/clientes")
     app.register_blueprint(salon_clientes_bp, url_prefix="/api/salon")
+    from app.modules.facturacion.routes import fact_api_bp, salon_fact_api_bp
+    app.register_blueprint(fact_api_bp, url_prefix='/api/v1/fact-api')
+    app.register_blueprint(salon_fact_api_bp, url_prefix='/api/salon')
     JWTManager(app)
     app.register_blueprint(deletion_bp, url_prefix='/api/eliminaciones')
 
@@ -61,6 +66,7 @@ def create_app():
                     "Content-Type",
                     "Authorization",
                 ],
+                "expose_headers": ["X-Request-ID", "Server-Timing"],
                 "methods": [
                     "GET",
                     "POST",

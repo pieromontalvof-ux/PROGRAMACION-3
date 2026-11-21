@@ -113,7 +113,7 @@ class SalonPaymentTests(unittest.TestCase):
         with self.assertRaises(DBAPIError), db.session.begin_nested():
             db.session.execute(text("UPDATE receta_detalle SET unidad='Kg' WHERE id_receta=9800"))
         before = self.stock(1)
-        with patch('app.modules.auth.salon_payments.registrar_actividad', side_effect=RuntimeError('fallo')):
+        with patch('app.modules.salon.salon_payments.registrar_actividad', side_effect=RuntimeError('fallo')):
             with self.assertRaises(RuntimeError), db.session.begin_nested():
                 self.pay(data)
         self.assertEqual(self.stock(1), before)

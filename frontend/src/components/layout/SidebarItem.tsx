@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   BadgePercent,
@@ -85,15 +85,8 @@ export function SidebarItem({
     location.pathname
   )
 
-  const [desplegado, setDesplegado] = useState(
-    perteneceARutaActual
-  )
-
-  useEffect(() => {
-    if (perteneceARutaActual) {
-      setDesplegado(true)
-    }
-  }, [perteneceARutaActual])
+  const [toggle, setToggle] = useState<{path: string; open: boolean} | null>(null)
+  const desplegado = toggle?.path === location.pathname ? toggle.open : perteneceARutaActual
 
   const Icono = iconosPorOpcion[opcion.id_opcion_menu] ?? Circle
   const abierto = forzarAbierto || desplegado
@@ -106,7 +99,7 @@ export function SidebarItem({
             perteneceARutaActual ? 'sidebar-link--branch-active' : ''
           }`}
           type="button"
-          onClick={() => setDesplegado((estado) => !estado)}
+          onClick={() => setToggle({path: location.pathname, open: !desplegado})}
           aria-expanded={abierto}
           aria-controls={`nav-group-${opcion.id_opcion_menu}`}
         >

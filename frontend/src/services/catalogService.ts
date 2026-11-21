@@ -81,10 +81,11 @@ export const guardarLimitesStock = (
   method: 'PUT', body: cuerpo({ stock_minimo, stock_maximo }),
 })
 
-export const obtenerProductosCatalogo = (token: string) =>
+export const obtenerProductosCatalogo = (token: string, signal?: AbortSignal) =>
   solicitud<RespuestaCatalogoProductos>(
     '/catalogos/productos',
     token,
+      { signal },
   )
 
 export const obtenerCategoriasProducto = (token: string) =>

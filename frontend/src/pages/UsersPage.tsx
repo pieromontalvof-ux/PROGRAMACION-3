@@ -1,3 +1,4 @@
+import { useScopedCatalog } from '../hooks/useScopedCatalog'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import {
   Pencil,
@@ -8,14 +9,12 @@ import {
   X,
 } from 'lucide-react'
 import {
-  useCallback,
-  useEffect,
   useMemo,
   useState,
   type FormEvent,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   cambiarEstadoUsuario,
   crearUsuario,
@@ -58,7 +57,6 @@ const formularioVacio: DatosUsuario = {
 export function UsersPage() {
   const { token, perfilActivo } = useAuth()
   const puedeAsignarLocales = perfilActivo?.id_perfil === ID_PERFIL_ADMINISTRADOR
-  const [datos, setDatos] = useState<RespuestaUsuarios | null>(null)
   const [formulario, setFormulario] =
     useState<DatosUsuario>(formularioVacio)
   const [editando, setEditando] =
@@ -66,32 +64,10 @@ export function UsersPage() {
   const [modal, setModal] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] = useState<'todos' | 'activos' | 'inactivos'>('todos')
-  const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
-  const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
 
-  const cargar = useCallback(async () => {
-    if (!token) return
-
-    try {
-      setCargando(true)
-      setError('')
-      setDatos(await obtenerUsuarios(token))
-    } catch (errorDesconocido) {
-      setError(
-        errorDesconocido instanceof Error
-          ? errorDesconocido.message
-          : 'No se cargaron los usuarios.',
-      )
-    } finally {
-      setCargando(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
+  const {datos, cargando, error, setError, cargar} = useScopedCatalog<RespuestaUsuarios>(token, obtenerUsuarios, 'No se pudieron cargar los usuarios.')
 
   const usuarios = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Plus, Search, Store, MapPin, Pencil, Trash2, X, Download, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import './UsersPage.css'
 import './StoresPage.css'
 

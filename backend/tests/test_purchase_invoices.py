@@ -12,6 +12,15 @@ class PurchaseInvoiceTests(unittest.TestCase):
             {'id_producto': 1, 'cantidad_facturada': 20, 'precio_unitario': '10.125',
              'descuento': '2.50', 'igv_porcentaje': 18}]}
 
+    def test_cost_total_includes_tax_and_derives_unit_price(self):
+        datos=self.datos();datos['lineas']=[dict(id_producto=1,cantidad_facturada=3,costo_total=118,afectacion_igv='GRAVADO')]
+        f=calcular_factura(datos)
+        self.assertEqual((f['subtotal'],f['igv'],f['total']),(100,18,118))
+        self.assertAlmostEqual(f['lineas'][0]['precio_unitario'],33.333333,places=6)
+        datos['lineas'][0]['afectacion_igv']='EXONERADO'
+        f=calcular_factura(datos)
+        self.assertEqual((f['subtotal'],f['igv'],f['total']),(118,0,118))
+
     def test_decimal_totals_discount_and_tax(self):
         factura = calcular_factura(self.datos())
         self.assertEqual((factura['subtotal'], factura['igv'], factura['total']), (200, 36, 236))
@@ -54,7 +63,7 @@ class PurchaseInvoiceTests(unittest.TestCase):
             with self.assertRaises(ValueError): validar_comercial(datos)
 
     def test_delivery_updates_only_received_and_rejects_overdelivery(self):
-        from app.modules.recepciones import invoice_storage as storage
+        from app.modules.recepciones import invoice_delivery as delivery, invoice_storage as storage
         from app.modules.recepciones import repository, service
         with patch.object(repository, 'obtener_factura_recepcion', return_value={'id_orden_compra': 1, 'id_proveedor': 2, 'estado_orden_compra': 'RECEPCION_PARCIAL', 'fecha_recepcion': date(2026,11,18)}), \
              patch.object(storage, 'obtener', return_value=({'fecha_emision': '2026-11-18', 'lineas': [{'id_producto':1,'cantidad_facturada':20}]}, [])), \
@@ -62,31 +71,43 @@ class PurchaseInvoiceTests(unittest.TestCase):
              patch.object(repository, 'obtener_producto_pendiente', return_value={'cantidad_solicitada':Decimal(20),'cantidad_recibida':Decimal(15)}), \
              patch.object(repository, 'actualizar_cantidad_recepcion') as actualizar, patch.object(storage, 'anotar_entrega'), \
              patch.object(service, 'recalcular_estado_orden', return_value='RECEPCIONADA'), \
-             patch('app.modules.auditoria.service.registrar_actividad'), patch.object(storage, 'db') as db:
+             patch('app.modules.auditoria.service.registrar_actividad'), patch.object(delivery, 'db') as db:
             with self.assertRaises(BadRequest):
-                storage.entregar(3, 1, {'fecha':'2026-11-19', 'detalles':[{'id_producto':1,'cantidad_recibida':6}]})
+                delivery.entregar(3, 1, {'fecha':'2026-11-19', 'detalles':[{'id_producto':1,'cantidad_recibida':6}]})
             actualizar.assert_not_called()
-            resultado, estado = storage.entregar(3, 1, {'fecha':'2026-11-19', 'detalles':[{'id_producto':1,'cantidad_recibida':5}]})
+            resultado, estado = delivery.entregar(3, 1, {'fecha':'2026-11-19', 'detalles':[{'id_producto':1,'cantidad_recibida':5}]})
             self.assertEqual(estado, 201)
             actualizar.assert_called_once_with(9, Decimal(20))
             db.session.commit.assert_called_once()
 
     def test_delivery_respects_local_scope(self):
-        from app.modules.recepciones import invoice_storage as storage, repository
-        with patch.object(repository, 'obtener_factura_recepcion', side_effect=NotFound()), patch.object(storage, 'db') as db:
-            with self.assertRaises(NotFound): storage.entregar(3, 1, {'fecha':'2026-11-19'})
+        from app.modules.recepciones import invoice_delivery as delivery, invoice_storage as storage, repository
+        with patch.object(repository, 'obtener_factura_recepcion', side_effect=NotFound()), patch.object(delivery, 'db') as db:
+            with self.assertRaises(NotFound): delivery.entregar(3, 1, {'fecha':'2026-11-19'})
             db.session.rollback.assert_called_once()
+
+    def test_delivery_rules_accept_a_pending_quantity_lookup_without_database(self):
+        from app.modules.recepciones.invoice_delivery_rules import validar_detalles_entrega
+
+        detalles = [{'id_producto': 1, 'cantidad_recibida': '2'}]
+        factura = [{'id_producto': 1, 'cantidad_facturada': 4}]
+        with self.assertRaises(BadRequest):
+            validar_detalles_entrega(detalles, factura, [], lambda _: Decimal(1))
+        self.assertEqual(
+            validar_detalles_entrega(detalles, factura, [], {1: Decimal(2)}.get),
+            [(1, Decimal(2), Decimal(2), None)],
+        )
 
     def test_retry_of_same_delivery_does_not_add_inventory_twice(self):
         import hashlib, json
-        from app.modules.recepciones import invoice_storage as storage, repository
+        from app.modules.recepciones import invoice_delivery as delivery, invoice_storage as storage, repository
         datos = {'clave': '24c5c195-9462-4185-a15b-37dc58767fe9', 'fecha': '2026-11-19',
                  'detalles': [{'id_producto':1, 'cantidad_recibida':5}]}
         firma = hashlib.sha256(json.dumps(datos, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
         with patch.object(repository, 'obtener_factura_recepcion', return_value={'estado_orden_compra':'RECEPCIONADA'}), \
              patch.object(storage, 'obtener', return_value=({'lineas':[]}, [{'clave':datos['clave'],'solicitud':firma}])), \
-             patch.object(repository, 'actualizar_cantidad_recepcion') as actualizar, patch.object(storage, 'db'):
-            self.assertEqual(storage.entregar(3, 1, datos)[1], 200)
+             patch.object(repository, 'actualizar_cantidad_recepcion') as actualizar, patch.object(delivery, 'db'):
+            self.assertEqual(delivery.entregar(3, 1, datos)[1], 200)
             actualizar.assert_not_called()
 
 

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { TablewarePage } from './TablewarePage'
 import { administrarMenaje, obtenerMenajes } from '../services/cartaService'
 
-vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 'session', perfilActivo: { id_perfil: 1 }, menu: [{ id_opcion_menu: 10, permisos: { crear: true, editar: true } }] }) }))
+vi.mock('../context/authState', () => ({ useAuth: () => ({ token: 'session', perfilActivo: { id_perfil: 1 }, menu: [{ id_opcion_menu: 10, permisos: { crear: true, editar: true } }] }) }))
 vi.mock('../services/cartaService', () => ({ obtenerMenajes: vi.fn(), administrarMenaje: vi.fn() }))
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.open = true } })

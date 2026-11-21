@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../../utils/scheduleEffect'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { ListaIngredientes, type Fila } from './RecipeEditor'
@@ -33,13 +34,14 @@ export function SubproductEditor({ token, subproducto, cerrar, guardado }: {
     return () => modal?.close()
   }, [])
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     let vigente = true
     setError('')
     obtenerFormularioSubproducto(token).then((datos) => { if (vigente) setCatalogo(datos) })
       .catch((e: unknown) => { if (vigente) setError(e instanceof Error ? e.message : 'No se pudo cargar el formulario.') })
     return () => { vigente = false }
-  }, [token, reintento])
+
+    }), [token, reintento])
 
   async function guardar(evento: FormEvent) {
     evento.preventDefault()

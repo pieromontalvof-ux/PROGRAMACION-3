@@ -1,7 +1,8 @@
+import { scheduleEffect } from '../../utils/scheduleEffect'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Bot, FolderOpen, FileText, Network, Save, Upload, Trash2, X, ScanSearch, ShieldCheck, Sparkles, Download } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import { AgentMap } from './AgentMap'
 import { AgentConnections } from './AgentConnections'
 import { bibliotecaAgentes, originalDocumentoAgente, obtenerAgentesAsistente, type CarpetaAgente, type CatalogoAgentes, type ConfiguracionAgente, type RevisionConfiguracion, type InformeConfiguracion, type DocumentoAgente, type PropuestaSkill } from './service'
@@ -51,7 +52,7 @@ function AgentAdministration({ token, mode }: { token: string; mode: Mode }) {
     return () => { signal.abort(); controller.current?.abort() }
   }, [token, mode])
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     if (!selected) return
     const signal = new AbortController()
     setFolder(null); setPreview(null); setInspection(null); setProposal(null); setError(''); setMessage('')
@@ -60,7 +61,8 @@ function AgentAdministration({ token, mode }: { token: string; mode: Mode }) {
       setSources(data.documentos.map(document => document.id))
     }).catch(e => { if (!signal.signal.aborted) setError(e.message) })
     return () => signal.abort()
-  }, [token, selected, reload])
+
+    }), [token, selected, reload])
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview.url) }, [preview])
   useEffect(() => { if (inspection) validationPanel.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }) }, [inspection])

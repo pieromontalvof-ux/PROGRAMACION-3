@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -10,14 +11,15 @@ export function SalonAccess() {
   const [opciones,setOpciones]=useState<{locales:{id_local:number;nombre:string}[];usuarios:{id_usuario:number;nombre:string}[]}>({locales:[],usuarios:[]})
   const [error,setError]=useState('')
   const [ocupado,setOcupado]=useState(false)
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     const controller=new AbortController()
     setError('');setOpciones(o => ({...o,usuarios:[]}))
     fetch(`${api}/salon/opciones?local=${local || '0'}`,{signal:controller.signal})
       .then(async r => {const d=await r.json();if(!r.ok) throw new Error(d.mensaje);return d})
       .then(setOpciones).catch(e => {if(!controller.signal.aborted)setError(e.message)})
     return () => controller.abort()
-  },[local])
+
+    }),[local])
   async function ingresar(e:FormEvent) {
     e.preventDefault();setOcupado(true);setError('')
     try {

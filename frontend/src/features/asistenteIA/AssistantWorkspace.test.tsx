@@ -6,7 +6,7 @@ import type { RespuestaAsistente } from './service'
 import { blankWorkspace } from './workspaceState'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), status: vi.fn(), scope: {perfil:1, local:1, changing:false} }))
-vi.mock('../../context/AuthContext', () => ({
+vi.mock('../../context/authState', () => ({
   useAuth: () => ({ token: 'test-session', perfilActivo: { id_perfil: mocks.scope.perfil, nombre: 'Administrador' }, localActivo: {id_local:mocks.scope.local}, cambiandoLocal:mocks.scope.changing }),
 }))
 

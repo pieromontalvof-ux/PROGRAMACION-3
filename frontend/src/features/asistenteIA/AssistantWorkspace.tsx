@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bot, Send, ShieldCheck, Sparkles, UserRound, Plus, PencilLine, CheckCheck } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import { obtenerEstadoAsistente, solicitar, type EstadoAsistente, type RespuestaAsistente } from './service'
 import { CatalogWorkflow, type WorkflowSnapshot } from './CatalogWorkflow'
-import { valuesFromProposal } from './CatalogForm'
+import { valuesFromProposal } from './catalogFormValues'
 import { useWorkspaceState, hasWorkspace, normalizeWorkspace } from './workspaceState'
 import { useWorkspacePersistence } from './useWorkspacePersistence'
 import { nombresAgentes } from './service'
@@ -16,7 +16,7 @@ import { AgentActivity } from './AgentActivity'
 import type {PurchaseAdjustment} from './PurchaseOrderReview'
 import { conversationReference, appendConversation } from './conversationContext'
 import {purchaseSummary} from './purchaseSummary'
-import {promotionSummary} from './PromotionReview'
+import {promotionSummary} from './promotionSummary'
 
 function summary(result: RespuestaAsistente) {
   const b = result.borrador

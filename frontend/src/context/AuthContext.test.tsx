@@ -2,7 +2,8 @@ import { StrictMode, useLayoutEffect } from 'react'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AuthProvider, useAuth } from './AuthContext'
+import { AuthProvider } from './AuthContext'
+import { useAuth } from './authState'
 import type { RespuestaSesionActiva } from '../types/auth'
 
 type Auth = ReturnType<typeof useAuth>

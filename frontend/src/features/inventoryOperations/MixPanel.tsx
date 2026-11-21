@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {useAuth} from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import {SalesTable,type Sale} from './DayPanel'
 import {csv,money,qty,today,useQuery} from './shared'
 import {Message} from './Message'

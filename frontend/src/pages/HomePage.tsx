@@ -1,6 +1,6 @@
 import { ArrowUpRight, Bot, Boxes, CalendarDays, ClipboardCheck, PackageCheck, Settings2, ShoppingBag } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import './HomePage.css'
 
 const quickModules = [

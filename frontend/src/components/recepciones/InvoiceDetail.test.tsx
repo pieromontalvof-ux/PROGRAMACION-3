@@ -22,6 +22,17 @@ describe('Detalle de factura recibida', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
     expect(registrarEntrega).toHaveBeenCalledWith('token',3,expect.objectContaining({ detalles:[{id_producto:1,cantidad_recibida:5}], clave:expect.any(String) }))
   })
+  it('habilita la cantidad y datos en el mismo detalle al corregir', () => {
+    const cambiar=vi.fn()
+    const props={recepcion,token:'token',puedeRecibir:false,onSaved:async()=>{}}
+    const {rerender}=render(<InvoiceDetail {...props} />)
+    expect(screen.queryByLabelText('Recibido Sal')).toBeNull()
+    rerender(<InvoiceDetail {...props} edicion={{activa:true,numero:'F001-258',fecha:'2026-11-18',cantidades:{9:'15'},numeroCambio:vi.fn(),fechaCambio:vi.fn(),cantidadCambio:cambiar}} />)
+    expect(screen.getAllByLabelText('Recibido Sal')).toHaveLength(1)
+    expect((screen.getByLabelText('Número de factura') as HTMLInputElement).value).toBe('F001-258')
+    fireEvent.change(screen.getByLabelText('Recibido Sal'),{target:{value:'12'}})
+    expect(cambiar).toHaveBeenCalledWith(9,'12')
+  })
   it('conserva las recepciones anteriores sin inventar importes', () => {
     render(<InvoiceDetail recepcion={{...recepcion, factura:null}} token="token" puedeRecibir={false} onSaved={async()=>{}} />)
     expect(screen.getByText(/no se registraron precios/)).toBeTruthy()

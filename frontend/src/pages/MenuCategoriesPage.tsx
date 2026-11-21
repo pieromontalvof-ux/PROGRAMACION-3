@@ -13,7 +13,7 @@ import {
   useState,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
 import { permisosDe } from '../utils/permissionHelpers'
 import {

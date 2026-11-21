@@ -1,66 +1,56 @@
-import { SalesJournalPage } from './features/salonPayments/SalesJournalPage'
-import { AssistantPage } from './features/asistenteIA/AssistantPage'
-import { AgentAdminPage } from './features/asistenteIA/AgentAdminPage'
-import { SalonLayoutPage } from './pages/SalonLayoutPage'
-import { SalonOrderPage } from './pages/SalonOrderPage'
-import { SalonPaymentPage } from './features/salonPayments/SalonPaymentPage'
-import { SalonPage } from './pages/SalonPage'
-import { ActivityPage } from './pages/ActivityPage'
-import { MovementTrackingPage } from './pages/MovementTrackingPage'
+import { lazy, Suspense } from 'react'
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(module => ({ default: module.DiagnosticsPage })))
+const SalesJournalPage = lazy(() => import('./features/salonPayments/SalesJournalPage').then(module => ({ default: module.SalesJournalPage })))
+const AssistantPage = lazy(() => import('./features/asistenteIA/AssistantPage').then(module => ({ default: module.AssistantPage })))
+const AgentAdminPage = lazy(() => import('./features/asistenteIA/AgentAdminPage').then(module => ({ default: module.AgentAdminPage })))
+const SalonLayoutPage = lazy(() => import('./pages/SalonLayoutPage').then(module => ({ default: module.SalonLayoutPage })))
+const SalonOrderPage = lazy(() => import('./pages/SalonOrderPage').then(module => ({ default: module.SalonOrderPage })))
+const SalonPaymentPage = lazy(() => import('./features/salonPayments/SalonPaymentPage').then(module => ({ default: module.SalonPaymentPage })))
+const SalonPage = lazy(() => import('./pages/SalonPage').then(module => ({ default: module.SalonPage })))
+const ActivityPage = lazy(() => import('./pages/ActivityPage').then(module => ({ default: module.ActivityPage })))
+const MovementTrackingPage = lazy(() => import('./pages/MovementTrackingPage').then(module => ({ default: module.MovementTrackingPage })))
 import {
   Navigate,
   Route,
   Routes,
 } from 'react-router-dom'
-import { SuppliersPage } from './pages/SuppliersPage'
+const SuppliersPage = lazy(() => import('./pages/SuppliersPage').then(module => ({ default: module.SuppliersPage })))
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { MainLayout } from './components/layout/MainLayout'
-import { ProductsPage } from './pages/ProductsPage'
-import { HomePage } from './pages/HomePage'
-import { OperationalPage } from './features/inventoryOperations/OperationalPage'
-import LoginPage from './pages/LoginPage'
-import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
-import { StockPage } from './pages/StockPage'
-import { StockLimitsPage } from './pages/StockLimitsPage'
-import {
-  ProductCategoriesPage,
-} from './pages/ProductCategoriesPage'
-import {
-  MenuCategoriesPage,
-} from './pages/MenuCategoriesPage'
+const ProductsPage = lazy(() => import('./pages/ProductsPage').then(module => ({ default: module.ProductsPage })))
+const HomePage = lazy(() => import('./pages/HomePage').then(module => ({ default: module.HomePage })))
+const OperationalPage = lazy(() => import('./features/inventoryOperations/OperationalPage').then(module => ({ default: module.OperationalPage })))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const ModulePlaceholderPage = lazy(() => import('./pages/ModulePlaceholderPage').then(module => ({ default: module.ModulePlaceholderPage })))
+const StockPage = lazy(() => import('./pages/StockPage').then(module => ({ default: module.StockPage })))
+const StockLimitsPage = lazy(() => import('./pages/StockLimitsPage').then(module => ({ default: module.StockLimitsPage })))
+const ProductCategoriesPage = lazy(() => import('./pages/ProductCategoriesPage').then(module => ({ default: module.ProductCategoriesPage })))
+const MenuCategoriesPage = lazy(() => import('./pages/MenuCategoriesPage').then(module => ({ default: module.MenuCategoriesPage })))
 
-import {
-  SubproductsPage,
-} from './pages/SubproductsPage'
+const SubproductsPage = lazy(() => import('./pages/SubproductsPage').then(module => ({ default: module.SubproductsPage })))
 
-import {
-  SalesPresentationsPage,
-} from './pages/SalesPresentationsPage'
-import {
-  TablewarePage,
-} from './pages/TablewarePage'
+const SalesPresentationsPage = lazy(() => import('./pages/SalesPresentationsPage').then(module => ({ default: module.SalesPresentationsPage })))
+const TablewarePage = lazy(() => import('./pages/TablewarePage').then(module => ({ default: module.TablewarePage })))
 
-import {
-  PromotionsPage,
-} from './pages/PromotionsPage'
+const PromotionsPage = lazy(() => import('./pages/PromotionsPage').then(module => ({ default: module.PromotionsPage })))
 
 
-import { RegisterMovementPage } from './pages/RegisterMovementPage'
+const RegisterMovementPage = lazy(() => import('./pages/RegisterMovementPage').then(module => ({ default: module.RegisterMovementPage })))
 
-import { PendingReceiptsPage } from './pages/PendingReceiptsPage'
+const PendingReceiptsPage = lazy(() => import('./pages/PendingReceiptsPage').then(module => ({ default: module.PendingReceiptsPage })))
 
-import { PurchaseOrderPage } from './pages/PurchaseOrderPage'
+const PurchaseOrderPage = lazy(() => import('./pages/PurchaseOrderPage').then(module => ({ default: module.PurchaseOrderPage })))
 
-import { UsersPage } from './pages/UsersPage'
-import { StoresPage } from './pages/StoresPage'
-import { RecipesPage } from './pages/RecipesPage'
+const UsersPage = lazy(() => import('./pages/UsersPage').then(module => ({ default: module.UsersPage })))
+const StoresPage = lazy(() => import('./pages/StoresPage').then(module => ({ default: module.StoresPage })))
+const RecipesPage = lazy(() => import('./pages/RecipesPage').then(module => ({ default: module.RecipesPage })))
 
-import { PurchaseOrderHistoryPage } from './pages/PurchaseOrderHistoryPage'
-import { ReceptionHistoryPage } from './pages/ReceptionHistoryPage'
+const PurchaseOrderHistoryPage = lazy(() => import('./pages/PurchaseOrderHistoryPage').then(module => ({ default: module.PurchaseOrderHistoryPage })))
+const ReceptionHistoryPage = lazy(() => import('./pages/ReceptionHistoryPage').then(module => ({ default: module.ReceptionHistoryPage })))
 
 function App() {
   return (
-    <Routes>
+    <Suspense fallback={<p role="status">Cargando pantalla...</p>}><Routes>
       <Route path="/salon" element={<SalonPage />} />
       <Route path="/salon/ventas" element={<SalesJournalPage />} />
       <Route path="/salon/mesa/:mesa" element={<SalonOrderPage />} />
@@ -183,6 +173,7 @@ function App() {
 
         <Route
           path="actividades" element={<ActivityPage />} />
+        <Route path="diagnostico" element={<DiagnosticsPage />} />
         <Route
           path="usuarios"
           element={<UsersPage />}
@@ -208,7 +199,7 @@ function App() {
         path="*"
         element={<Navigate to="/home" replace />}
       />
-    </Routes>
+    </Routes></Suspense>
   )
 }
 

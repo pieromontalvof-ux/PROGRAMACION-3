@@ -1,6 +1,6 @@
 import { formatearUnidad } from '../../utils/unitHelpers'
 import {useState} from 'react'
-import {useAuth} from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import {csv,opApi,qty,today,useQuery,when} from './shared'
 import {Message} from './Message'
 import {AssignmentsPanel,type Position} from './AssignmentsPanel'

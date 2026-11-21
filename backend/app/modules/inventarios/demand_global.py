@@ -52,7 +52,7 @@ def report(start,end):
     stores=filas('''SELECT l.id_local,l.nombre,count(c.id_cobro) cobros,
         count(m.id_movimiento_inventario) cobros_con_inventario,
         count(DISTINCT (c.creado_en AT TIME ZONE 'America/Lima')::date) dias_con_ventas
-        FROM local l LEFT JOIN salon_cobro c ON c.id_local=l.id_local
+        FROM local l LEFT JOIN salon_cobro c ON c.id_local=l.id_local AND c.comprobante->'anulacion' IS NULL
         AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
         LEFT JOIN movimiento_inventario m ON m.id_movimiento_inventario=c.id_movimiento AND m.id_local=l.id_local
         WHERE l.estado_registro=1 GROUP BY l.id_local,l.nombre ORDER BY l.id_local''',dict(desde=start,hasta=end))

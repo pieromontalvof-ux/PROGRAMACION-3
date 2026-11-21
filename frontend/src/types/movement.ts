@@ -68,3 +68,11 @@ export interface RespuestaRegistrarMovimiento {
   mensaje: string
   movimiento: MovimientoRegistrado
 }
+
+export interface GuiaMovimiento {
+  id: number; codigo: string; fecha: string; id_local: number; id_local_destino: number | null;
+  estado: string; motivo: string; origen: string; destino: string | null; proveedor: string | null;
+  observacion: string | null; registrado_por: string;
+  detalles: {id_producto: number; codigo: string; nombre: string; unidad: string; cantidad: number; recibido: number}[];
+  recepciones: {codigo: string; guia_proveedor: string | null; fecha: string; nombre: string; unidad: string; cantidad: number}[];
+}

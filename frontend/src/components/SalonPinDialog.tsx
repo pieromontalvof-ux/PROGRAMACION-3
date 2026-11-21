@@ -1,9 +1,5 @@
 import {useEffect,useRef,useState} from 'react'
-export async function salonApi(ruta:string,datos?:unknown,metodo='POST',signal?:AbortSignal){
- const token=sessionStorage.getItem('salon_token')
- const r=await fetch(`${import.meta.env.VITE_API_URL??'http://127.0.0.1:5000/api'}/salon/${ruta}`,{method:datos?metodo:'GET',signal,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:datos?JSON.stringify(datos):undefined})
- const d=await r.json();if(!r.ok)throw Error(d.mensaje??d.msg??'No se pudo completar la operacion');return d
-}
+import { salonApi } from '../services/salonService'
 export function SalonPinDialog({accion,onCancel,onAuthorized}:{accion:'eliminar'|'mover'|'reasignar';onCancel:()=>void;onAuthorized:(token:string)=>void}){
  const dialog=useRef<HTMLDialogElement>(null),[pin,setPin]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
  useEffect(()=>{dialog.current?.showModal()},[])

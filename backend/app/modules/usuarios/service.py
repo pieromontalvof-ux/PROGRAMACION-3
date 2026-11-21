@@ -393,7 +393,7 @@ def registrar_usuario(
             id_gestor=id_gestor,
         )
 
-        from app.modules.auth.salon import guardar_pin
+        from app.modules.salon.salon import guardar_pin
         guardar_pin(id_usuario, datos)
 
         registrar_actividad(
@@ -538,7 +538,7 @@ def editar_usuario(
             id_gestor=id_gestor,
         )
 
-        from app.modules.auth.salon import guardar_pin
+        from app.modules.salon.salon import guardar_pin
         guardar_pin(id_usuario, datos)
 
         registrar_actividad(

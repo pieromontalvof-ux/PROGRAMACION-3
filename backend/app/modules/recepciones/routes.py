@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity
 
 from app.core.permissions import requiere_permiso
+from .invoice_delivery import entregar
 from app.modules.recepciones.service import (
     obtener_pendientes,
     registrar_recepcion,
@@ -18,7 +19,6 @@ recepciones_bp = Blueprint("recepciones", __name__)
 @recepciones_bp.post('/<int:id_factura>/entregas')
 @requiere_permiso(id_opcion_menu=24, accion='crear')
 def completar_entrega(id_factura):
-    from .invoice_storage import entregar
     respuesta, estado = entregar(id_factura, int(get_jwt_identity()), request.get_json(silent=True))
     return jsonify(respuesta), estado
 

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 
 import App from './App'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import './index.css'
 import './theme.css'
@@ -13,10 +14,10 @@ import './catalog-layout.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <AppErrorBoundary><BrowserRouter>
       <AuthProvider>
         <App />
       </AuthProvider>
-    </BrowserRouter>
+    </BrowserRouter></AppErrorBoundary>
   </StrictMode>,
 )

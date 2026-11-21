@@ -14,7 +14,7 @@ import {
   useState,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { obtenerMenajes, administrarMenaje, type AccionMenaje } from '../services/cartaService'
 import type { RespuestaMenajes, MenajeDetalle, UnidadCapacidad } from '../types/carta'
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'

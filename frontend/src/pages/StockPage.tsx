@@ -1,6 +1,8 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -19,7 +21,7 @@ import {
   Search,
 } from 'lucide-react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import { obtenerStockActual } from '../services/inventoryService'
 import type {
   EstadoStock,
@@ -79,7 +81,7 @@ function StockPage() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
 
-  const cargarStock = async () => {
+  const cargarStock = useCallback(async () => {
     if (!token) {
       return
     }
@@ -100,11 +102,12 @@ function StockPage() {
     } finally {
       setCargando(false)
     }
-  }
-
-  useEffect(() => {
-    void cargarStock()
   }, [token])
+
+  useEffect(() => scheduleEffect(() => {
+    void cargarStock()
+
+    }), [cargarStock])
 
   const productosFiltrados = useMemo(() => {
     if (!datos) {

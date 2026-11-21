@@ -4,7 +4,7 @@ import type { Consulta } from './service'
 import { RecipeCards } from './RecipeCards'
 import { FormattedAnswer } from './FormattedAnswer'
 import {legacyPurchaseSummary} from './purchaseSummary'
-import {legacyPromotionSummary} from './PromotionReview'
+import {legacyPromotionSummary} from './promotionSummary'
 
 const number = (value: unknown) => typeof value === 'number'
   ? value.toLocaleString('es-PE', { maximumFractionDigits: 3 }) : '—'

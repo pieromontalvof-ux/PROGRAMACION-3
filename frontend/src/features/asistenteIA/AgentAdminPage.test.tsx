@@ -5,7 +5,7 @@ import { AgentAdminPage } from './AgentAdminPage'
 import type { CarpetaAgente, DocumentoAgente } from './service'
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), original: vi.fn(), profile: 1 }))
-vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ token: 'session', perfilActivo: { id_perfil: mocks.profile } }) }))
+vi.mock('../../context/authState', () => ({ useAuth: () => ({ token: 'session', perfilActivo: { id_perfil: mocks.profile } }) }))
 vi.mock('./service', async original => ({ ...await original<typeof import('./service')>(), bibliotecaAgentes: mocks.api, originalDocumentoAgente: mocks.original }))
 const folder: CarpetaAgente = { id: 'compras', nombre: 'Compras y reposición', descripcion: 'Pedidos', revision: 0,
   documentos: [], instrucciones: '', instrucciones_base: 'Reglas de base.', skills: [], limite_contexto: 24000,

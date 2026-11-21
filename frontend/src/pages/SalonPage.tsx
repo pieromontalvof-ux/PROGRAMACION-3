@@ -1,7 +1,8 @@
 import {useEffect,useRef,useState} from 'react'
 import {useNavigate} from 'react-router-dom'
 import {SalonMap,type DistribucionSalon} from '../components/SalonMap'
-import {SalonPinDialog,salonApi} from '../components/SalonPinDialog'
+import {SalonPinDialog} from '../components/SalonPinDialog'
+import {salonApi} from '../services/salonService'
 import './SalonPage.css'
 interface Sesion {usuario:string;local:string;id_usuario:number;perfil:number}
 interface Mesa {mesa:string;id_usuario:number;usuario:string;desde:string}

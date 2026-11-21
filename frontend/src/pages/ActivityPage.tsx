@@ -1,5 +1,6 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { Fragment, useEffect, useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import './ActivityPage.css'
 
 interface Evento {
@@ -26,7 +27,7 @@ export function ActivityPage() {
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const [version, setVersion] = useState(0)
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     const controller=new AbortController()
     setCargando(true);setError('');setAbierto('')
     const params=new URLSearchParams({...consulta,pagina:String(pagina)})
@@ -36,7 +37,8 @@ export function ActivityPage() {
       .then(d => {setDatos(d);setCargando(false)})
       .catch(e => {if(!controller.signal.aborted){setError(e.message);setCargando(false)}})
     return () => controller.abort()
-  },[token,consulta,pagina,version])
+
+    }),[token,consulta,pagina,version])
   return <section className="activity-page">
     <header><h1>Actividades del sistema</h1><p>Consulta quién realizó cada acción, con qué perfil y en qué local.</p></header>
     <section className="activity-content" aria-label="Listado de actividades">

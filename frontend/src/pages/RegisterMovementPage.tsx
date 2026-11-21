@@ -1,3 +1,4 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { formatearUnidad } from '../utils/unitHelpers'
 import { Link } from 'react-router-dom'
 import {
@@ -20,7 +21,7 @@ import {
   useState,
 } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   obtenerFormularioMovimiento,
   registrarMovimiento,
@@ -86,9 +87,10 @@ export function RegisterMovementPage() {
     }
   }, [token])
 
-  useEffect(() => {
+  useEffect(() => scheduleEffect(() => {
     void cargarDatos()
-  }, [cargarDatos])
+
+    }), [cargarDatos])
 
   const configuracion = useMemo<
     MotivoMovimiento | undefined

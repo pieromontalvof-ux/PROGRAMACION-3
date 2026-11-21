@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react'
-import {useAuth} from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import {opApi,useQuery} from './shared'
 import {Message} from './Message'
 import './assignments.css'

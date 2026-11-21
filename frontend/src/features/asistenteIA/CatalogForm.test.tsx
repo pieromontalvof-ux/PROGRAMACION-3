@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { CatalogForm, valuesFromProposal } from './CatalogForm'
+import { CatalogForm } from './CatalogForm'
+import { valuesFromProposal } from './catalogFormValues'
 import type { FormularioCatalogo } from './service'
 import { ReviewDetails } from './ReviewDetails'
 afterEach(cleanup)

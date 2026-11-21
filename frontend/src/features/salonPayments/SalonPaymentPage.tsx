@@ -1,10 +1,11 @@
 import {useEffect, useRef, useState} from 'react'
 import {useNavigate, useParams} from 'react-router-dom'
 import {CreditCard, Banknote, ReceiptText, CheckCircle2} from 'lucide-react'
-import {salonApi} from '../../components/SalonPinDialog'
-import {useAuth} from '../../context/AuthContext'
+import {salonApi} from '../../services/salonService'
+import { useAuth } from '../../context/authState'
 import {documentNames, money, receiptImage, resumenReposiciones, type Receipt, type ReceiptLine} from './receipt'
 import './SalonPaymentPage.css'
+import {FactApiPanel} from '../../components/FactApiPanel'
 
 interface Customer {id_cliente:string; nombre:string; numero_documento:string; tipo_documento:string; tipo_persona:string}
 
@@ -98,7 +99,8 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
     {!account && !receipt && !error && <p role="status">Cargando…</p>}
     {receipt ? <section className="payment-receipt">
       <p className="payment-success"><CheckCircle2 size={20}/>Cobro registrado · La mesa quedó libre</p>
-      <img src={receiptImage(receipt)} alt={`Comprobante interno ${receipt.numero}, mesa ${receipt.mesa}, total pagado ${money(receipt.total)} por ${receipt.metodo.toLowerCase()}`} />
+      <img src={receiptImage(receipt)} alt={`Comprobante interno ${receipt.numero}${receipt.prueba ? ', venta simulada' : ''}, mesa ${receipt.mesa}, total pagado ${money(receipt.total)} por ${receipt.metodo.toLowerCase()}`} />
+      <FactApiPanel key={receipt.id} origin="VENTA" source={receipt.id} salon/>
     </section> : account && <div className="payment-workspace">
       <form id="payment-form" onSubmit={e=>{e.preventDefault();void emit()}}>
         <fieldset disabled={busy}><legend>Tipo de comprobante</legend>

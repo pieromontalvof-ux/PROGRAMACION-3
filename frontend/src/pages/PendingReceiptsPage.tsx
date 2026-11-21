@@ -1,10 +1,10 @@
+import { scheduleEffect } from '../utils/scheduleEffect'
 import { InvoiceFields } from '../components/recepciones/InvoiceFields'
 import { Link } from 'react-router-dom'
-import { formatearUnidad } from '../utils/unitHelpers'
 import { ChevronDown, ChevronUp, LoaderCircle, PackageCheck } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/authState'
 import {
   obtenerPendientesRecepcion,
   registrarRecepcion,
@@ -26,7 +26,6 @@ export function PendingReceiptsPage() {
   const [serie, setSerie] = useState('F001')
   const [financiera, setFinanciera] = useState<FacturaProveedorEntrada>({ fecha_emision: hoy(), moneda: 'PEN', lineas: [] })
   const [fecha, setFecha] = useState(hoy())
-  const [cantidades, setCantidades] = useState<Record<number, string>>({})
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
@@ -45,7 +44,8 @@ export function PendingReceiptsPage() {
     }
   }, [token])
 
-  useEffect(() => { void cargar() }, [cargar])
+  useEffect(() => scheduleEffect(() => { void cargar()
+    }), [cargar])
 
   const seleccionar = (item: PendienteRecepcion) => {
     const clave = `${item.id_orden_compra}-${item.id_proveedor}`
@@ -56,11 +56,8 @@ export function PendingReceiptsPage() {
     setAbierto(clave)
     setFactura('')
     setSerie('F001')
-    setFinanciera({ fecha_emision: hoy(), moneda: 'PEN', lineas: item.productos.map(p => ({ id_producto: p.id_producto, cantidad_facturada: p.cantidad_pendiente, precio_unitario: 0, descuento: 0, afectacion_igv: 'GRAVADO', igv_porcentaje: 18 })) })
+    setFinanciera({ fecha_emision: hoy(), moneda: 'PEN', lineas: item.productos.map(p => ({ id_producto: p.id_producto, cantidad_facturada: p.cantidad_pendiente, costo_total: 0, precio_unitario: 0, descuento: 0, afectacion_igv: 'GRAVADO', igv_porcentaje: 18 })) })
     setFecha(hoy())
-    setCantidades(Object.fromEntries(
-      item.productos.map((p) => [p.id_producto, String(p.cantidad_pendiente)]),
-    ))
     setError('')
     setMensaje('')
   }
@@ -70,12 +67,11 @@ export function PendingReceiptsPage() {
       setError('Completa el número de factura y la fecha.')
       return
     }
-    const detalles = item.productos.flatMap((producto) => {
-      const cantidad = Number(cantidades[producto.id_producto] ?? '')
-      return Number.isFinite(cantidad) && cantidad > 0
-        ? [{ id_producto: producto.id_producto, cantidad_recibida: cantidad }]
-        : []
-    })
+    const lineas=financiera.lineas.filter(l=>l.cantidad_facturada>0)
+    const detalles=lineas.map(l=>({id_producto:l.id_producto,cantidad_recibida:l.cantidad_facturada}))
+    if(lineas.some(l=>!Number.isFinite(l.costo_total)||Number(l.costo_total)<=0)){
+      setError('Ingresa el costo total de cada producto recibido.');return
+    }
     if (!detalles.length) {
       setError('Registra al menos una cantidad recibida mayor que cero.')
       return
@@ -142,26 +138,9 @@ export function PendingReceiptsPage() {
                     <label>Número<input value={factura} inputMode="numeric" maxLength={20} onChange={(e) => setFactura(e.target.value.replace(/\D/g, ''))} placeholder="258" /></label>
                     <label>Fecha de recepción<input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
                   </div>
+                  <div className="invoice-summary"><p><b>Proveedor:</b> {item.proveedor}<br/>RUC: {item.datos_comerciales?.ruc || 'No registrado'}<br/>{item.datos_comerciales?.direccion}</p><p><b>Orden de compra:</b> {item.codigo_orden}</p></div>
                   <InvoiceFields productos={item.productos} value={financiera} onChange={setFinanciera} />
                   <p>Si esta factura ya está registrada, completa su entrega desde el <Link to="/home/recepciones/historial">historial de recepciones</Link>.</p>
-                  <h3>Entrega recibida ahora</h3>
-                  <p>Las cantidades recibidas actualizan el inventario. Pueden ser menores que las facturadas.</p>
-                  <div className="receipt-products">
-                    {item.productos.map((producto) => (
-                      <div key={producto.id_producto}>
-                        <span><b>{producto.codigo}</b> {producto.nombre}</span>
-                        <small>Solicitado: {producto.cantidad_solicitada} · Recibido: {producto.cantidad_recibida} · Pendiente: {producto.cantidad_pendiente} {formatearUnidad(producto.unidad)}</small>
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.min(producto.cantidad_pendiente, financiera.lineas.find(l => l.id_producto === producto.id_producto)?.cantidad_facturada ?? 0)}
-                          step="any"
-                          value={cantidades[producto.id_producto] ?? ''}
-                          onChange={(e) => setCantidades((actual) => ({ ...actual, [producto.id_producto]: e.target.value }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
                   <button className="receipt-save" disabled={guardando} onClick={() => void guardar(item)}>
                     {guardando ? 'Guardando...' : 'Registrar recepción'}
                   </button>

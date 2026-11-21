@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/authState'
 import type { OpcionMenu } from '../../types/auth'
 
-vi.mock('../../context/AuthContext', () => ({ useAuth: vi.fn() }))
+vi.mock('../../context/authState', () => ({ useAuth: vi.fn() }))
 const cambiarPerfil = vi.fn().mockResolvedValue(undefined)
 const item = (id: number, nombre: string, url: string | null, parent: number | null = null): OpcionMenu => ({
   id_opcion_menu: id, nombre, url_menu: url, id_padre: parent, codigo: nombre,
