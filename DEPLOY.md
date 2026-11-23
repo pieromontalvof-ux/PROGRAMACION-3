@@ -28,29 +28,51 @@ Railway proporciona PORT. El servicio usa un proceso Gunicorn con cuatro hilos y
 
 Los usuarios actuales se conservan al migrar la base, junto con sus contraseñas cifradas y perfiles. Una base vacía no tiene usuarios ni catálogos. `database/schema.sql` contiene solo la estructura actual: no reemplaza la migración privada de datos. Usar ese esquema únicamente para una base vacía; no ejecutarlo sobre una base restaurada.
 
-## Integración de fact_api: configuración adicional pendiente en Railway
+## Integración de fact_api dentro del servicio Railway
 
-El Dockerfile actual publica el frontend React y el backend Flask. No incluye
-PHP/Laravel ni arranca los trabajadores de facturación. Subir esta versión a
-GitHub no instala automáticamente esos procesos en Railway.
+El Dockerfile incluye PHP 8.2, PHP-FPM, Nginx y las dependencias originales de
+Laravel. `backend/scripts/cloud_runtime.py` conserva el inicio habitual de
+Gunicorn si `FACT_API_BUNDLED` está desactivado. Para habilitar la integración:
 
-Para habilitar allí los documentos se requiere preparar el servicio Laravel,
-sus dependencias y base de datos, y un servicio trabajador con acceso al mismo
-PostgreSQL y almacenamiento privado que utiliza Flask. Los scripts Windows de
-inicio local no se ejecutan en Railway.
+| Variable del servicio MULTIAGENTE | Valor |
+| --- | --- |
+| FACT_API_BUNDLED | 1 |
+| FACT_API_MODE | DEMO |
+| FACT_API_MIN_WORKERS | 1 |
+| FACT_API_MAX_WORKERS | 2, ampliable hasta 4 según recursos |
+| RAILWAY_DEPLOYMENT_DRAINING_SECONDS | 90 |
+| APP_DATA_DIR | /data, volumen persistente ya montado |
 
-- Aplicar las migraciones correspondientes en las bases online, sin reemplazar
-  datos existentes con el esquema completo ni con la base local de demostración.
-- Configurar `FACT_API_URL` con la dirección del servicio accesible desde Railway;
-  `127.0.0.1:8091` corresponde a la instalación local y no conecta otro servicio.
-- Configurar los tokens privados en las variables de cada servicio. Para buscar
-  DNI/RUC también se necesita `FACTILIZA_TOKEN` en el backend online.
-- Mantener el modo DEMO, sin envío SUNAT ni credenciales fiscales reales.
-- Compartir de forma segura el almacenamiento de entrega entre trabajador y
-  Flask, y conservar el almacenamiento privado de Laravel. Los PDF locales no
-  se transfieren mediante GitHub.
-- Verificar cobro, cola, generación A4/ticket y descarga autenticada desde el
-  dominio publicado antes de considerar completa la integración online.
+El arranque crea únicamente las tablas aditivas de clientes, cola y escalado que
+falten y configura los locales activos. No restaura la base local ni borra ventas.
+Laravel instala sus propias tablas en el esquema PostgreSQL `fact_api`, separado
+de `public`. Ambas conexiones utilizan el PostgreSQL existente de Railway.
+
+El puente escucha solo en `127.0.0.1:8091`, accesible desde los trabajadores del
+mismo contenedor. Las rutas de setup y emisión SUNAT originales no se publican.
+Flask sigue atendiendo el puerto público `PORT`; la web entrega los PDF únicamente
+después de autenticar y comprobar el local. No se necesita otro dominio o servicio.
+
+La clave Laravel y el token interno se generan una vez en
+`/data/fact_api/runtime-secrets.json`, privado y excluido de Git. Al reiniciar se
+reutilizan; un archivo corrupto detiene el arranque en vez de rotar las claves.
+Los originales de Laravel quedan en `/data/fact_api/laravel_storage/app/private/`
+y las copias operativas en `/data/fact_api_documents/`. Los PDF locales anteriores
+no se transfieren mediante GitHub. El volumen conserva los generados online.
+
+PHP-FPM utiliza como máximo dos procesos y el supervisor empieza con un trabajador,
+ampliable automáticamente hasta el máximo configurado. Ante un redespliegue, el
+supervisor nuevo espera el relevo del anterior sin detener el servidor web. El
+arranque vigila sus procesos; una caída provoca reinicio y la cola permite recuperar
+trabajos. La parada drena primero las peticiones web y después los trabajadores.
+
+Para consultar DNI/RUC se configura `FACTILIZA_TOKEN` en Railway; es independiente
+del generador. Toda esta integración sigue en DEMO: no envía documentos a SUNAT.
+
+Después de habilitarla, comprobar `/api/health`, las métricas autenticadas, una
+venta existente en el diario, PDF A4/ticket y persistencia tras un redespliegue.
+Un cobro anterior sin operación puede generar su PDF desde el diario sin cobrar
+nuevamente. No se hace una generación masiva de documentos históricos al arrancar.
 
 La guía técnica y el recorrido de archivos están en
 [docs/FACT_API_GUIA_OPERATIVA.md](docs/FACT_API_GUIA_OPERATIVA.md).

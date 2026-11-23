@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--max-workers',type=int,default=int(os.getenv('FACT_API_MAX_WORKERS','4')))
     parser.add_argument('--stop-file',type=Path)
     parser.add_argument('--once',action='store_true')
+    parser.add_argument('--wait-for-leader',action='store_true',help='Esperar al supervisor anterior durante un redespliegue.')
     args=parser.parse_args()
     policy=ScalingPolicy(minimum=args.min_workers,maximum=args.max_workers)
     app=create_app();stopping=False
@@ -28,6 +29,12 @@ def main():
     signal.signal(signal.SIGINT,stop);signal.signal(signal.SIGTERM,stop)
     with app.app_context():
         leader=acquire_leadership()
+        if leader is None and args.wait_for_leader:
+            print('Esperando el relevo del supervisor anterior; el servidor web puede continuar.',flush=True)
+            while leader is None:
+                if stopping or (args.stop_file and args.stop_file.exists()):return 0
+                time.sleep(2)
+                leader=acquire_leadership()
         if leader is None:
             print('Ya existe un supervisor fact_api en esta base.',flush=True);return 2
         backend_pid=leader.execute(text('SELECT pg_backend_pid()')).scalar_one()
