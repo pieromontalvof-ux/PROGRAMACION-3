@@ -162,7 +162,7 @@ class PdfService
 
         // Generar QR Code
         $qrData = $this->generateQRData($invoice);
-        $qrBase64 = $this->generateQRCode($qrData);
+        $qrBase64 = $invoice->estado_sunat === 'DEMO' ? '' : $this->generateQRCode($qrData);
 
         return [
             'document' => $invoice,
@@ -173,7 +173,8 @@ class PdfService
             'totales' => $this->calculateInvoiceTotals($invoice),
             'fecha_emision' => $invoice->fecha_emision ? $invoice->fecha_emision->format('d/m/Y') : date('d/m/Y'),
             'fecha_vencimiento' => $invoice->fecha_vencimiento ? $invoice->fecha_vencimiento->format('d/m/Y') : null,
-            'tipo_documento_nombre' => 'FACTURA ELECTRÓNICA',
+            'is_demo' => $invoice->estado_sunat === 'DEMO',
+            'tipo_documento_nombre' => $invoice->estado_sunat === 'DEMO' ? 'FACTURA' : 'FACTURA ELECTRÓNICA',
             'qr_code' => $qrBase64,
             'hash' => $invoice->hash_cdr ?? $invoice->valor_resumen ?? '',
             'total_en_letras' => $this->numeroALetras($invoice->mto_imp_venta ?? 0),
@@ -212,7 +213,7 @@ class PdfService
 
         // Generar QR Code
         $qrData = $this->generateQRData($boleta);
-        $qrBase64 = $this->generateQRCode($qrData);
+        $qrBase64 = $boleta->estado_sunat === 'DEMO' ? '' : $this->generateQRCode($qrData);
 
         return [
             'document' => $boleta,
@@ -222,7 +223,8 @@ class PdfService
             'detalles' => $this->safeJsonDecode($boleta->detalles ?? $boleta->detalles_json ?? '[]'),
             'totales' => $this->calculateBoletaTotals($boleta),
             'fecha_emision' => $boleta->fecha_emision->format('d/m/Y'),
-            'tipo_documento_nombre' => 'BOLETA DE VENTA ELECTRÓNICA',
+            'is_demo' => $boleta->estado_sunat === 'DEMO',
+            'tipo_documento_nombre' => $boleta->estado_sunat === 'DEMO' ? 'BOLETA DE VENTA' : 'BOLETA DE VENTA ELECTRÓNICA',
             'qr_code' => $qrBase64,
             'hash' => $boleta->hash_cdr ?? $boleta->valor_resumen ?? '',
             'total_en_letras' => $this->numeroALetras($boleta->mto_imp_venta ?? 0),
@@ -522,7 +524,8 @@ class PdfService
     {
         $options = new Options();
         $options->set('defaultFont', 'Arial');
-        $options->set('isRemoteEnabled', true);
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
         $options->set('isHtml5ParserEnabled', true);
         
         $pdf = new Dompdf($options);

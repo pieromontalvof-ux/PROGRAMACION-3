@@ -90,7 +90,7 @@ ni Git. Los programas no imprimen esas claves.
 3. Antes de confirmar esa misma transacción, agrega el trabajo de documento a la cola.
 4. Al confirmar, el pago está registrado aunque la API esté temporalmente caída.
 5. El worker toma el trabajo, llama al puente Laravel y obtiene su identificador.
-6. Laravel guarda la empresa/sucursal/cliente y una `invoice` o `boleta` nativa de prueba.
+6. Laravel usa `DocumentService::createInvoice/createBoleta` para guardar la empresa/sucursal/cliente y el documento nativo. Continúa los correlativos existentes y comprueba que base, IGV y total coincidan con el cobro.
 7. El worker solicita PDF A4 y ticket de 80 mm, los archiva y registra sus huellas.
 8. En el comprobante y Diario de ventas aparece el panel `Documento de prueba · fact_api`.
 9. La pantalla actualiza el estado mientras hay trabajo pendiente y permite descargar.
@@ -142,11 +142,11 @@ Cambiar la cabecera de factura genera una versión nueva si cambia la instantán
 | 15 | `services/fact_api/app/Http/Middleware/BarbaritoAccess.php` | Comprueba token privado y modo de pruebas. |
 | 16 | `services/fact_api/app/Http/Controllers/Api/BarbaritoController.php` | Valida importes, deduplica por UUID/huella, guarda documentos y entrega archivos. |
 | 17 | `services/fact_api/app/Models/{Company,Branch,Client,Invoice,Boleta}.php` | Modelos originales reutilizados para guardar las entidades. |
-| 18 | `services/fact_api/app/Services/BarbaritoPdfService.php` | Extiende `PdfService`; reutiliza Dompdf y utilidades del proyecto, con recursos remotos deshabilitados. |
-| 19 | `services/fact_api/resources/views/pdf/barbarito/document.blade.php` | Diseño HTML del PDF, incluyendo aviso de prueba y distinción venta/compra. |
+| 18 | `services/fact_api/app/Services/DocumentService.php` y `PdfService.php` | Creación y PDF originales de fact_api para ventas; adaptación de IGV incluido y modo de pruebas. |
+| 19 | `services/fact_api/resources/views/pdf/a4/`, `80mm/` y `components/` | Plantillas originales A4/ticket, con logo Barbarian y aviso de falta de validez tributaria. Para compras se conserva exclusivamente el resumen interno de `BarbaritoPdfService` / `pdf/barbarito/document.blade.php`. |
 | 20 | `backend/app/modules/facturacion/worker.py` | Archiva los bytes recibidos con una ruta por turno y SHA-256 (huella para detectar cambios). |
 | 21 | `backend/app/modules/facturacion/routes.py` | Devuelve estado/métricas y descarga únicamente archivos del local autorizado. |
-| 22 | `frontend/src/components/FactApiPanel.tsx` | Muestra estados, reintentos y descargas; no contiene el token externo. |
+| 22 | `frontend/src/components/FactApiPanel.tsx` | Muestra estados, reintentos, vistas previas y descargas; también permite ver el PDF original del proveedor. No contiene el token externo. |
 
 En compras, el inicio pasa por `PendingReceiptsPage`/`recepciones/routes.py` y
 `recepciones/service.py`, que guardan `factura_recepcion` mediante su repositorio

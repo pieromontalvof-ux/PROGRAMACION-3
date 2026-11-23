@@ -1058,11 +1058,11 @@ ALTER TABLE ONLY public.clients
 
 
 --
--- Name: clients clients_tipo_documento_numero_documento_unique; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: clients clients_company_document_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clients
-    ADD CONSTRAINT clients_tipo_documento_numero_documento_unique UNIQUE (tipo_documento, numero_documento);
+    ADD CONSTRAINT clients_company_document_unique UNIQUE (company_id, tipo_documento, numero_documento);
 
 
 --

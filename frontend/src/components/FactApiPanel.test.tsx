@@ -5,13 +5,44 @@ import {FactApiPanel} from './FactApiPanel'
 import {FactApiPreviewPane} from './FactApiPdfPreview'
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
+it('opens the generated A4 automatically and lets the cashier switch or close it',async()=>{
+  const OriginalURL=URL
+  vi.stubGlobal('URL',Object.assign(class extends OriginalURL {},{
+    createObjectURL:vi.fn().mockReturnValueOnce('blob:auto-a4').mockReturnValueOnce('blob:auto-ticket'),revokeObjectURL:vi.fn(),
+  }))
+  const fetchMock=vi.fn((path:string,_options?:RequestInit)=>Promise.resolve(path.includes('/archivos/')
+    ? new Response('%PDF-demo',{headers:{'Content-Type':'application/pdf'}})
+    : Response.json({disponible:true,operaciones:[{estado:'COMPLETADO',numero:'B001-1',
+      archivos:[{id:'a4',formato:'A4'},{id:'ticket',formato:'80mm'}]}]})))
+  vi.stubGlobal('fetch',fetchMock)
+  render(<FactApiPanel origin="VENTA" source={749} token="test" autoPreviewFormat="A4"/>)
+  expect((await screen.findByTitle('Vista previa PDF A4')).getAttribute('src')).toBe('blob:auto-a4')
+  expect(fetchMock.mock.calls.some(([,options])=>options?.method==='POST')).toBe(false)
+  fireEvent.click(screen.getByRole('button',{name:'Ver ticket de 80 mm'}))
+  expect((await screen.findByTitle('Vista previa ticket de 80 mm')).getAttribute('src')).toBe('blob:auto-ticket')
+  fireEvent.click(screen.getByRole('button',{name:'Cerrar vista previa'}))
+  expect(screen.queryByTitle('Vista previa PDF A4')).toBeNull()
+  expect(screen.queryByTitle('Vista previa ticket de 80 mm')).toBeNull()
+})
+it('previews the original supplier PDF without issuing a supplier invoice',async()=>{
+  const OriginalURL=URL
+  vi.stubGlobal('URL',Object.assign(class extends OriginalURL {},{createObjectURL:()=> 'blob:original',revokeObjectURL:vi.fn()}))
+  const fetchMock=vi.fn((path:string)=>Promise.resolve(path.includes('/originales/')
+    ? new Response('%PDF-original',{headers:{'Content-Type':'application/pdf'}})
+    : Response.json({disponible:true,operaciones:[],originales:[{id_adjunto:'supplier-pdf',formato:'PDF'}]})))
+  vi.stubGlobal('fetch',fetchMock)
+  render(<FactApiPanel origin="COMPRA" source={9} token="test"/>)
+  fireEvent.click(await screen.findByRole('button',{name:'Ver original PDF'}))
+  expect((await screen.findByTitle('Vista previa original del proveedor')).getAttribute('src')).toBe('blob:original')
+  expect(fetchMock.mock.calls.some(([path])=>String(path).endsWith('/originales/supplier-pdf'))).toBe(true)
+})
 it('shows demo document status and queues using the source identity',async()=>{
   const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({disponible:true,operaciones:[]})})
   vi.stubGlobal('fetch',fetchMock)
   render(<FactApiPanel origin="COMPRA" source={9} token="test"/>)
   fireEvent.click(await screen.findByRole('button',{name:'Generar PDF de prueba'}))
   await waitFor(()=>expect(fetchMock.mock.calls.some(([url,options])=>String(url).endsWith('/COMPRA/9')&&options?.method==='POST')).toBe(true))
-  expect(screen.getByText('Sin validez tributaria')).toBeTruthy()
+  expect(screen.getByText('Original del proveedor y representación interna')).toBeTruthy()
 })
 
 it('switches preview formats without starting a download',async()=>{

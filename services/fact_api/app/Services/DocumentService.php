@@ -41,7 +41,7 @@ class DocumentService
                            ->firstOrFail();
             
             // Crear o buscar cliente
-            $client = $this->getOrCreateClient($data['client']);
+            $client = $this->getOrCreateClient($data['client'], $company->id);
             
             // Obtener siguiente correlativo
             $serie = $data['serie'];
@@ -123,7 +123,7 @@ class DocumentService
                            ->firstOrFail();
             
             // Crear o buscar cliente
-            $client = $this->getOrCreateClient($data['client']);
+            $client = $this->getOrCreateClient($data['client'], $company->id);
             
             // Obtener siguiente correlativo
             $serie = $data['serie'];
@@ -278,12 +278,12 @@ class DocumentService
         }
     }
 
-    protected function getOrCreateClient(array $clientData): Client
+    protected function getOrCreateClient(array $clientData, ?int $companyId = null): Client
     {
-        return Client::firstOrCreate([
+        return Client::firstOrCreate(array_merge($companyId ? ['company_id' => $companyId] : [], [
             'tipo_documento' => $clientData['tipo_documento'],
             'numero_documento' => $clientData['numero_documento'],
-        ], [
+        ]), [
             'razon_social' => $clientData['razon_social'],
             'nombre_comercial' => $clientData['nombre_comercial'] ?? null,
             'direccion' => $clientData['direccion'] ?? null,
@@ -365,6 +365,18 @@ class DocumentService
             }
             // Para '20' (exonerado), '30' (inafecto), '40' (exportación): IGV = 0 pero base = valor_venta
 
+            // Barbarito prices already include tax: preserve the paid line total.
+            if (($detalle['precio_incluye_igv'] ?? false) === true) {
+                if (!in_array($tipAfeIgv, ['10', '20', '30'], true) || $isc || $icbper || !empty($detalle['descuentos'])) {
+                    throw new Exception('Precio incluido incompatible con otros tributos o descuentos.');
+                }
+                $gross = round((float)$detalle['mto_total_linea'], 2);
+                $mtoValorVenta = $tipAfeIgv === '10' ? round($gross / (1 + $porcentajeIgv / 100), 2) : $gross;
+                $mtoBaseIgv = $mtoValorVenta;
+                $igv = round($gross - $mtoValorVenta, 2);
+                $mtoValorUnitario = $mtoValorVenta / $cantidad;
+                $detalle['mto_valor_unitario'] = $mtoValorUnitario;
+            }
             $totalImpuestos = $igv + $isc + $icbper;
             $mtoPrecioUnitario = $mtoValorUnitario;
             if ($tipAfeIgv === '10' || $tipAfeIgv === '17') { // Incluir IVAP
@@ -887,7 +899,7 @@ class DocumentService
                            ->firstOrFail();
             
             // Crear o buscar cliente
-            $client = $this->getOrCreateClient($data['client']);
+            $client = $this->getOrCreateClient($data['client'], $company->id);
             
             // Obtener siguiente correlativo
             $serie = $data['serie'];
@@ -1007,7 +1019,7 @@ class DocumentService
                            ->firstOrFail();
             
             // Crear o buscar cliente
-            $client = $this->getOrCreateClient($data['client']);
+            $client = $this->getOrCreateClient($data['client'], $company->id);
             
             // Obtener siguiente correlativo
             $serie = $data['serie'];

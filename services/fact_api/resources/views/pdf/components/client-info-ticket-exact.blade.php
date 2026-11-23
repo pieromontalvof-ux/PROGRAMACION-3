@@ -9,10 +9,10 @@
     <div class="client-separator">---</div>
     
     {{-- Document Number --}}
-    <div class="client-details">DNI {{ $client['numero_documento'] ?? '71262017' }}</div>
+    <div class="client-details">{{ ($client['tipo_documento'] ?? '') === '6' ? 'RUC' : 'Documento' }} {{ $client['numero_documento'] ?? '' }}</div>
     
     {{-- Date and Time --}}
     <div class="client-details">
-        FECHA: {{ $fecha_emision ?? '06/03/2024' }} HORA: {{ now()->format('H:i:s A') }}
+        FECHA: {{ $fecha_emision }}
     </div>
 </div>

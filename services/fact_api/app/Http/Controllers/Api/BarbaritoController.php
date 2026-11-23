@@ -4,12 +4,18 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\{Company,Branch,Client,Invoice,Boleta};
 use App\Services\BarbaritoPdfService;
+use App\Services\{DocumentService,PdfService};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB,Storage};
 
 class BarbaritoController extends Controller {
+    private const PDF_TEMPLATE_VERSION='native-v3';
     private function responseData($row): array {
-        return ['id'=>$row->id,'numero'=>$row->number,'estado'=>$row->state,'payload_hash'=>$row->payload_hash];
+        $payload=json_decode($row->payload,true);
+        $class=$row->native_type==='invoice'?Invoice::class:Boleta::class;
+        $total=$row->native_id?$class::findOrFail($row->native_id)->mto_imp_venta:$payload['total'];
+        return ['id'=>$row->id,'numero'=>$row->number,'estado'=>$row->state,'payload_hash'=>$row->payload_hash,
+            'native_type'=>$row->native_type,'native_id'=>$row->native_id,'total'=>number_format((float)$total,2,'.','')];
     }
     public function show(string $id) {
         $row=DB::table('barbarito_documents')->find($id);
@@ -27,6 +33,7 @@ class BarbaritoController extends Controller {
             'lineas'=>'required|array|min:1|max:500','lineas.*.nombre'=>'required|string|max:200',
             'lineas.*.codigo'=>'required|string|max:30','lineas.*.cantidad'=>'required|numeric|gt:0',
             'lineas.*.unidad'=>'required|string|max:20','lineas.*.afectacion'=>'required|string|max:30',
+            'lineas.*.tasa_igv'=>'required|numeric|min:0|max:100',
             'lineas.*.subtotal'=>'required|numeric|min:0','lineas.*.igv'=>'required|numeric|min:0',
             'lineas.*.total'=>'required|numeric|min:0','subtotal'=>'required|numeric|min:0',
             'igv'=>'required|numeric|min:0','total'=>'required|numeric|min:0',
@@ -68,19 +75,34 @@ class BarbaritoController extends Controller {
             if($payload['origen']==='VENTA') {
                 $class=$payload['tipo']==='01'?Invoice::class:Boleta::class;
                 $nativeType=$payload['tipo']==='01'?'invoice':'boleta';
-                $seq=(int)$class::where('company_id',$company->id)->where('serie',$payload['serie'])->max('correlativo')+1;
-                abort_if($seq>99999999,422);
                 $details=array_map(fn($l)=>['cod_producto'=>$l['codigo'],'descripcion'=>$l['nombre'],
                     'unidad'=>$l['unidad'],'cantidad'=>$l['cantidad'],'mto_valor_unitario'=>(float)$l['subtotal']/(float)$l['cantidad'],
-                    'mto_valor_venta'=>$l['subtotal'],'igv'=>$l['igv'],'total_impuestos'=>$l['igv'],
-                    'mto_precio_unitario'=>(float)$l['total']/(float)$l['cantidad']],$payload['lineas']);
-                $native=$class::create(['company_id'=>$company->id,'branch_id'=>$branch->id,'client_id'=>$client->id,
-                    'tipo_documento'=>$payload['tipo'],'serie'=>$payload['serie'],'correlativo'=>str_pad($seq,8,'0',STR_PAD_LEFT),
-                    'numero_completo'=>$payload['serie'].'-'.str_pad($seq,8,'0',STR_PAD_LEFT),
+                    'tip_afe_igv'=>match($l['afectacion']) {'GRAVADO'=>'10','EXONERADO'=>'20','INAFECTO'=>'30',default=>abort(422)},
+                    'porcentaje_igv'=>$l['tasa_igv']??18,'precio_incluye_igv'=>true,
+                    'mto_total_linea'=>$l['total']],$payload['lineas']);
+                // Continue any documents created before adopting the native allocator.
+                // Company/series numbering is shared across branches in the native schema.
+                $latest=(int)$class::where('company_id',$company->id)->where('serie',$payload['serie'])
+                    ->selectRaw('COALESCE(MAX(CAST(correlativo AS BIGINT)),0) AS last')->value('last');
+                $counter=$branch->correlatives()->firstOrCreate(['tipo_documento'=>$payload['tipo'],'serie'=>$payload['serie']],
+                    ['correlativo_actual'=>$latest]);
+                if($counter->correlativo_actual<$latest)$counter->update(['correlativo_actual'=>$latest]);
+                abort_if(max($latest,$counter->correlativo_actual)>=99999999,422);
+                $data=['company_id'=>$company->id,'branch_id'=>$branch->id,'serie'=>$payload['serie'],
+                    'client'=>['tipo_documento'=>$client->tipo_documento,'numero_documento'=>$client->numero_documento,
+                        'razon_social'=>$payload['tercero']['nombre'],'direccion'=>$payload['tercero']['direccion']??''],
                     'fecha_emision'=>$payload['fecha'],'moneda'=>$payload['moneda'],'detalles'=>$details,
-                    'valor_venta'=>$payload['subtotal'],'sub_total'=>$payload['subtotal'],'mto_igv'=>$payload['igv'],
-                    'total_impuestos'=>$payload['igv'],'mto_imp_venta'=>$payload['total'],'estado_sunat'=>'DEMO',
-                    'usuario_creacion'=>'barbarito']);
+                    'usuario_creacion'=>'barbarito'];
+                $service=app(DocumentService::class);
+                $native=$payload['tipo']==='01'?$service->createInvoice($data):$service->createBoleta($data);
+                abort_unless((int)round($native->mto_imp_venta*100)===(int)round($payload['total']*100),422,'Importe incompatible.');
+                abort_unless((int)round($native->valor_venta*100)===(int)round($payload['subtotal']*100)
+                    && (int)round($native->mto_igv*100)===(int)round($payload['igv']*100),422,'Desglose de impuestos incompatible.');
+                foreach($native->detalles as $index=>$line) {
+                    abort_unless((int)round($line['mto_valor_venta']*100)===(int)round($payload['lineas'][$index]['subtotal']*100)
+                        && (int)round($line['igv']*100)===(int)round($payload['lineas'][$index]['igv']*100),422,'Desglose de línea incompatible.');
+                }
+                $native->update(['estado_sunat'=>'DEMO']);
                 $number=$native->numero_completo;
             } else {
                 abort_unless(isset($payload['numero_proveedor'],$payload['orden_compra']),422);
@@ -105,11 +127,32 @@ class BarbaritoController extends Controller {
         return DB::transaction(function () use ($id,$format) {
         DB::select('SELECT pg_advisory_xact_lock(hashtext(?))',['barbarito-pdf:'.$id.':'.$format]);
         $row=DB::table('barbarito_documents')->find($id);abort_unless($row,404);
-        $path='barbarito/'.$row->company_id.'/'.$row->branch_id.'/'.$row->origin.'/'.$id.'/'.$format.'.pdf';
+        $path='barbarito/'.$row->company_id.'/'.$row->branch_id.'/'.$row->origin.'/'.$id.'/'.
+            ($row->origin==='VENTA'?self::PDF_TEMPLATE_VERSION.'/':'').$format.'.pdf';
         // Private local disk; no storage:link and no user-supplied path.
         $file=DB::table('barbarito_files')->where('document_id',$id)->where('format',$format)->first();
-        if(!$file || !Storage::disk('local')->exists($path)) {
-            $bytes=app(BarbaritoPdfService::class)->renderSnapshot(json_decode($row->payload,true),$row->number,$format);
+        if(!$file || $file->path!==$path || !Storage::disk('local')->exists($path)) {
+            $payload=json_decode($row->payload,true);
+            if($row->origin==='VENTA') {
+                $class=$row->native_type==='invoice'?Invoice::class:Boleta::class;
+                $native=$class::findOrFail($row->native_id);
+                foreach(['GRAVADO'=>'mto_oper_gravadas','EXONERADO'=>'mto_oper_exoneradas','INAFECTO'=>'mto_oper_inafectas'] as $kind=>$field) {
+                    $native->$field=array_sum(array_map(fn($l)=>$l['afectacion']===$kind?(float)$l['subtotal']:0,$payload['lineas']));
+                }
+                // Historical identity comes from the immutable source, not today's client profile.
+                $native->setRelation('client',new Client(['razon_social'=>$payload['tercero']['nombre'],
+                    'tipo_documento'=>$payload['tercero']['tipo'],'numero_documento'=>$payload['tercero']['documento'],
+                    'direccion'=>$payload['tercero']['direccion']??'']));
+                $company=clone $native->company;
+                $company->razon_social=str_replace(' · DEMOSTRACIÓN','',$payload['empresa']['nombre']);
+                $native->setRelation('company',$company);
+                $pdf=app(PdfService::class);
+                $native->leyendas=[['code'=>'1000','value'=>strtoupper($pdf->numeroALetras($payload['total']).' '.($payload['moneda']==='PEN'?'SOLES':'DÓLARES AMERICANOS'))]];
+                $bytes=$row->native_type==='invoice'?$pdf->generateInvoicePdf($native,$format):$pdf->generateBoletaPdf($native,$format);
+            } else {
+                // A supplier's invoice is received, never issued by our sales service.
+                $bytes=app(BarbaritoPdfService::class)->renderSnapshot($payload,$row->number,$format);
+            }
             $temporary=$path.'.'.bin2hex(random_bytes(8)).'.tmp';
             Storage::disk('local')->put($temporary,$bytes);
             Storage::disk('local')->move($temporary,$path);

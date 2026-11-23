@@ -1,3 +1,4 @@
+@if(!($is_demo ?? false))
 {{-- PDF Ticket Footer Component (Exact Design Match) --}}
 {{-- Props: $qr_code, $hash, $document, $tipo_documento_nombre --}}
 
@@ -32,3 +33,4 @@
 <div class="powered-by">
     Powered by NUBEFACT
 </div>
+@endif

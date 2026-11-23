@@ -2,7 +2,7 @@
 {{-- Props: $company, $document, $tipo_documento_nombre --}}
 
 @php
-    $logoPath = public_path('logo_factura.png');
+    $logoPath = public_path(($is_demo ?? false) ? 'logo_barbarian.png' : 'logo_factura.png');
 @endphp
 
 <div class="header">
@@ -22,14 +22,14 @@
     {{-- Company Details --}}
     <div class="company-details">
         {{ $company->direccion ?? 'CALLE LAS NORMAS 123' }}<br>
-        {{ $company->distrito ?? 'CALLAO' }} {{ $company->codigo_postal ?? '654 321' }}<br>
-        Correo: {{ $company->email ?? 'Administrador@facturas.net' }}<br>
-        Web: {{ $company->website ?? 'www.facturas.net' }}
+        {{ $company->distrito ?? '' }} {{ $company->codigo_postal ?? '' }}<br>
+        @if($company->email)Correo: {{ $company->email }}<br>@endif
+        @if($company->website)Web: {{ $company->website }}@endif
     </div>
 
     {{-- Document Title --}}
     <div class="document-title">{{ strtoupper($tipo_documento_nombre ?? 'BOLETA DE VENTA ELECTRONICA') }}</div>
     
     {{-- Document Number --}}
-    <div class="document-number">{{ $document->serie ?? 'B002' }} - {{ str_pad($document->correlativo ?? '10300686', 8, '0', STR_PAD_LEFT) }}</div>
+    <div class="document-number">{{ $document->numero_completo }}</div>
 </div>

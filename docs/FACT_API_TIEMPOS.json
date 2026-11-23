@@ -1,0 +1,63 @@
+{
+  "fecha_lima": "2026-11-21T10:13:42.974341-05:00",
+  "modo": "DEMO_LOCAL",
+  "alcance": "HTTP secuencial, documento de una línea; sin espera en cola ni SUNAT",
+  "mediciones": {
+    "registro": {
+      "n": 5,
+      "media_ms": 401.03,
+      "mediana_ms": 388.09,
+      "p95_ms": 483.28,
+      "min_ms": 361.84,
+      "max_ms": 483.28
+    },
+    "registro_repetido": {
+      "n": 5,
+      "media_ms": 347.02,
+      "mediana_ms": 342.99,
+      "p95_ms": 363.88,
+      "min_ms": 331.37,
+      "max_ms": 363.88
+    },
+    "pdf_a4_primero": {
+      "n": 5,
+      "media_ms": 1497.45,
+      "mediana_ms": 1494.27,
+      "p95_ms": 1534.68,
+      "min_ms": 1462.76,
+      "max_ms": 1534.68
+    },
+    "pdf_a4_guardado": {
+      "n": 5,
+      "media_ms": 399.02,
+      "mediana_ms": 361.66,
+      "p95_ms": 511.1,
+      "min_ms": 333.1,
+      "max_ms": 511.1
+    },
+    "pdf_ticket_primero": {
+      "n": 5,
+      "media_ms": 1495.08,
+      "mediana_ms": 1494.14,
+      "p95_ms": 1573.96,
+      "min_ms": 1428.43,
+      "max_ms": 1573.96
+    },
+    "pdf_ticket_guardado": {
+      "n": 5,
+      "media_ms": 344.3,
+      "mediana_ms": 347.33,
+      "p95_ms": 370.85,
+      "min_ms": 320.2,
+      "max_ms": 370.85
+    },
+    "total_registro_y_dos_pdf": {
+      "n": 5,
+      "media_ms": 3393.56,
+      "mediana_ms": 3344.99,
+      "p95_ms": 3551.51,
+      "min_ms": 3290.96,
+      "max_ms": 3551.51
+    }
+  }
+}

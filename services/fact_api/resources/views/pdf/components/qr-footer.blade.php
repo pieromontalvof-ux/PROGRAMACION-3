@@ -14,7 +14,7 @@
     </div>
 @endif
 
-@if(isset($hash) || true)
+@if(!($is_demo ?? false))
     <div class="footer">
         <div>Autorizado mediante Resolución de Superintendencia Nº 097-2012/SUNAT</div>
         <div>Representación impresa del Comprobante de Pago Electrónico</div>

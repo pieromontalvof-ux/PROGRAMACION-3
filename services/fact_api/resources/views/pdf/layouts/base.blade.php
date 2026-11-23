@@ -116,6 +116,7 @@
     @yield('additional-styles')
 </head>
 <body>
+    @if($is_demo ?? false)<div style="text-align:center;font-weight:bold">Sin validez tributaria · No enviado a SUNAT</div>@endif
     @yield('body-content')
 </body>
 </html>

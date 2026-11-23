@@ -28,6 +28,33 @@ Railway proporciona PORT. El servicio usa un proceso Gunicorn con cuatro hilos y
 
 Los usuarios actuales se conservan al migrar la base, junto con sus contraseñas cifradas y perfiles. Una base vacía no tiene usuarios ni catálogos. `database/schema.sql` contiene solo la estructura actual: no reemplaza la migración privada de datos. Usar ese esquema únicamente para una base vacía; no ejecutarlo sobre una base restaurada.
 
+## Integración de fact_api: configuración adicional pendiente en Railway
+
+El Dockerfile actual publica el frontend React y el backend Flask. No incluye
+PHP/Laravel ni arranca los trabajadores de facturación. Subir esta versión a
+GitHub no instala automáticamente esos procesos en Railway.
+
+Para habilitar allí los documentos se requiere preparar el servicio Laravel,
+sus dependencias y base de datos, y un servicio trabajador con acceso al mismo
+PostgreSQL y almacenamiento privado que utiliza Flask. Los scripts Windows de
+inicio local no se ejecutan en Railway.
+
+- Aplicar las migraciones correspondientes en las bases online, sin reemplazar
+  datos existentes con el esquema completo ni con la base local de demostración.
+- Configurar `FACT_API_URL` con la dirección del servicio accesible desde Railway;
+  `127.0.0.1:8091` corresponde a la instalación local y no conecta otro servicio.
+- Configurar los tokens privados en las variables de cada servicio. Para buscar
+  DNI/RUC también se necesita `FACTILIZA_TOKEN` en el backend online.
+- Mantener el modo DEMO, sin envío SUNAT ni credenciales fiscales reales.
+- Compartir de forma segura el almacenamiento de entrega entre trabajador y
+  Flask, y conservar el almacenamiento privado de Laravel. Los PDF locales no
+  se transfieren mediante GitHub.
+- Verificar cobro, cola, generación A4/ticket y descarga autenticada desde el
+  dominio publicado antes de considerar completa la integración online.
+
+La guía técnica y el recorrido de archivos están en
+[docs/FACT_API_GUIA_OPERATIVA.md](docs/FACT_API_GUIA_OPERATIVA.md).
+
 ## Desarrollo local
 
 Backend: crear un entorno Python, instalar `backend/requirements.txt`, copiar `backend/.env.example` a `.env` y completar los valores reales. Ejecutar `python run.py` desde backend. Gunicorn se usa en Linux/Docker; el servidor local de Flask sigue disponible en Windows.

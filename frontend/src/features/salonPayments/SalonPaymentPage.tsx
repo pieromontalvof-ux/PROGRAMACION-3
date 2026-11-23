@@ -106,7 +106,7 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
   const comprobante=receipt ? <>
     <p className="payment-success"><CheckCircle2 size={20}/>Cobro registrado</p>
     <p className="payment-note">Mesa {receipt.mesa} · {money(receipt.total)} · {receipt.metodo === 'EFECTIVO' ? 'Efectivo' : 'Tarjeta'}{receipt.prueba && ' · Venta simulada'}</p>
-    <FactApiPanel key={receipt.id} origin="VENTA" source={receipt.id} salon showAvailability previewTarget={previewTarget}/>
+    <FactApiPanel key={receipt.id} origin="VENTA" source={receipt.id} salon showAvailability previewTarget={previewTarget} autoPreviewFormat="A4"/>
   </> : null
   return <main className="salon-payment">
     <header><div><span>SALÓN · {receipt?.local ?? account?.local ?? ''}</span><h1>{id ? 'Cobro y comprobante' : `Cobrar mesa ${mesa}`}</h1></div>

@@ -24,7 +24,7 @@
             @foreach($detalles as $index => $detalle)
                 <tr>
                     <td>{{ $index + 1 }}</td>
-                    <td>{{ $detalle['codigo'] ?? '' }}</td>
+                    <td>{{ $detalle['cod_producto'] ?? $detalle['codigo'] ?? '' }}</td>
                     <td>{{ $detalle['descripcion'] ?? '' }}</td>
                     <td>{{ $detalle['unidad'] ?? 'NIU' }}</td>
                     <td>{{ number_format($detalle['cantidad'] ?? 0, 2) }}</td>

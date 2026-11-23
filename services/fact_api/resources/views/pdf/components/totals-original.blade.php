@@ -34,7 +34,7 @@
                 </div>
             </td>
             <td class="label">Total Ope. Gravadas</td>
-            <td>{{ $totales['moneda'] }} {{ $totales['subtotal_formatted'] }}</td>
+            <td>{{ $totales['moneda'] }} {{ number_format($document->mto_oper_gravadas ?? $totales['subtotal'], 2) }}</td>
         </tr>
         <tr>
             <td class="label">Total Ope. Inafectadas</td>

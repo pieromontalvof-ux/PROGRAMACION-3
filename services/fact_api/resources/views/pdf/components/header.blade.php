@@ -3,7 +3,7 @@
 
 @php
     // Unificamos la carga de la imagen en Base64 para todos los formatos y evitar problemas de rutas con dompdf.
-    $logoPath = public_path('logo_factura.png');
+    $logoPath = public_path(($is_demo ?? false) ? 'logo_barbarian.png' : 'logo_factura.png');
 
 @endphp
 
@@ -39,7 +39,7 @@
             <div class="factura-box">
                 <p><b>RUC {{ $company->ruc ?? 'N/A' }}</b></p>
                 <p><b>{{ strtoupper($tipo_documento_nombre ?? 'FACTURA ELECTRÓNICA') }}</b></p>
-                <p><b>{{ $document->serie }}-{{ str_pad($document->correlativo, 6, '0', STR_PAD_LEFT) }}</b></p>
+                <p><b>{{ $document->numero_completo }}</b></p>
             </div>
         </div>
     </div>

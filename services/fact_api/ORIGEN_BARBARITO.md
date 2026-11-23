@@ -5,8 +5,18 @@ Se conserva el README y composer.lock original. No es un servicio oficial de SUN
 
 Ampliación local: rutas `api/barbarito`, configuración `barbarito.php`, controlador
 `BarbaritoController`, migración `2026_11_21`, `BarbaritoPdfService` y plantilla.
-Reutiliza Laravel, modelos Company/Branch/Client/Invoice/Boleta, Dompdf y las
-funciones de formato/importes en letras del PdfService original.
+Reutiliza Laravel y modelos Company/Branch/Client/Invoice/Boleta. Desde el ajuste
+de plantillas nativas, las ventas pasan por DocumentService::createInvoice /
+createBoleta y PdfService::generateInvoicePdf / generateBoletaPdf con las
+plantillas originales A4 y 80mm. BarbaritoPdfService y su plantilla quedan para
+representaciones internas de compras, nunca para emitir facturas del proveedor.
+
+Adaptaciones al servicio original: clientes separados por empresa (con migración
+de unicidad), precios que ya incluyen IGV y validación contra el cobro original.
+El puente continúa los correlativos existentes; no reinicia series. Las plantillas
+usan el logo de Barbarian y el mismo número completo en ambos formatos. En DEMO
+omiten QR, CDR y afirmaciones de autorización/verificación; conservan el aviso de
+falta de validez tributaria. Dompdf no puede ejecutar PHP ni descargar recursos.
 Dos migraciones upstream se ajustaron para PostgreSQL: el ENUM MySQL se convirtió
 en CHECK y se evita volver a agregar columnas que ya existen. Los cambios están
 en 2025_09_13_140000 y 2025_12_15_104136.

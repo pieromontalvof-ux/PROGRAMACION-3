@@ -7,10 +7,11 @@ type Operation={id_operacion:string;version:number;estado:string;intentos:number
 type Status={disponible:boolean;modo?:string;operaciones:Operation[];originales?:{id_adjunto:string;formato:string}[]}
 const names:Record<string,string>={PENDIENTE:'En cola',PROCESANDO:'Generando documento',REINTENTO:'Esperando reintento',COMPLETADO:'PDF disponible',RECHAZADO:'Datos rechazados',BLOQUEADO:'Requiere configuración',REVISION:'Requiere revisión'}
 
-export function FactApiPanel({origin,source,token,salon=false,showAvailability=false,previewTarget,previewModal=false}:{
+export function FactApiPanel({origin,source,token,salon=false,showAvailability=false,previewTarget,previewModal=false,autoPreviewFormat}:{
   origin:'VENTA'|'COMPRA';source:number;token?:string;salon?:boolean;showAvailability?:boolean
   previewTarget?: HTMLDivElement | null
   previewModal?: boolean
+  autoPreviewFormat?: 'A4' | '80mm'
 }) {
   const [status,setStatus]=useState<Status|null>(null)
   const [loadedScope,setLoadedScope]=useState('')
@@ -19,6 +20,7 @@ export function FactApiPanel({origin,source,token,salon=false,showAvailability=f
   const [busy,setBusy]=useState(false)
   const [revision,setRevision]=useState(0)
   const [preview,setPreview]=useState<{scope:string;id:string}|null>(null)
+  const [originalPreview,setOriginalPreview]=useState<{scope:string;id:string}|null>(null)
   const previewButton=useRef<HTMLButtonElement|null>(null)
   const dialogRef=useRef<HTMLDialogElement|null>(null)
   const mountDialog=useCallback((dialog:HTMLDialogElement|null)=>{
@@ -103,11 +105,13 @@ export function FactApiPanel({origin,source,token,salon=false,showAvailability=f
   }
   const operation=status.operaciones[0]
   const archivos=operation?.archivos ?? []
-  const visto=preview?.scope===scope ? archivos.find(file=>file.id===preview.id) : undefined
+  const visto=preview?.scope===scope ? archivos.find(file=>file.id===preview.id)
+    : autoPreviewFormat&&!operation?.obsoleto&&operation?.estado==='COMPLETADO'
+      ? archivos.find(file=>file.formato===autoPreviewFormat) : undefined
   const formato=(value:string)=>value==='80mm'?'ticket de 80 mm':'PDF '+value
   function cerrarVista(){
     dialogRef.current?.close?.()
-    setPreview(null)
+    setPreview({scope,id:''})
     previewButton.current?.focus({preventScroll:true})
   }
   const acciones=(enModal=false)=><div className="fact-api-actions">
@@ -129,7 +133,7 @@ export function FactApiPanel({origin,source,token,salon=false,showAvailability=f
   </div>
   return <section className="fact-api-panel" aria-label="Documento fact_api">
     <div className="fact-api-heading"><strong>{origin==='VENTA'?'Comprobante':'Factura recibida'}</strong>
-      <span>Sin validez tributaria</span></div>
+      <span>{origin==='VENTA'?'Sin validez tributaria':'Original del proveedor y representación interna'}</span></div>
     {operation?<><p role="status">{operation.obsoleto?'Documento histórico de una fuente modificada o anulada':names[operation.estado]??operation.estado}{operation.numero?` · ${operation.numero}`:''}</p>
       {operation.ultimo_error&&<p>{operation.ultimo_error}</p>}
       {!!archivos.length&&<>
@@ -147,8 +151,15 @@ export function FactApiPanel({origin,source,token,salon=false,showAvailability=f
       </>}
       {!operation.obsoleto&&['REVISION','REINTENTO','BLOQUEADO','RECHAZADO'].includes(operation.estado)&&<button type="button" disabled={busy} onClick={()=>void retry(operation.id_operacion)}>Reintentar con la misma referencia</button>}
     </>:<button type="button" disabled={busy} onClick={()=>void generate()}>{busy?'Encolando…':origin==='VENTA'?'Generar comprobante de prueba':'Generar PDF de prueba'}</button>}
+    {origin==='COMPRA'&&<p>El PDF generado resume la recepción. El comprobante emitido por el proveedor es el archivo original adjunto.</p>}
     {origin==='COMPRA'&&!salon&&<div><label>Adjuntar original del proveedor (PDF o XML, máximo 5 MB)<input type="file" accept=".pdf,.xml" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.target.value=''}}/></label>
-      {status.originales?.map(file=><button type="button" key={file.id_adjunto} disabled={busy} onClick={()=>void download({id:file.id_adjunto,formato:file.formato},true)}>Descargar original {file.formato}</button>)}</div>}
+      {status.originales?.map(file=><span key={file.id_adjunto}>
+        {file.formato==='PDF'&&<button type="button" onClick={()=>setOriginalPreview({scope,id:file.id_adjunto})}>Ver original PDF</button>}
+        <button type="button" disabled={busy} onClick={()=>void download({id:file.id_adjunto,formato:file.formato},true)}>Descargar original {file.formato}</button></span>)}</div>}
+    {originalPreview?.scope===scope&&status.originales?.some(file=>file.id_adjunto===originalPreview.id&&file.formato==='PDF')&&<div>
+      <button type="button" onClick={()=>setOriginalPreview(null)}>Cerrar original</button>
+      <FactApiPdfPreview key={originalPreview.id} url={`${base}/originales/${originalPreview.id}`} token={auth} format="original del proveedor"/>
+    </div>}
     {error&&!(previewModal&&visto)&&<p role="alert">{error}</p>}
   </section>
 }
