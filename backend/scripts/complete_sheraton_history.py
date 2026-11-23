@@ -11,6 +11,7 @@ from datetime import date,datetime,timedelta
 from decimal import Decimal
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import uuid
@@ -49,25 +50,27 @@ def rotating_menu(menu,day,already_sold):
             and m['id_presentacion'] not in already_sold]
 
 
-def inspect(through):
+def inspect(through, sync_demo=False):
     yesterday=datetime.now(LIMA).date()-timedelta(days=1)
     if through<START or through>yesterday:
         raise RuntimeError('Fecha fuera del histórico autorizado hasta ayer Lima.')
-    if db.engine.url.host not in ('localhost','127.0.0.1','::1'):
+    if db.engine.url.host not in ('localhost','127.0.0.1','::1') and not (
+        sync_demo and os.getenv('RAILWAY_ENVIRONMENT_NAME') == 'production'
+    ):
         raise RuntimeError('Solo base local loopback.')
     if scalar("SELECT count(*) FROM local WHERE id_local=4 AND lower(nombre)='sheraton' AND estado_registro=1")!=1:
         raise RuntimeError('Local Sheraton no coincide.')
-    if not scalar("SELECT count(*) FROM actividad_usuario WHERE accion='CARGAR_DEMO' AND descripcion='DEMO-SHERATON-4MESES-20260715-20261114'"):
+    if not sync_demo and not scalar("SELECT count(*) FROM actividad_usuario WHERE accion='CARGAR_DEMO' AND descripcion='DEMO-SHERATON-4MESES-20260715-20261114'"):
         raise RuntimeError('Falta lote ficticio autorizado original.')
-    if scalar('SELECT count(*) FROM inventario_jornada WHERE id_local=4 AND cerrado_en IS NULL'):
+    if not sync_demo and scalar('SELECT count(*) FROM inventario_jornada WHERE id_local=4 AND cerrado_en IS NULL'):
         raise RuntimeError('Jornada abierta: no se modifica automáticamente.')
     if scalar('SELECT count(*) FROM inventario_ronda WHERE id_local=4 AND cerrado_en IS NULL'):
         raise RuntimeError('Conteo abierto: no se modifica automáticamente.')
     existing=rows('SELECT * FROM inventario_jornada WHERE id_local=4 ORDER BY fecha')
     for j in existing:
-        if START<=j['fecha']<=through and (not j['reporte'] or len(j['reporte'].get('inventario',[]))!=141):
+        if START<=j['fecha']<=through and j['cerrado_en'] is not None and (not j['reporte'] or len(j['reporte'].get('inventario',[]))!=141):
             raise RuntimeError('Jornada existente incompleta: revisar sin sustituirla.')
-    days=missing_days(START,through,{j['fecha'] for j in existing})
+    days=missing_days(START,through,{j['fecha'] for j in existing if j['cerrado_en'] is not None})
     evidence=rows('''SELECT j.fecha,
       (coalesce(j.reporte->>'prueba','') LIKE 'DEMO-SHERATON-%' OR
        EXISTS(SELECT 1 FROM actividad_usuario a WHERE a.id_local=4 AND a.accion='CIERRE_PRUEBA'
@@ -79,7 +82,12 @@ def inspect(through):
        demoproof,
       (SELECT count(*) FROM salon_cobro c WHERE c.id_jornada=j.id_jornada) cobros
       FROM inventario_jornada j WHERE j.id_local=4 AND j.fecha BETWEEN :start AND :through''',through=through,start=START,tag=TAG)
-    days=sorted(days+revisable_days(evidence))
+    if not sync_demo:
+        days=sorted(days+revisable_days(evidence))
+    elif scalar("""SELECT count(*) FROM salon_cobro WHERE id_local=4
+        AND (creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :inicio AND :fin
+        AND coalesce(comprobante->>'prueba','') NOT LIKE 'DEMO-SHERATON-%'""",inicio=START,fin=through):
+        raise RuntimeError('El histórico incluye ventas operativas ajenas a la demostración.')
     products=rows('SELECT * FROM producto WHERE activo ORDER BY id_producto')
     if len(products)!=141:
         raise RuntimeError('Catálogo distinto de 141 productos.')
@@ -115,11 +123,11 @@ def audit(user,day):
       dict(u=user,tag=f'{TAG}:{day.isoformat()}'))
 
 
-def apply(through):
+def apply(through, sync_demo=False):
     db.session.execute(text("SET LOCAL lock_timeout='8s'"))
     db.session.execute(text('LOCK TABLE '+','.join(TABLES)+' IN SHARE ROW EXCLUSIVE MODE'))
     db.session.execute(text("SELECT pg_advisory_xact_lock(hashtext('inventario-dia:4'))"))
-    user,products,existing,days,menu,omitted=inspect(through)
+    user,products,existing,days,menu,omitted=inspect(through,sync_demo)
     prior={j['fecha']:j for j in existing}
     revised_ids=[prior[d]['id_jornada'] for d in days if d in prior]
     originals={}
@@ -134,6 +142,14 @@ def apply(through):
     other_before={t:digest(rows(f'SELECT * FROM {t} WHERE id_local<>4 ORDER BY 1,2')) for t in other_tables}
     productmap={p['id_producto']:p for p in products}
     created=[]
+    abierta=next((j for j in existing if j['cerrado_en'] is None),None)
+    if sync_demo and abierta and days:
+        if scalar("""SELECT count(*) FROM salon_pedido_actual
+            WHERE id_local=4 AND estado='ENVIADO'"""):
+            raise RuntimeError('Sheraton tiene pedidos enviados sin cobrar.')
+        db.session.execute(text("""UPDATE inventario_jornada
+            SET cerrado_en=abierto_en,reporte='{}'::jsonb WHERE id_jornada=:j"""),
+            {'j':abierta['id_jornada']})
     for day in days:
         marker=f'{TAG}:{day.isoformat()}'
         if scalar("SELECT count(*) FROM actividad_usuario WHERE accion='CARGAR_DEMO' AND descripcion=:tag",tag=marker):
@@ -143,6 +159,7 @@ def apply(through):
         # Forward-only API cannot backdate after future closed dates. An explicit
         # missing-day insert preserves triggers, which use this one open day.
         previous=prior.get(day)
+        anterior=reporte(previous) if previous and previous['cerrado_en'] is None else previous['reporte'] if previous else None
         if previous:
             jid=previous['id_jornada']
             db.session.execute(text('UPDATE inventario_jornada SET cerrado_en=NULL,reporte=NULL WHERE id_jornada=:j'),dict(j=jid))
@@ -215,14 +232,15 @@ def apply(through):
         db.session.execute(text('UPDATE inventario_evento SET registrado_en=:t WHERE id_jornada=:j AND id_evento>:floor'),
           dict(t=closing-timedelta(hours=1),j=jid,floor=event_floor))
         content=reporte(dict(id_jornada=jid,id_local=4))
-        expected={p['id_producto']:Decimal(str(p['final'])) for p in previous['reporte']['inventario']} if previous else current
+        expected={p['id_producto']:Decimal(str(p['final'])) for p in anterior['inventario']} if anterior else current
         if len(content['inventario'])!=141 or any(abs(Decimal(str(p['final']))-expected[p['id_producto']])>Decimal('.0001') for p in content['inventario']):
             raise RuntimeError('Nuevo cierre no concilia stock inicial=final.')
         content.update(prueba=marker,nota='FICTICIO LOCAL: compras iguales a consumo, sin cambio de stock actual.',
-          revision_demo=dict(marca=marker,reporte_anterior_sha256=digest(previous['reporte']) if previous else None))
+          revision_demo=dict(marca=marker,reporte_anterior_sha256=digest(anterior) if anterior else None))
         db.session.execute(text('UPDATE inventario_jornada SET cerrado_en=:t,cerrado_por=:u,reporte=CAST(:r AS jsonb) WHERE id_jornada=:j'),
-          dict(t=previous['cerrado_en'] if previous else closing,u=previous['cerrado_por'] if previous else user,r=json.dumps(content),j=jid))
-        if previous:
+          dict(t=previous['cerrado_en'] if previous and previous['cerrado_en'] else closing,
+               u=previous['cerrado_por'] if previous and previous['cerrado_en'] else user,r=json.dumps(content),j=jid))
+        if previous and previous['cerrado_en'] is not None:
             restored=rows('SELECT * FROM inventario_jornada WHERE id_jornada=:j',j=jid)[0]
             if {k:v for k,v in restored.items() if k!='reporte'}!={k:v for k,v in previous.items() if k!='reporte'}:
                 raise RuntimeError('Metadatos originales del cierre alterados.')
@@ -241,6 +259,9 @@ def apply(through):
           SELECT id_ronda,id_producto,:u,'revisar','{}'::jsonb,to_jsonb(c),:t FROM inventario_conteo c WHERE id_ronda=:r'''),dict(u=user,t=closing,r=rid))
         audit(user,day)
         created.append(dict(fecha=day,jornada=jid,ronda=rid,productos=141,cobros=2,presentaciones=len(lines),insumos_consumidos=len(incoming)))
+    if sync_demo and abierta and days and abierta['fecha'] not in days:
+        db.session.execute(text("""UPDATE inventario_jornada SET cerrado_en=NULL,reporte=NULL
+            WHERE id_jornada=:j"""),{'j':abierta['id_jornada']})
     for table,(key,identities,before) in originals.items():
         after=rows(f'SELECT * FROM {table} WHERE {key}=ANY(:ids) ORDER BY 1,2',ids=identities) if key else []
         if digest(after)!=before:

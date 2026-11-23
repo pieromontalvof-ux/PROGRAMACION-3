@@ -85,6 +85,7 @@ def backup_lock():
 def main_locked():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--verify-restore',action='store_true')
+    parser.add_argument('--no-schema-export',action='store_true')
     options=parser.parse_args()
     load_dotenv(ROOT/'backend/.env')
     url=make_url(os.environ.get('DATABASE_MIGRATION_URL') or os.environ['DATABASE_URL'])
@@ -112,11 +113,12 @@ def main_locked():
         name=f'{database.replace("_","-")}-completo-{generation}.dump.enc'
         temporary=stage/name;write_verified(temporary,encrypted)
         publications.append((temporary,folder/name))
-        schema=run(binaries/'pg_dump.exe',[*args,'--schema-only','--no-owner','--no-acl',database],env)
-        schema_path=ROOT/'database'/('schema.sql' if database=='barbarito' else 'fact_api_schema.sql')
-        schema=schema.decode('utf-8').replace('\r\n','\n').rstrip().encode('utf-8')+b'\n'
-        temporary_schema=stage/(database+'-schema.sql');temporary_schema.write_bytes(schema)
-        publications.append((temporary_schema,schema_path))
+        if not options.no_schema_export:
+            schema=run(binaries/'pg_dump.exe',[*args,'--schema-only','--no-owner','--no-acl',database],env)
+            schema_path=ROOT/'database'/('schema.sql' if database=='barbarito' else 'fact_api_schema.sql')
+            schema=schema.decode('utf-8').replace('\r\n','\n').rstrip().encode('utf-8')+b'\n'
+            temporary_schema=stage/(database+'-schema.sql');temporary_schema.write_bytes(schema)
+            publications.append((temporary_schema,schema_path))
         metadata={'base':database,'archivo':name,'bytes_cifrados':len(encrypted),
             'sha256_cifrado':hashlib.sha256(encrypted).hexdigest(),'lectura_pg_restore':'Correcta',
             'descifrado':'Comparado byte a byte','roles_y_privilegios':False}

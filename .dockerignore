@@ -19,6 +19,7 @@ database/*
 !database/migrations/
 database/migrations/*
 !database/migrations/20261118_clientes.sql
+!database/migrations/20261120_cierres_diarios_salon.sql
 !database/migrations/20261121_fact_api_queue.sql
 !database/migrations/20261121_fact_api_autoscale.sql
 .local
