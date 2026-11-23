@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 import os
+from unittest.mock import MagicMock,patch
 
 
 class DeploymentTests(unittest.TestCase):
@@ -49,6 +50,39 @@ class DeploymentTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.runtime.prepare_settings({'DATABASE_URL':'postgresql://u:p@host/db'},Path(directory))
             self.assertEqual(path.read_text(),'broken')
+
+    def test_shutdown_drains_web_before_workers_and_allows_gunicorn_35_seconds(self):
+        module=self.runtime
+        processes=[MagicMock() for _ in range(4)]
+        for process in processes:process.poll.return_value=None
+        events=[]
+        for index,process in enumerate(processes):
+            process.terminate.side_effect=lambda i=index:events.append(i)
+        handlers={}
+        def register(signum,handler):handlers[signum]=handler
+        def interrupt(_):handlers[module.signal.SIGTERM](None,None)
+        with patch.dict(os.environ,{'FACT_API_BUNDLED':'1','FACT_API_TOKEN':'t'*40}), \
+             patch.object(module,'prepare_settings',return_value={'database':object()}), \
+             patch.object(module,'migrate_application'),patch.object(module,'configure_laravel'), \
+             patch.object(module,'wait_bridge'),patch.object(module.subprocess,'Popen',side_effect=processes), \
+             patch.object(module.signal,'signal',side_effect=register),patch.object(module.time,'sleep',side_effect=interrupt):
+            module.main()
+        self.assertEqual(events[:2],[3,2])
+        processes[3].wait.assert_called_with(timeout=35)
+        processes[2].wait.assert_any_call(timeout=65)
+
+    def test_supervisor_waits_for_previous_leader_during_rollout(self):
+        path=Path(__file__).resolve().parents[1]/'scripts/run_fact_api_supervisor.py'
+        spec=importlib.util.spec_from_file_location('cloud_supervisor_test',path)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        leader=MagicMock();leader.execute.return_value.scalar_one.return_value=123
+        with patch('sys.argv',['supervisor','--once','--wait-for-leader']), \
+             patch.object(module,'create_app'),patch.object(module,'acquire_leadership',side_effect=[None,leader]), \
+             patch.object(module,'release_leadership'),patch.object(module,'queue_stats',return_value={}), \
+             patch.object(module,'Supervisor'),patch.object(module,'db'), \
+             patch.object(module.signal,'signal'),patch.object(module.time,'sleep') as sleep:
+            self.assertEqual(module.main(),0)
+        sleep.assert_called_once_with(2)
 
     @unittest.skipUnless(os.getenv('LOCAL_SCOPE_TEST_DB')=='1','PostgreSQL aislado')
     def test_migrations_are_repeatable_and_preserve_business_tables(self):
