@@ -14,12 +14,25 @@ import sys
 import time
 from urllib.request import Request, urlopen
 
-from dotenv import set_key
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 ROOT=Path(__file__).resolve().parents[2]
 LARAVEL=ROOT/'services/fact_api'
+
+
+def laravel_environment(values):
+    """PHP dotenv does not support Python dotenv's single-quote escaping."""
+    lines=[]
+    for key,value in values.items():
+        value=str(value)
+        if any(ord(character)<32 and character not in '\n\r\t\f\v' for character in value):
+            raise ValueError('Unsupported control character in managed Laravel settings.')
+        escaped=value.replace('\\','\\\\').replace('"','\\"').replace('$','\\$')
+        for original,replacement in (('\n','\\n'),('\r','\\r'),('\t','\\t'),('\f','\\f'),('\v','\\v')):
+            escaped=escaped.replace(original,replacement)
+        lines.append(key+'="'+escaped+'"')
+    return '\n'.join(lines)+'\n'
 
 
 def prepare_settings(env, data_root):
@@ -43,7 +56,11 @@ def prepare_settings(env, data_root):
         descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(descriptor,'w',encoding='utf-8') as stream:
             json.dump(stored,stream);stream.flush();os.fsync(stream.fileno())
-    token=env.get('FACT_API_TOKEN') or stored['token']
+    token=(env.get('FACT_API_TOKEN') or stored['token']).strip()
+    # Railway values sometimes contain pasted .env quotes. Laravel's env()
+    # removes these wrappers; Python must use the same actual Bearer token.
+    while len(token)>=2 and token[0] in ('"',"'") and token[-1]==token[0]:
+        token=token[1:-1]
     if len(token)<32:raise ValueError('FACT_API_TOKEN must have at least 32 characters.')
     env['FACT_API_TOKEN']=token
     env['FACT_API_URL']='http://127.0.0.1:8091'
@@ -90,8 +107,11 @@ def configure_laravel(settings):
     for name in ('app/private','framework/cache/data','framework/sessions','framework/views','logs'):
         (storage/name).mkdir(parents=True,exist_ok=True)
     env_path=LARAVEL/'.env'
-    env_path.touch(mode=0o600,exist_ok=True)
-    for key,value in settings['laravel'].items():set_key(str(env_path),key,value)
+    # This file is generated entirely from managed settings, never edited in place.
+    content=laravel_environment(settings['laravel'])
+    descriptor=os.open(env_path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    with os.fdopen(descriptor,'w',encoding='utf-8',newline='\n') as stream:
+        stream.write(content)
     # PHP-FPM runs as www-data, while the process supervisor and Flask run as root.
     import pwd
     account=pwd.getpwnam('www-data')

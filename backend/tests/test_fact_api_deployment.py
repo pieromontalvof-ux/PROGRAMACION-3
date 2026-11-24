@@ -3,6 +3,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 import os
+import json
+import shutil
+import subprocess
 from unittest.mock import MagicMock,patch
 
 
@@ -13,6 +16,26 @@ class DeploymentTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('cloud_runtime',path)
         cls.runtime=importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.runtime)
+
+    def test_generated_environment_roundtrips_through_real_php_dotenv(self):
+        root=Path(__file__).resolve().parents[2]
+        php=shutil.which('php') or str(root/'.local/php/php.exe')
+        if not Path(php).is_file():self.skipTest('PHP local no disponible')
+        values={'BARBARITO_TOKEN':"'sample-token-with-quotes'",'DB_PASSWORD':'a\'b"c\\d # ${OTHER}\nnext',
+                'APP_NAME':'Prueba con ñ y espacios','ESCAPED':r"\'quoted\'",'EMPTY':''}
+        content=self.runtime.laravel_environment(values)
+        command=[php,'-r',"require 'vendor/autoload.php'; echo json_encode(Dotenv\\Dotenv::parse(stream_get_contents(STDIN))); "]
+        result=subprocess.run(command,cwd=root/'services/fact_api',input=content.encode('utf-8'),capture_output=True)
+        self.assertEqual(result.returncode,0,'PHP dotenv rechazó el archivo generado con valores de prueba.')
+        self.assertEqual(json.loads(result.stdout),values)
+
+    def test_matching_outer_token_quotes_are_configuration_not_bearer_bytes(self):
+        with TemporaryDirectory() as directory:
+            opaque='test-token-'+'a'*40
+            env={'DATABASE_URL':'postgresql://user:password@host/db','FACT_API_TOKEN':"'"+opaque+"'"}
+            settings=self.runtime.prepare_settings(env,Path(directory))
+            self.assertEqual(env['FACT_API_TOKEN'],opaque)
+            self.assertEqual(settings['laravel']['BARBARITO_TOKEN'],opaque)
 
     def test_cloud_environment_is_private_isolated_and_demo_only(self):
         with TemporaryDirectory() as directory:
