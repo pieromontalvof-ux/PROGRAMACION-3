@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict E9hBopBcfpg7LnLdX0IutMqO2oq5551t9ima0MdKD2Nevz3BXgYgbelhuNUYhkV
+\restrict m5b9VmEhu2eKWVW5dJb5DBhwyCpGF2SILYDPACADgbsckL6jehuUROaqlmIs9NT
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -5516,4 +5516,4 @@ ALTER TABLE ONLY public.usuario_pin_salon
 -- PostgreSQL database dump complete
 --
 
-\unrestrict E9hBopBcfpg7LnLdX0IutMqO2oq5551t9ima0MdKD2Nevz3BXgYgbelhuNUYhkV
+\unrestrict m5b9VmEhu2eKWVW5dJb5DBhwyCpGF2SILYDPACADgbsckL6jehuUROaqlmIs9NT

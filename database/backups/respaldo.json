@@ -1,14 +1,14 @@
 {
-  "fecha": "2026-11-24T13:28:32.416166-05:00",
-  "generacion": "2026-11-24-132832-f7ed0154",
+  "fecha": "2026-11-24T14:03:15.470457-05:00",
+  "generacion": "2026-11-24-140315-e5f0963c",
   "formato": "PostgreSQL custom + documentos ZIP, cifrados con Fernet",
   "clave": "Exclusivamente .local/database-backup.key; no publicada",
   "bases": [
     {
       "base": "barbarito",
-      "archivo": "barbarito-completo-2026-11-24-132832-f7ed0154.dump.enc",
-      "bytes_cifrados": 2832204,
-      "sha256_cifrado": "13e3822e02efddd94877afdc9a892df4d5e4132f73d65edb30ae7670f74ac8e3",
+      "archivo": "barbarito-completo-2026-11-24-140315-e5f0963c.dump.enc",
+      "bytes_cifrados": 3534136,
+      "sha256_cifrado": "455c9b278a60299ca77832f1ca5f5129708a82fdb8d71e52a672ca4f2903cf0f",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
@@ -17,9 +17,9 @@
     },
     {
       "base": "fact_api_demo",
-      "archivo": "fact-api-demo-completo-2026-11-24-132832-f7ed0154.dump.enc",
-      "bytes_cifrados": 125324,
-      "sha256_cifrado": "c65a3da5d9c16ba03058caba61bd56cf4c25a065808bb3eabcd90aa929c60e4b",
+      "archivo": "fact-api-demo-completo-2026-11-24-140315-e5f0963c.dump.enc",
+      "bytes_cifrados": 125688,
+      "sha256_cifrado": "15ba1c44d414f1a0256e08532828fa0eaea1c601e7c9d3dcf0146fe757ceff32",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
@@ -28,11 +28,17 @@
     }
   ],
   "documentos": {
-    "archivo": "fact-api-documentos-2026-11-24-132832-f7ed0154.zip.enc",
-    "archivos": 165,
-    "bytes_cifrados": 103554892,
-    "sha256_cifrado": "7c1d6f9faeeb17371bc3b8383c29259915d53ace6d38dde7e343c44731b451c1",
-    "verificacion": "ZIP CRC y descifrado correctos"
+    "archivo": "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part001",
+    "archivos": 169,
+    "bytes_cifrados": 107141260,
+    "sha256_cifrado": "29eeb9476320ae2368c1d1b4ec659f4800d69b263fb3059cbcb45f2f678820df",
+    "verificacion": "ZIP CRC y descifrado correctos",
+    "partes": [
+      "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part001",
+      "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part002",
+      "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part003",
+      "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part004"
+    ]
   },
-  "archivo": "barbarito-completo-2026-11-24-132832-f7ed0154.dump.enc"
+  "archivo": "barbarito-completo-2026-11-24-140315-e5f0963c.dump.enc"
 }

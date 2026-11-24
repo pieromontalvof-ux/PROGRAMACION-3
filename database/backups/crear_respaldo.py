@@ -15,6 +15,7 @@ import subprocess
 import sys
 from uuid import uuid4
 import zipfile
+from partes import dividir
 from contextlib import contextmanager
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -145,8 +146,10 @@ def main_locked():
     encrypted=cipher.encrypt(plain)
     assert cipher.decrypt(encrypted)==plain
     name=f'fact-api-documentos-{generation}.zip.enc'
-    temporary=stage/name;write_verified(temporary,encrypted);publications.append((temporary,folder/name))
-    manifest['documentos']={'archivo':name,'archivos':count,'bytes_cifrados':len(encrypted),
+    parts=dividir(encrypted,name)
+    for part_name,part_data in parts:
+        temporary=stage/part_name;write_verified(temporary,part_data);publications.append((temporary,folder/part_name))
+    manifest['documentos']={'archivo':parts[0][0],'partes':[part_name for part_name,_ in parts], 'archivos':count,'bytes_cifrados':len(encrypted),
         'sha256_cifrado':hashlib.sha256(encrypted).hexdigest(),'verificacion':'ZIP CRC y descifrado correctos'}
     manifest['archivo']=manifest['bases'][0]['archivo']
     pointer=stage/'respaldo.json'

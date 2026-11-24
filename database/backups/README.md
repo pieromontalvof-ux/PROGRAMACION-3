@@ -6,6 +6,12 @@ además de un ZIP cifrado de sus PDF/XML/CDR privados existentes. Se conservan l
 generaciones anteriores. No incluye roles, privilegios, archivos `.env`, certificados
 ni la clave de cifrado. No se actualiza automáticamente con ventas posteriores.
 
+Los archivos de documentos grandes se dividen, después de cifrarlos, en partes
+de hasta 32 MiB para poder publicarlos en GitHub. El manifiesto enumera todas las
+partes. Conserva todas en la misma carpeta y pasa la primera (`.part001`) a
+`descifrar.py`: las reúne y comprueba la autenticidad antes de escribir el ZIP.
+Los respaldos anteriores de un solo archivo siguen siendo compatibles.
+
 La clave está exclusivamente en `.local/database-backup.key`. Guarda otra copia
 en un lugar privado: sin ella no se pueden recuperar estos respaldos. No publicar
 la clave ni los archivos descifrados.
