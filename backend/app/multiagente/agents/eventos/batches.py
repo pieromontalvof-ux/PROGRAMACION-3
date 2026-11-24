@@ -5,18 +5,20 @@ from contextlib import nullcontext
 from flask import current_app, has_app_context
 from app.multiagente.api.provider import AssistantError
 from . import research
+from app.multiagente.api import quotas
 
 MAX_CANDIDATES=30
 
 
 def run(payloads,search):
     app=current_app._get_current_object() if has_app_context() else None
+    owner=quotas.principal()
     def task(payload):
-        with app.app_context() if app else nullcontext():
+        with app.app_context() if app else nullcontext(), quotas.accounting_scope(owner):
             try:
                 return search(payload),None
             except AssistantError as error:
-                return None,str(error)
+                return None,error
     with ThreadPoolExecutor(max_workers=3) as pool:
         results=list(pool.map(task,payloads))
     candidates,outputs,limitations=[],[],[]
@@ -44,6 +46,9 @@ def run(payloads,search):
     if not structured:
         if first_response is not None:
             return first_response
+        budget_error=next((error for _,error in results if isinstance(error,AssistantError) and error.status==429),None)
+        if budget_error is not None:
+            raise budget_error
         raise AssistantError('No se pudieron completar las búsquedas de eventos. Conserva los resultados anteriores e intenta nuevamente.',502)
     unique={}
     for row in candidates:

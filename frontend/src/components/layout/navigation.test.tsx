@@ -38,6 +38,7 @@ describe('navigation usability', () => {
     expect(screen.getByRole('link', { name: 'Mapa de agentes' }).getAttribute('href')).toBe('/home/asistente-ia/agentes')
     expect(screen.getByRole('link', { name: 'Archivos de agentes' }).getAttribute('href')).toBe('/home/asistente-ia/archivos')
     expect(screen.getByRole('link', { name: 'Permisos de agentes' }).getAttribute('href')).toBe('/home/asistente-ia/permisos')
+    expect(screen.getByRole('link', { name: 'Límites y consumo' }).getAttribute('href')).toBe('/home/asistente-ia/limites')
   })
 
   it('keeps agent administration links hidden from operational profiles', () => {
@@ -47,6 +48,7 @@ describe('navigation usability', () => {
     expect(screen.queryByRole('link', { name: 'Mapa de agentes' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Archivos de agentes' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Permisos de agentes' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Límites y consumo' })).toBeNull()
   })
 
   it('offers a compact role selector and shows the current page', () => {

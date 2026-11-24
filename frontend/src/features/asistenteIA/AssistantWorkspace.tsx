@@ -77,7 +77,7 @@ function ScopedAssistantWorkspace() {
   ] : catalogFormsEnabled ? ['Crear categoría de productos', 'Crear proveedor', 'Crear producto'] : ['Consultar productos de la carta', 'Revisar una receta', 'Preparar un cambio de precio']),
   ]
   const modified = review !== original || Boolean(instruction.trim()) || formDirty || purchaseDirty
-  const sendDisabled = locked || purchaseDirty || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000
+  const sendDisabled = estado?.consultas_habilitadas === false || locked || purchaseDirty || Boolean(resumeDraft) || (!estado?.ia_disponible && !catalogFormsEnabled) || (!instruction.trim() && review === original) || instruction.length > 8000
   useEffect(() => { if (original) latest.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [original])
   useEffect(() => {
     alive.current = true
@@ -246,7 +246,7 @@ function ScopedAssistantWorkspace() {
       <p>Las consultas y acciones respetan tu perfil y el local activo. Los cambios requieren tu confirmación.</p>
     </details>
     {(!estado || !estado.ia_disponible || !estado.ejecucion_disponible) && <p className="assistant-status" role="status"><Sparkles size={18} />
-      {!estado ? 'Verificando acceso…' : !estado.ia_disponible ? catalogFormsEnabled ? 'Los formularios de catálogo están disponibles. Las consultas libres y el dictado requieren configurar la conexión con OpenAI.' : 'Falta configurar la conexión con OpenAI.' : 'Puedes consultar y dictar. La confirmación de cambios requiere completar la configuración.'}</p>}
+      {!estado ? 'Verificando acceso…' : estado.consultas_habilitadas === false ? 'El asistente está desactivado por el administrador.' : !estado.ia_disponible ? catalogFormsEnabled ? 'Los formularios de catálogo están disponibles. Las consultas libres y el dictado requieren configurar la conexión con OpenAI.' : 'Falta configurar la conexión con OpenAI.' : 'Puedes consultar y dictar. La confirmación de cambios requiere completar la configuración.'}</p>}
     <div className="assistant-conversation">
       {!result && !review && !history.length && <section className="assistant-welcome">
         <div className="assistant-avatar assistant-avatar-large"><Bot size={32} /></div>

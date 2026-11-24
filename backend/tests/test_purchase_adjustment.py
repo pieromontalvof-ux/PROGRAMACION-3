@@ -20,6 +20,8 @@ PLAN = {'recurso':'ordenes_compra','accion':'crear','advertencia':'Revisar',
 
 class PurchaseAdjustmentTests(unittest.TestCase):
     def setUp(self):
+        availability = patch('app.multiagente.api.quotas.ensure_enabled')
+        availability.start(); self.addCleanup(availability.stop)
         app=Flask(__name__)
         app.config.update(SQLALCHEMY_DATABASE_URI='sqlite://',JWT_SECRET_KEY='adjustment-test-secret-key-at-least-32')
         db.init_app(app)

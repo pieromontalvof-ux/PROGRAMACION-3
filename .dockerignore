@@ -22,6 +22,7 @@ database/migrations/*
 !database/migrations/20261120_cierres_diarios_salon.sql
 !database/migrations/20261121_fact_api_queue.sql
 !database/migrations/20261121_fact_api_autoscale.sql
+!database/migrations/20261124_ai_quotas.sql
 .local
 **/vendor
 services/fact_api/storage/app/private/**

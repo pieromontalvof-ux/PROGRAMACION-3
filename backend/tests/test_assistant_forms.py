@@ -15,6 +15,8 @@ OPTIONS = {'categorias': [CATEGORY], 'proveedores': [SUPPLIER], 'unidades_medida
 
 class AssistantFormTests(unittest.TestCase):
     def setUp(self):
+        availability = patch('app.multiagente.api.quotas.ensure_enabled')
+        availability.start(); self.addCleanup(availability.stop)
         self.app = create_app()
         self.app.config.update(TESTING=True, JWT_SECRET_KEY='assistant-forms-secret-at-least-32-characters')
         routes._attempts.clear()

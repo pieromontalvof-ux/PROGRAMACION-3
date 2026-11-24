@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict P4TbVCQwmiWW9z4u4UJjBmioKsAFqScHICqJzZYwHFewSdMEa7lu3xHny2Ai5wh
+\restrict MfH9CflVWTrTVgXdYMeQA9plvtQJMPwsnFPAX93XY5VNRg5y9rkI8Dfj2VyFCnV
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -1050,19 +1050,19 @@ ALTER TABLE ONLY public.cache
 
 
 --
--- Name: clients clients_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.clients
-    ADD CONSTRAINT clients_pkey PRIMARY KEY (id);
-
-
---
 -- Name: clients clients_company_document_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.clients
     ADD CONSTRAINT clients_company_document_unique UNIQUE (company_id, tipo_documento, numero_documento);
+
+
+--
+-- Name: clients clients_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.clients
+    ADD CONSTRAINT clients_pkey PRIMARY KEY (id);
 
 
 --
@@ -1618,4 +1618,4 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict P4TbVCQwmiWW9z4u4UJjBmioKsAFqScHICqJzZYwHFewSdMEa7lu3xHny2Ai5wh
+\unrestrict MfH9CflVWTrTVgXdYMeQA9plvtQJMPwsnFPAX93XY5VNRg5y9rkI8Dfj2VyFCnV

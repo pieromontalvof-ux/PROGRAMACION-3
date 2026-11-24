@@ -53,6 +53,7 @@ export function Topbar({ abrirMenu }: TopbarProps) {
   const pageName = pathname === '/home/tiendas' ? 'Tiendas' : pathname === '/home/asistente-ia' ? 'Conversación'
     : pathname === '/home/asistente-ia/agentes' ? 'Mapa de agentes' : pathname === '/home/asistente-ia/archivos' ? 'Archivos de agentes'
     : pathname === '/home/asistente-ia/permisos' ? 'Permisos de agentes'
+    : pathname === '/home/asistente-ia/limites' ? 'Límites y consumo'
     : pathname === '/home/opciones-salon' ? 'Opciones de salón' : activeOption?.nombre ?? 'Inicio'
   const parentName = pathname.startsWith('/home/asistente-ia') ? 'Asistente IA' : pathname === '/home/tiendas' || pathname === '/home/usuarios' ? 'Organización'
     : menu.find(option => option.id_opcion_menu === activeOption?.id_padre)?.nombre

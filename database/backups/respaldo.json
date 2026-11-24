@@ -1,25 +1,25 @@
 {
-  "fecha": "2026-11-21T07:40:29.621283-05:00",
-  "generacion": "2026-11-21-074029-5c592675",
+  "fecha": "2026-11-24T13:28:32.416166-05:00",
+  "generacion": "2026-11-24-132832-f7ed0154",
   "formato": "PostgreSQL custom + documentos ZIP, cifrados con Fernet",
   "clave": "Exclusivamente .local/database-backup.key; no publicada",
   "bases": [
     {
       "base": "barbarito",
-      "archivo": "barbarito-completo-2026-11-21-074029-5c592675.dump.enc",
-      "bytes_cifrados": 2724344,
-      "sha256_cifrado": "a781acf337c6d0bf4e65de0ca48508e0979ec99f6eb32c1447770bc051d43763",
+      "archivo": "barbarito-completo-2026-11-24-132832-f7ed0154.dump.enc",
+      "bytes_cifrados": 2832204,
+      "sha256_cifrado": "13e3822e02efddd94877afdc9a892df4d5e4132f73d65edb30ae7670f74ac8e3",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
       "restauracion": "Correcta en base temporal independiente",
-      "tablas_restauradas": 81
+      "tablas_restauradas": 85
     },
     {
       "base": "fact_api_demo",
-      "archivo": "fact-api-demo-completo-2026-11-21-074029-5c592675.dump.enc",
-      "bytes_cifrados": 113976,
-      "sha256_cifrado": "c7dfe7420eaf2a7af55874d74189b88e31380248f361faacfc6715cf2060c6ae",
+      "archivo": "fact-api-demo-completo-2026-11-24-132832-f7ed0154.dump.enc",
+      "bytes_cifrados": 125324,
+      "sha256_cifrado": "c65a3da5d9c16ba03058caba61bd56cf4c25a065808bb3eabcd90aa929c60e4b",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
@@ -28,11 +28,11 @@
     }
   ],
   "documentos": {
-    "archivo": "fact-api-documentos-2026-11-21-074029-5c592675.zip.enc",
-    "archivos": 39,
-    "bytes_cifrados": 1045348,
-    "sha256_cifrado": "a406f83ed085dc756eaaba1f06c8a544c986ebd1ac07123845a0e7567c2d512b",
+    "archivo": "fact-api-documentos-2026-11-24-132832-f7ed0154.zip.enc",
+    "archivos": 165,
+    "bytes_cifrados": 103554892,
+    "sha256_cifrado": "7c1d6f9faeeb17371bc3b8383c29259915d53ace6d38dde7e343c44731b451c1",
     "verificacion": "ZIP CRC y descifrado correctos"
   },
-  "archivo": "barbarito-completo-2026-11-21-074029-5c592675.dump.enc"
+  "archivo": "barbarito-completo-2026-11-24-132832-f7ed0154.dump.enc"
 }

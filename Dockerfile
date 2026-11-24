@@ -22,7 +22,7 @@ COPY backend/wsgi.py backend/gunicorn.conf.py ./
 COPY services/fact_api /app/services/fact_api
 RUN cd /app/services/fact_api && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts
 COPY deploy /app/deploy
-COPY database/migrations/20261118_clientes.sql database/migrations/20261120_cierres_diarios_salon.sql database/migrations/20261121_fact_api_queue.sql database/migrations/20261121_fact_api_autoscale.sql /app/database/migrations/
+COPY database/migrations/20261118_clientes.sql database/migrations/20261120_cierres_diarios_salon.sql database/migrations/20261121_fact_api_queue.sql database/migrations/20261121_fact_api_autoscale.sql database/migrations/20261124_ai_quotas.sql /app/database/migrations/
 COPY --from=frontend /build/dist /app/frontend/dist
 RUN mkdir -p /data
 EXPOSE 8080

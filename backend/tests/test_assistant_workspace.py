@@ -62,6 +62,8 @@ class AssistantWorkspaceTests(unittest.TestCase):
             self.assertIsNone(response.json['borrador'])
 
     def setUp(self):
+        availability = patch('app.multiagente.api.quotas.ensure_enabled')
+        availability.start(); self.addCleanup(availability.stop)
         self.app = Flask(__name__)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

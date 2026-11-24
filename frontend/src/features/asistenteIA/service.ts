@@ -1,4 +1,5 @@
 export interface EstadoAsistente {
+  consultas_habilitadas?: boolean
   estado: 'disponible' | 'sin_configurar'
   ia_disponible: boolean
   dictado_disponible: boolean

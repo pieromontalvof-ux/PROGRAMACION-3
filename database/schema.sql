@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict fP1JyiEDEpbiFEM9im8kuASerl46MOCdHOuw1IflMlWVMVfMi0QHnQxbM4dZJbi
+\restrict E9hBopBcfpg7LnLdX0IutMqO2oq5551t9ima0MdKD2Nevz3BXgYgbelhuNUYhkV
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -856,6 +856,101 @@ ALTER TABLE public.grupo_salsa_opcion ALTER COLUMN id_grupo_salsa_opcion ADD GEN
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: ia_consumo; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ia_consumo (
+    id uuid NOT NULL,
+    id_usuario integer NOT NULL,
+    id_perfil integer NOT NULL,
+    id_local integer NOT NULL,
+    dia date NOT NULL,
+    mes date NOT NULL,
+    modelo character varying(150) NOT NULL,
+    reservado bigint NOT NULL,
+    entrada bigint,
+    salida bigint,
+    total bigint NOT NULL,
+    estado character varying(16) NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL,
+    terminado_en timestamp with time zone,
+    CONSTRAINT ia_consumo_estado_check CHECK (((estado)::text = ANY ((ARRAY['RESERVADO'::character varying, 'CONFIRMADO'::character varying, 'INCIERTO'::character varying, 'LIBERADO'::character varying])::text[]))),
+    CONSTRAINT ia_consumo_reservado_check CHECK ((reservado >= 0)),
+    CONSTRAINT ia_consumo_total_check CHECK ((total >= 0))
+);
+
+
+--
+-- Name: ia_cuota_auditoria; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ia_cuota_auditoria (
+    id bigint NOT NULL,
+    administrador integer NOT NULL,
+    id_usuario integer,
+    anterior jsonb NOT NULL,
+    nuevo jsonb NOT NULL,
+    creado_en timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ia_cuota_auditoria_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ia_cuota_auditoria_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: ia_cuota_auditoria_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ia_cuota_auditoria_id_seq OWNED BY public.ia_cuota_auditoria.id;
+
+
+--
+-- Name: ia_cuota_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ia_cuota_config (
+    id integer NOT NULL,
+    activo boolean DEFAULT false NOT NULL,
+    diario bigint,
+    mensual bigint,
+    global_diario bigint,
+    global_mensual bigint,
+    actualizado_por integer,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    consultas_habilitadas boolean DEFAULT true NOT NULL,
+    CONSTRAINT ia_cuota_config_diario_check CHECK ((diario >= 0)),
+    CONSTRAINT ia_cuota_config_global_diario_check CHECK ((global_diario >= 0)),
+    CONSTRAINT ia_cuota_config_global_mensual_check CHECK ((global_mensual >= 0)),
+    CONSTRAINT ia_cuota_config_id_check CHECK ((id = 1)),
+    CONSTRAINT ia_cuota_config_mensual_check CHECK ((mensual >= 0))
+);
+
+
+--
+-- Name: ia_cuota_usuario; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ia_cuota_usuario (
+    id_usuario integer NOT NULL,
+    diario bigint,
+    mensual bigint,
+    actualizado_por integer NOT NULL,
+    actualizado_en timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ia_cuota_usuario_diario_check CHECK ((diario >= 0)),
+    CONSTRAINT ia_cuota_usuario_mensual_check CHECK ((mensual >= 0))
 );
 
 
@@ -2395,6 +2490,13 @@ ALTER TABLE ONLY public.fact_api_intento ALTER COLUMN id_intento SET DEFAULT nex
 
 
 --
+-- Name: ia_cuota_auditoria id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_cuota_auditoria ALTER COLUMN id SET DEFAULT nextval('public.ia_cuota_auditoria_id_seq'::regclass);
+
+
+--
 -- Name: local id_local; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2638,6 +2740,38 @@ ALTER TABLE ONLY public.grupo_salsa_opcion
 
 ALTER TABLE ONLY public.grupo_salsa
     ADD CONSTRAINT grupo_salsa_pkey PRIMARY KEY (id_grupo_salsa);
+
+
+--
+-- Name: ia_consumo ia_consumo_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_consumo
+    ADD CONSTRAINT ia_consumo_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ia_cuota_auditoria ia_cuota_auditoria_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_cuota_auditoria
+    ADD CONSTRAINT ia_cuota_auditoria_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ia_cuota_config ia_cuota_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_cuota_config
+    ADD CONSTRAINT ia_cuota_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ia_cuota_usuario ia_cuota_usuario_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_cuota_usuario
+    ADD CONSTRAINT ia_cuota_usuario_pkey PRIMARY KEY (id_usuario);
 
 
 --
@@ -3630,6 +3764,13 @@ CREATE INDEX ix_grupo_salsa_opcion_grupo ON public.grupo_salsa_opcion USING btre
 --
 
 CREATE INDEX ix_grupo_salsa_opcion_producto ON public.grupo_salsa_opcion USING btree (id_producto);
+
+
+--
+-- Name: ix_ia_consumo_mes_usuario; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ia_consumo_mes_usuario ON public.ia_consumo USING btree (mes, id_usuario, dia);
 
 
 --
@@ -4844,6 +4985,22 @@ ALTER TABLE ONLY public.grupo_salsa_opcion
 
 
 --
+-- Name: ia_consumo ia_consumo_id_usuario_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_consumo
+    ADD CONSTRAINT ia_consumo_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuario(id_usuario);
+
+
+--
+-- Name: ia_cuota_usuario ia_cuota_usuario_id_usuario_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ia_cuota_usuario
+    ADD CONSTRAINT ia_cuota_usuario_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.usuario(id_usuario);
+
+
+--
 -- Name: inventario_asignacion_puesto inventario_asignacion_puesto_actualizado_por_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5359,4 +5516,4 @@ ALTER TABLE ONLY public.usuario_pin_salon
 -- PostgreSQL database dump complete
 --
 
-\unrestrict fP1JyiEDEpbiFEM9im8kuASerl46MOCdHOuw1IflMlWVMVfMi0QHnQxbM4dZJbi
+\unrestrict E9hBopBcfpg7LnLdX0IutMqO2oq5551t9ima0MdKD2Nevz3BXgYgbelhuNUYhkV

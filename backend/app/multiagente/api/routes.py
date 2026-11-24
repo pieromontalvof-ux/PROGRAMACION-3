@@ -39,6 +39,9 @@ def secured(function):
         try:
             session, code = obtener_sesion_actual(int(get_jwt_identity()), get_jwt())
             if code != 200: return jsonify(session), code
+            if function.__name__ in ('preparar', 'continuar', 'preparar_formulario', 'formulario', 'realizar', 'ajustar_compra', 'transcribir') and 'sqlalchemy' in current_app.extensions:
+                from . import quotas
+                quotas.ensure_enabled()
             if function.__name__ not in ('preparar', 'continuar', 'preparar_formulario'):
                 return function(session, *args, **kwargs)
             data = request.get_json(silent=True) or {}
@@ -140,11 +143,14 @@ def workspace_put(session):
 def estado(sesion):
     configured = provider.configured()
     storage = drafts.ready()
+    from . import quotas
+    enabled = quotas.is_enabled() if 'sqlalchemy' in current_app.extensions else True
     modulos = [dict(nombre=m['nombre'], ruta=m['url_menu'])
                for m in sesion['menu'] if m['id_opcion_menu'] in MODULOS
                and m['permisos']['consultar'] and m['url_menu']]
-    return jsonify(estado='disponible' if configured else 'sin_configurar', ia_disponible=configured,
-                   dictado_disponible=configured, ejecucion_disponible=storage,
+    return jsonify(estado='disponible' if configured else 'sin_configurar', ia_disponible=configured and enabled,
+                   consultas_habilitadas=enabled,
+                   dictado_disponible=configured and enabled, ejecucion_disponible=storage and enabled,
                    capacidades={r:[a for a in ('consultar','crear','editar') if tools.allowed(sesion,r,a)]
                                 for r in tools.RESOURCES if tools.allowed(sesion,r)},
                    modulos_consultables=modulos)
@@ -163,6 +169,52 @@ def agentes(sesion):
 def require_agent_admin():
     if int(get_jwt().get('id_perfil', 0)) != 1:
         raise AssistantError('Solo el Administrador del sistema puede administrar agentes.', 403)
+
+
+@asistente_ia_bp.get('/limites')
+@secured
+def limites_consumo(session):
+    require_agent_admin()
+    from . import quotas
+    response = jsonify(quotas.report())
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@asistente_ia_bp.put('/limites')
+@secured
+def guardar_limites(session):
+    require_agent_admin()
+    from . import quotas
+    quotas.save(body(), int(get_jwt_identity()))
+    return jsonify(mensaje='Configuración guardada.')
+
+
+@asistente_ia_bp.put('/limites/estado')
+@secured
+def cambiar_estado_asistente(session):
+    require_agent_admin()
+    from . import quotas
+    quotas.set_enabled(body().get('habilitado'), int(get_jwt_identity()))
+    return jsonify(mensaje='Estado del asistente actualizado.')
+
+
+@asistente_ia_bp.put('/limites/usuarios/<int:user_id>')
+@secured
+def guardar_limites_usuario(session, user_id):
+    require_agent_admin()
+    from . import quotas
+    quotas.save(body(), int(get_jwt_identity()), user_id)
+    return jsonify(mensaje='Límites del usuario guardados.')
+
+
+@asistente_ia_bp.delete('/limites/usuarios/<int:user_id>')
+@secured
+def restaurar_limites_usuario(session, user_id):
+    require_agent_admin()
+    from . import quotas
+    quotas.inherit(user_id, int(get_jwt_identity()))
+    return jsonify(mensaje='El usuario vuelve a usar la cuota predeterminada.')
 
 
 @asistente_ia_bp.get('/biblioteca')

@@ -3,6 +3,7 @@ const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(module
 const SalesJournalPage = lazy(() => import('./features/salonPayments/SalesJournalPage').then(module => ({ default: module.SalesJournalPage })))
 const AssistantPage = lazy(() => import('./features/asistenteIA/AssistantPage').then(module => ({ default: module.AssistantPage })))
 const AgentAdminPage = lazy(() => import('./features/asistenteIA/AgentAdminPage').then(module => ({ default: module.AgentAdminPage })))
+const TokenLimitsPage = lazy(() => import('./features/asistenteIA/TokenLimitsPage').then(module => ({ default: module.TokenLimitsPage })))
 const SalonLayoutPage = lazy(() => import('./pages/SalonLayoutPage').then(module => ({ default: module.SalonLayoutPage })))
 const SalonOrderPage = lazy(() => import('./pages/SalonOrderPage').then(module => ({ default: module.SalonOrderPage })))
 const SalonPaymentPage = lazy(() => import('./features/salonPayments/SalonPaymentPage').then(module => ({ default: module.SalonPaymentPage })))
@@ -87,6 +88,7 @@ function App() {
         <Route path="asistente-ia/agentes" element={<AgentAdminPage mode="mapa" />} />
         <Route path="asistente-ia/archivos" element={<AgentAdminPage mode="archivos" />} />
         <Route path="asistente-ia/permisos" element={<AgentAdminPage mode="permisos" />} />
+        <Route path="asistente-ia/limites" element={<TokenLimitsPage />} />
         <Route path="tiendas" element={<StoresPage />} />
         <Route path="opciones-salon" element={<SalonLayoutPage />} />
         <Route path="limites-stock" element={<StockLimitsPage />} />

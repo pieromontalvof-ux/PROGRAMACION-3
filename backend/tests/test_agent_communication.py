@@ -21,6 +21,8 @@ def handoff(agent='recetas', resource='presentaciones'):
 
 class AgentCommunicationTests(unittest.TestCase):
     def setUp(self):
+        availability = patch('app.multiagente.api.quotas.ensure_enabled')
+        availability.start(); self.addCleanup(availability.stop)
         self.app = create_app()
         self.app.config['SECRET_KEY'] = 'communication-test-secret'
         self.context = self.app.test_request_context()

@@ -71,7 +71,7 @@ def migrate_application(url):
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('barbarito-cloud-fact-setup'))"))
             connection.exec_driver_sql('SET LOCAL search_path TO public')
             connection.exec_driver_sql('CREATE SCHEMA IF NOT EXISTS fact_api')
-            for name in ('20261118_clientes.sql','20261121_fact_api_queue.sql','20261121_fact_api_autoscale.sql'):
+            for name in ('20261118_clientes.sql','20261121_fact_api_queue.sql','20261121_fact_api_autoscale.sql','20261124_ai_quotas.sql'):
                 migration=(ROOT/'database/migrations'/name).read_text(encoding='utf-8')
                 connection.exec_driver_sql(migration.replace('BEGIN;','').replace('COMMIT;',''))
             connection.execute(text('''INSERT INTO fact_api_config

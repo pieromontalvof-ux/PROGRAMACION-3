@@ -22,6 +22,8 @@ def concurrent_instruction_update(root, barrier, results):
 
 class AgentLibraryTests(unittest.TestCase):
     def setUp(self):
+        availability = patch('app.multiagente.api.quotas.ensure_enabled')
+        availability.start(); self.addCleanup(availability.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.app = Flask(__name__)

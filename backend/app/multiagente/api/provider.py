@@ -58,10 +58,19 @@ def call(path, body, content_type='application/json', timeout=60):
         raise AssistantError('Falta configurar OPENAI_API_KEY en el backend y reiniciarlo.', 503)
     req = Request('https://api.openai.com/v1/' + path, data=body, headers={
         'Authorization': 'Bearer ' + key, 'Content-Type': content_type})
+    from . import quotas
+    if path != 'responses':
+        quotas.ensure_enabled()
+    reservation = quotas.reserve(body) if path == 'responses' else None
     try:
-        with _open_connection(req, timeout=timeout) as response:
-            return json.load(response)
+        # A lost response may already be billed: never transparently resend it.
+        connection = urlopen(req, timeout=timeout) if reservation else _open_connection(req, timeout=timeout)
+        with connection as response:
+            data = json.load(response)
+        quotas.settle(reservation, data)
+        return data
     except HTTPError as error:
+        quotas.settle(reservation, released=400 <= error.code < 500)
         messages = {401: 'La clave de OpenAI no es válida. Revisa la configuración del backend.',
                     429: 'OpenAI alcanzó el límite de solicitudes o saldo. Revisa Billing y vuelve a intentar.',
                     403: 'Tu proyecto de OpenAI no tiene acceso al modelo configurado.',
@@ -69,14 +78,18 @@ def call(path, body, content_type='application/json', timeout=60):
         raise AssistantError(messages.get(error.code, 'OpenAI no pudo procesar la solicitud. Intenta nuevamente.'),
                              502, retryable=error.code in (500, 502, 503, 504)) from None
     except TimeoutError:
+        quotas.settle(reservation)
         raise AssistantError('OpenAI superó el tiempo de espera.', 504, retryable=True) from None
     except URLError as error:
+        quotas.settle(reservation)
         if isinstance(error.reason, TimeoutError):
             raise AssistantError('OpenAI superó el tiempo de espera.', 504, retryable=True) from None
         raise AssistantError('No se pudo conectar con OpenAI.', 502, retryable=True) from None
     except OSError:
+        quotas.settle(reservation)
         raise AssistantError('Se interrumpió la conexión con OpenAI.', 502, retryable=True) from None
     except ValueError:
+        quotas.settle(reservation)
         raise AssistantError('OpenAI devolvió una respuesta no válida.', 502) from None
 
 

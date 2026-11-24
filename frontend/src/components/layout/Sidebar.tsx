@@ -74,6 +74,7 @@ export function Sidebar({
         { id: -102, nombre: 'Mapa de agentes', ruta: '/home/asistente-ia/agentes' },
         { id: -103, nombre: 'Archivos de agentes', ruta: '/home/asistente-ia/archivos' },
         { id: -104, nombre: 'Permisos de agentes', ruta: '/home/asistente-ia/permisos' },
+        { id: -105, nombre: 'Límites y consumo', ruta: '/home/asistente-ia/limites' },
       ] : []),
     ].map(child => ({ id_opcion_menu: child.id, codigo: String(child.id), nombre: child.nombre,
       url_menu: child.ruta, descripcion: '', id_padre: -100, icono: null, tipo_opcion: 'ENLACE',

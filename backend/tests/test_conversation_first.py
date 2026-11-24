@@ -49,6 +49,8 @@ class ConversationFirstTests(unittest.TestCase):
             ('app.multiagente.api.library.for_skills',{'return_value':''}),
             ('app.multiagente.agents.runtime.db.session.rollback',{}),
             ('app.multiagente.agents.activity.finish',{'return_value':None}),
+            # Routing fixtures must never fall through to a live model request.
+            ('app.multiagente.agents.orchestrator.presentation_advice.semantic_parse',{'return_value':None}),
         ]:
             p=patch(target,**kwargs);p.start();self.addCleanup(p.stop)
 
