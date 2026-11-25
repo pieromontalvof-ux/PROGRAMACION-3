@@ -1,14 +1,14 @@
 {
-  "fecha": "2026-11-24T14:03:15.470457-05:00",
-  "generacion": "2026-11-24-140315-e5f0963c",
+  "fecha": "2026-11-25T10:24:18.073541-05:00",
+  "generacion": "2026-11-25-102418-2e8f5582",
   "formato": "PostgreSQL custom + documentos ZIP, cifrados con Fernet",
   "clave": "Exclusivamente .local/database-backup.key; no publicada",
   "bases": [
     {
       "base": "barbarito",
-      "archivo": "barbarito-completo-2026-11-24-140315-e5f0963c.dump.enc",
-      "bytes_cifrados": 3534136,
-      "sha256_cifrado": "455c9b278a60299ca77832f1ca5f5129708a82fdb8d71e52a672ca4f2903cf0f",
+      "archivo": "barbarito-completo-2026-11-25-102418-2e8f5582.dump.enc",
+      "bytes_cifrados": 3650444,
+      "sha256_cifrado": "f9cdd4e8826215a0e8dd1588017f4946385abf7a179480f6bd8794e55d14f9bd",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
@@ -17,9 +17,9 @@
     },
     {
       "base": "fact_api_demo",
-      "archivo": "fact-api-demo-completo-2026-11-24-140315-e5f0963c.dump.enc",
+      "archivo": "fact-api-demo-completo-2026-11-25-102418-2e8f5582.dump.enc",
       "bytes_cifrados": 125688,
-      "sha256_cifrado": "15ba1c44d414f1a0256e08532828fa0eaea1c601e7c9d3dcf0146fe757ceff32",
+      "sha256_cifrado": "0d00579d73776e06acb76d0876c78f9aec343dd1c053e94c51fbb011abcca82a",
       "lectura_pg_restore": "Correcta",
       "descifrado": "Comparado byte a byte",
       "roles_y_privilegios": false,
@@ -38,7 +38,8 @@
       "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part002",
       "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part003",
       "fact-api-documentos-2026-11-24-140315-e5f0963c.zip.enc.part004"
-    ]
+    ],
+    "verificacion_reutilizacion": "169 documentos comparados por nombre y SHA-256; sin cambios respecto de la generacion del 24."
   },
-  "archivo": "barbarito-completo-2026-11-24-140315-e5f0963c.dump.enc"
+  "archivo": "barbarito-completo-2026-11-25-102418-2e8f5582.dump.enc"
 }

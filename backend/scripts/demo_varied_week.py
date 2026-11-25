@@ -30,6 +30,17 @@ DAYS = [START + timedelta(days=n) for n in range(7)]
 Q = Decimal('.001')
 
 
+def configure_period(start, end):
+    """Select one to seven historical days; retain the original week's audit tag."""
+    global START, END, DAYS, TAG
+    if end < start or (end-start).days > 6:
+        raise ValueError('Selecciona entre uno y siete días consecutivos.')
+    START, END = start, end
+    DAYS = [start + timedelta(days=n) for n in range((end-start).days+1)]
+    TAG = ('DEMO-SEMANA-VARIADA-20261117-23-V1' if (start,end)==(date(2026,11,17),date(2026,11,23))
+           else f'DEMO-OPERACION-VARIADA-{start:%Y%m%d}-{end:%Y%m%d}-V1')
+
+
 def schedule(local, day, menu):
     seed = int(day.strftime('%Y%m%d')) * 31 + local
     rng = random.Random(seed)
@@ -46,16 +57,18 @@ def schedule(local, day, menu):
 
 
 def deliveries(usage, opening, buffers):
-    result = {day: {} for day in (START, START + timedelta(days=3), END)}
+    groups = [DAYS[n:n+3] for n in range(0,len(DAYS),3)]
+    result = {days[0]: {} for days in groups}
     for pid, buffer in buffers.items():
         extra = max(Decimal(0), -opening.get(pid, Decimal(0)))
         first_part = (buffer / 2).quantize(Q)
         second_part = (buffer / 3).quantize(Q)
-        portions = [first_part, second_part, buffer - first_part - second_part]
-        for index, (first, last) in enumerate(((0, 2), (3, 5), (6, 6))):
-            quantity = sum((usage.get(DAYS[n], {}).get(pid, Decimal(0)) for n in range(first, last + 1)), Decimal(0))
+        portions = ([buffer] if len(groups)==1 else [first_part,buffer-first_part] if len(groups)==2
+                    else [first_part, second_part, buffer - first_part - second_part])
+        for index, days in enumerate(groups):
+            quantity = sum((usage.get(day, {}).get(pid, Decimal(0)) for day in days), Decimal(0))
             quantity += portions[index] + (extra if index == 0 else 0)
-            result[DAYS[first]][pid] = quantity.quantize(Q, rounding=ROUND_CEILING)
+            result[days[0]][pid] = quantity.quantize(Q, rounding=ROUND_CEILING)
     return result
 
 
@@ -174,8 +187,8 @@ def sale(local, name, user, day, journal, ticket):
 
 def verify(local):
     journals = rows('SELECT fecha,reporte,cerrado_en FROM inventario_jornada WHERE id_local=:l AND fecha BETWEEN :s AND :e ORDER BY fecha', l=local, s=START, e=END)
-    if len(journals) != 7 or any(j['cerrado_en'] is None for j in journals):
-        raise RuntimeError('La semana no tiene siete jornadas cerradas.')
+    if len(journals) != len(DAYS) or any(j['cerrado_en'] is None for j in journals):
+        raise RuntimeError('El período no tiene todas sus jornadas cerradas.')
     previous = None
     for journal in journals:
         inventory = journal['reporte']['inventario']
@@ -345,7 +358,7 @@ def apply(local_ids=None, close_stale=False, backup=False):
         verify(identity)
         db.session.execute(text('''INSERT INTO actividad_usuario(id_usuario,modulo,accion,id_registro_afectado,descripcion,id_perfil_utilizado,id_local)
           VALUES(:u,'INVENTARIO_OPERATIVO','CARGAR_DEMO',:l,:tag,1,:l)'''), {'u': user, 'l': identity, 'tag': TAG})
-        results.append({**local, 'dias_cerrados': 7, 'productos': len(running), 'ventas_manuales_preservadas': len(manual_before), 'jornadas_previas_regularizadas': len(stale)})
+        results.append({**local, 'dias_cerrados': len(DAYS), 'productos': len(running), 'ventas_manuales_preservadas': len(manual_before), 'jornadas_previas_regularizadas': len(stale)})
     if scalar('SELECT count(*) FROM fact_api_operacion') != jobs_before: raise RuntimeError('El histórico creó trabajos fiscales; se revierte.')
     return {'desde': START.isoformat(), 'hasta': END.isoformat(), 'locales': results, 'recetas_validas': len(menu), 'recetas_omitidas': omitted, 'resguardo':snapshot}
 
@@ -356,7 +369,10 @@ def main():
     parser.add_argument('--validate', action='store_true')
     parser.add_argument('--close-stale', action='store_true')
     parser.add_argument('--local', type=int, action='append')
+    parser.add_argument('--start', type=date.fromisoformat, default=START)
+    parser.add_argument('--end', type=date.fromisoformat, default=END)
     args = parser.parse_args()
+    configure_period(args.start,args.end)
     with create_app().app_context():
         try:
             if args.apply or args.validate:

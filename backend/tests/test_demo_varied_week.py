@@ -4,6 +4,16 @@ from decimal import Decimal
 
 
 class VariedWeekRulesTests(unittest.TestCase):
+    def test_single_day_funds_stock_and_uses_distinct_idempotency_tag(self):
+        from unittest.mock import patch
+        from scripts import demo_varied_week as loader
+        with patch.multiple(loader, START=loader.START, END=loader.END, DAYS=loader.DAYS, TAG=loader.TAG):
+            loader.configure_period(date(2026,11,24),date(2026,11,24))
+            self.assertEqual(loader.DAYS,[date(2026,11,24)])
+            self.assertNotEqual(loader.TAG,'DEMO-SEMANA-VARIADA-20261117-23-V1')
+            delivery=loader.deliveries({date(2026,11,24):{1:Decimal('15')}},{1:Decimal('-2')},{1:Decimal('10')})
+            self.assertEqual(delivery,{date(2026,11,24):{1:Decimal('27.000')}})
+
     def test_schedule_varies_tickets_payments_and_respects_recipe_line_values(self):
         from scripts.demo_varied_week import schedule
         menu = [{'id_presentacion': n, 'nombre': 'Producto ' + str(n), 'precio': Decimal('12.50')} for n in range(1, 31)]
