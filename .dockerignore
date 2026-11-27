@@ -18,11 +18,7 @@ database
 database/*
 !database/migrations/
 database/migrations/*
-!database/migrations/20261118_clientes.sql
-!database/migrations/20261120_cierres_diarios_salon.sql
-!database/migrations/20261121_fact_api_queue.sql
-!database/migrations/20261121_fact_api_autoscale.sql
-!database/migrations/20261124_ai_quotas.sql
+!database/migrations/*.sql
 .local
 **/vendor
 services/fact_api/storage/app/private/**
@@ -33,3 +29,4 @@ services/fact_api/storage/framework/sessions/**
 services/fact_api/storage/framework/cache/**
 services/fact_api/bootstrap/cache/*.php
 database/backups
+otro poryecto
