@@ -81,6 +81,7 @@ export function IntegrationsPage() {
   const [filtro, setFiltro] = useState<keyof typeof estados>('PENDIENTE')
   const [tipo, setTipo] = useState<Tipo>('clientes')
   const [url, setUrl] = useState('')
+  const [claveExterna, setClaveExterna] = useState('')
   const [tipoConsulta, setTipoConsulta] = useState<Tipo | ''>('')
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [mostrarClave, setMostrarClave] = useState(false)
@@ -226,10 +227,11 @@ export function IntegrationsPage() {
       const respuesta = await fetch(`${base}/consultar`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(anterior ? { anterior } : { url: url.trim(), tipo: tipoConsulta || undefined }),
+        body: JSON.stringify(anterior ? { anterior } : { url: url.trim(), clave: claveExterna.trim(), tipo: tipoConsulta || undefined }),
       })
       const datos = await respuesta.json()
       if (!respuesta.ok) throw new Error(datos.mensaje ?? 'No se pudo consultar la API externa.')
+      if (!anterior) setClaveExterna('')
       setAviso('Solicitud puesta en cola. Puedes seguir trabajando y revisar su estado en la bandeja.')
       setVersion(value => value + 1)
     } catch (fallo) {
@@ -303,7 +305,12 @@ export function IntegrationsPage() {
       <form className="integration-help" hidden={seccion !== 'consulta'} autoComplete="off" onSubmit={e => { e.preventDefault(); void solicitar() }}>
         <h2>Consultar otra API</h2>
         <label>URL del otro programa<input type="text" inputMode="url" autoComplete="off" required value={url}
-          onChange={e => setUrl(e.target.value)} placeholder="https://sistema.example/api/directorio" /></label>
+          onChange={e => { setUrl(e.target.value); setClaveExterna('') }} placeholder="https://sistema.example/api/directorio" /></label>
+        <label>Clave de la API externa (opcional)
+          <input type="password" autoComplete="new-password" value={claveExterna} maxLength={2048}
+            onChange={e => setClaveExterna(e.target.value)} />
+          <small>Pega la clave que te dio el otro programa, sin escribir Bearer.</small>
+        </label>
         <details><summary>Opciones de la consulta</summary>
           <label>Si la API devuelve una lista sin identificar <select value={tipoConsulta} onChange={e => setTipoConsulta(e.target.value as Tipo | '')}>
             <option value="">Detectar automáticamente</option><option value="clientes">La lista contiene clientes</option><option value="proveedores">La lista contiene proveedores</option>

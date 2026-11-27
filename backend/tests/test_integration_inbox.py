@@ -146,6 +146,20 @@ class InboxTest(unittest.TestCase):
                                                headers=admin, json={'accion': 'agregar'})
                     self.assertEqual(revision.json['estado'], 'AGREGADO')
                     self.assertEqual(consultar_trabajo(identidad)['registros'], {'AGREGADO': 1, 'PENDIENTE': 1})
+                app.config['SECRET_KEY'] = 'secreto-ficticio-para-la-cola-de-integraciones'
+                with patch('app.modules.integraciones.routes.exigir_admin', return_value=1), patch(
+                    'app.modules.integraciones.routes.local_actual', return_value=5,
+                ), patch('app.modules.integraciones.routes.external.consultar', return_value=resultado) as privada:
+                    clave = 'clave-externa-de-prueba'
+                    url_privada = 'https://catalogo.example/directorio'
+                    identidad = pedir({'url': url_privada, 'clave': clave})
+                    trabajo = db.session.get(ConsultaIntegracion, identidad)
+                    self.assertTrue(trabajo.clave_cifrada)
+                    self.assertNotIn(clave, trabajo.clave_cifrada)
+                    self.assertNotIn('clave_cifrada', consultar_trabajo(identidad))
+                    self.assertTrue(procesar_consulta())
+                    privada.assert_called_once_with(url_privada, clave)
+                    self.assertIsNone(db.session.get(ConsultaIntegracion, identidad).clave_cifrada)
                 alumno = {'idCliente': 'ACAD-01', 'version': 'a' * 64, 'nombres': 'Ana',
                           'apellidoPaterno': 'Prueba', 'tipoDocumento': 'DNI',
                           'numeroDocumento': '12345678', 'correo': 'ana@example.org', 'celular': '999999999'}

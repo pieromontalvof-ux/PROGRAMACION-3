@@ -1,12 +1,14 @@
+from base64 import urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from hmac import compare_digest
+from hmac import compare_digest, digest
 from hashlib import sha256
 import json
 from secrets import token_urlsafe
 from urllib.parse import parse_qsl, urlencode, urlsplit
 from uuid import UUID, uuid4
 
+from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy import UniqueConstraint, func, select
@@ -78,6 +80,7 @@ class ConsultaIntegracion(db.Model):
     mensaje = db.Column(db.Text)
     errores = db.Column(db.JSON)
     cursor = db.Column(db.Text)
+    clave_cifrada = db.Column(db.Text)
 
 
 def exigir_admin():
@@ -367,6 +370,16 @@ def historial_consultas(_usuario):
     } for fila in filas[:25]], hay_mas=len(filas) > 25)
 
 
+def cifrado_consultas():
+    secreto = current_app.secret_key
+    if not secreto:
+        raise ServiceUnavailable('El servidor no esta configurado para proteger la clave externa.')
+    if isinstance(secreto, str):
+        secreto = secreto.encode('utf8')
+    llave = digest(secreto, b'barbarito:integraciones:clave-externa:v1', 'sha256')
+    return Fernet(urlsafe_b64encode(llave))
+
+
 @bp.post('/consultar')
 @admin
 def consultar_externa(usuario):
@@ -375,6 +388,10 @@ def consultar_externa(usuario):
     if not isinstance(entrada, dict):
         raise BadRequest('Indica la URL del recurso del otro programa.')
     url, tipo = entrada.get('url'), entrada.get('tipo')
+    clave = entrada.get('clave', '')
+    if not isinstance(clave, str) or len(clave) > 2048 or any(not 33 <= ord(c) <= 126 for c in clave):
+        raise BadRequest('Indica una clave valida, sin espacios ni el prefijo Bearer.')
+    clave_cifrada = None
     anterior_id = entrada.get('anterior')
     if anterior_id is not None:
         if not isinstance(anterior_id, str) or len(anterior_id) != 36:
@@ -387,13 +404,16 @@ def consultar_externa(usuario):
                       if nombre != 'cursor']
         url = partes._replace(query=urlencode([*parametros, ('cursor', anterior.cursor)])).geturl()
         tipo = anterior.tipo
+        clave_cifrada = anterior.clave_cifrada
     if not isinstance(url, str) or not 1 <= len(url) <= 2048:
         raise BadRequest('Ingresa una URL valida.')
     if tipo not in (None, 'clientes', 'proveedores'):
         raise BadRequest('El tipo de la lista es invalido.')
     destino, host = external.url_https(url)
+    if clave:
+        clave_cifrada = cifrado_consultas().encrypt((host + '\0' + clave).encode('ascii')).decode('ascii')
     trabajo = ConsultaIntegracion(id=str(uuid4()), host=host, usuario=usuario, url=destino.geturl(),
-        tipo=tipo, id_local=local_actual(), estado='EN_COLA', codigo=0, ejecutar_en=func.now())
+        tipo=tipo, clave_cifrada=clave_cifrada, id_local=local_actual(), estado='EN_COLA', codigo=0, ejecutar_en=func.now())
     db.session.add(trabajo)
     db.session.commit()
     return jsonify(id=trabajo.id, estado=trabajo.estado), 202
@@ -403,7 +423,16 @@ def ejecutar_consulta(trabajo):
     url, tipo, usuario, local = trabajo.url, trabajo.tipo, trabajo.usuario, trabajo.id_local
     destino = urlsplit(url)
     es_acadesys = destino.hostname == 'acadesys-api.onrender.com' and acadesys.corresponde(destino.path)
-    token = current_app.config.get('ACADESYS_API_TOKEN', '') if es_acadesys else ''
+    if trabajo.clave_cifrada:
+        try:
+            secreto = cifrado_consultas().decrypt(trabajo.clave_cifrada.encode('ascii'), ttl=86400).decode('ascii')
+            host, _, token = secreto.partition('\0')
+            if host != external.url_https(url)[1] or not token:
+                raise InvalidToken
+        except InvalidToken:
+            raise BadRequest('La clave externa de esta consulta caduco o no es valida. Envia una nueva consulta.') from None
+    else:
+        token = current_app.config.get('ACADESYS_API_TOKEN', '') if es_acadesys else ''
     if es_acadesys and not token:
         raise ServiceUnavailable('Falta configurar la clave de lectura de AcadeSys en el servidor.')
     host, ruta, resultado = external.consultar(url, token)
@@ -476,11 +505,13 @@ def procesar_consulta():
             trabajo.estado = 'FALLIDA'
             trabajo.ejecutar_en = None
             trabajo.url = None
+            trabajo.clave_cifrada = None
     else:
         trabajo.estado, trabajo.codigo, trabajo.mensaje = 'RESPONDIO', 200, None
         trabajo.ejecutar_en = None
         if not trabajo.cursor:
             trabajo.url = None
+            trabajo.clave_cifrada = None
     db.session.commit()
     return True
 
