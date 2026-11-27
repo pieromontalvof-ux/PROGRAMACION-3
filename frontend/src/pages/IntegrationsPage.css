@@ -1,0 +1,52 @@
+.integration-inbox { display: grid; gap: 1rem; width: 100%; min-width: 0; }
+.integration-inbox > header, .integration-heading, .integration-actions, .integration-inbox nav {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+}
+.integration-inbox h1, .integration-inbox h2, .integration-inbox p { margin: 0; }
+.integration-inbox h2 { font-size: 1.15rem; overflow-wrap: anywhere; }
+.integration-inbox select, .integration-inbox button { min-height: 2.5rem; padding: .45rem .8rem; }
+.integration-inbox label > select { margin-inline-start: .5rem; }
+.integration-items { display: grid; gap: .8rem; }
+.integration-items article, .integration-help { display: grid; gap: .6rem; border: 1px solid #c7cfd6; padding: 1rem; border-radius: .7rem; min-width: 0; }
+.integration-inbox pre { overflow: auto; padding: .75rem; border: 1px solid #c7cfd6; max-height: 17rem; }
+.integration-inbox code { overflow-wrap: anywhere; }
+.integration-inbox summary { cursor: pointer; font-weight: 600; }
+.integration-inbox fieldset label { display: inline-flex; align-items: center; gap: .35rem; margin-right: 1rem; }
+.integration-inbox [role="alert"] { font-weight: 600; }
+.integration-actions { justify-content: flex-start; }
+.integration-inbox nav { align-items: center; justify-content: flex-start; }
+.integration-inbox dl { display: grid; gap: .35rem; }
+.integration-inbox dl > div { display: grid; grid-template-columns: minmax(8rem, 12rem) 1fr; gap: .6rem; }
+.integration-inbox dt { text-transform: capitalize; font-weight: 600; }
+.integration-inbox dd { margin: 0; overflow-wrap: anywhere; }
+.integration-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
+.integration-panels > .integration-help { align-content: start; background: #fff; }
+.integration-panels label, .integration-keys label { display: grid; gap: .25rem; min-width: 0; font-weight: 600; }
+.integration-panels label > select { margin: 0; }
+.integration-panels input, .integration-panels select, .integration-keys input { min-height: 2.5rem; padding: .45rem .7rem; border: 1px solid #a9bcb4; border-radius: .35rem; width: 100%; box-sizing: border-box; }
+.integration-copy { display: flex; align-items: end; gap: .5rem; flex-wrap: wrap; }
+.integration-copy label { flex: 1 1 12rem; }
+.integration-toolbar, .integration-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+.integration-toolbar { justify-content: space-between; }
+.integration-inbox .integration-primary, .integration-tabs button[aria-pressed="true"] { color: #fff; background: #08664e; border: 1px solid #08664e; border-radius: .35rem; }
+.integration-inbox .integration-primary:disabled { color: #40554d; background: #e4ede7; border-color: #c7d6cf; }
+.integration-items { max-height: 34rem; overflow-y: auto; padding-right: .35rem; }
+.integration-items article { background: #fff; }
+.integration-select-item { display: inline-flex; align-items: center; gap: .35rem; }
+.integration-error-list { max-height: 12rem; overflow-y: auto; }
+.integration-inbox [role="alert"] { white-space: pre-line; }
+.integration-keys { background: #fff; }
+.integration-table-scroll { overflow-x: auto; }
+.integration-keys table { width: 100%; border-collapse: collapse; text-align: left; }
+.integration-keys thead { background: #edf5f1; }
+.integration-keys th, .integration-keys td { padding: .55rem .8rem; border-bottom: 1px solid #dce4df; }
+.integration-keys td code { white-space: nowrap; }
+.integration-key-status { display: inline-block; padding: .2rem .6rem; border-radius: 1rem; background: #e2f3e9; color: #07553b; }
+.integration-key-status[data-revoked="true"] { background: #eeecea; color: #544a43; }
+
+.integration-identifier { display: flex; align-items: center; gap: .6rem; }
+.integration-inbox [hidden] { display: none; }
+.integration-panels { grid-template-columns: 1fr; }
+.integration-create-key { max-width: 34rem; }
+.integration-create-key label { display: grid; gap: .3rem; }
+.integration-create-key select { margin: 0; }

@@ -30,6 +30,8 @@ class BarbaritoController extends Controller {
             'serie'=>'required|string|max:10','fecha'=>'required|date_format:Y-m-d',
             'moneda'=>'required|in:PEN,USD','tercero.nombre'=>'required|string|max:200',
             'tercero.documento'=>'present|string|max:30','tercero.tipo'=>'required|in:0,1,4,6,7',
+            'tercero.direccion'=>'nullable|string|max:255','tercero.email'=>'nullable|string|max:200',
+            'tercero.telefono'=>'nullable|string|max:40',
             'lineas'=>'required|array|min:1|max:500','lineas.*.nombre'=>'required|string|max:200',
             'lineas.*.codigo'=>'required|string|max:30','lineas.*.cantidad'=>'required|numeric|gt:0',
             'lineas.*.unidad'=>'required|string|max:20','lineas.*.afectacion'=>'required|string|max:30',
@@ -66,11 +68,15 @@ class BarbaritoController extends Controller {
             $branch=Branch::firstOrCreate(['company_id'=>$company->id,'codigo'=>(string)$payload['id_local']],[
                 'nombre'=>'Local '.$payload['id_local'],'direccion'=>'Entorno de pruebas','ubigeo'=>'150101',
                 'distrito'=>'Lima','provincia'=>'Lima','departamento'=>'Lima']);
+            $contacto=array_filter(array_intersect_key($payload['tercero'],array_flip(['direccion','email','telefono'])),
+                fn($valor)=>is_string($valor) && trim($valor)!=='');
             $client=Client::firstOrCreate(['company_id'=>$company->id,'tipo_documento'=>$payload['tercero']['tipo'],
                 'numero_documento'=>$payload['tercero']['documento'] ?: 'SIN_DOCUMENTO'],
-                ['razon_social'=>$payload['tercero']['nombre'],'direccion'=>$payload['tercero']['direccion']??'']);
+                ['razon_social'=>$payload['tercero']['nombre'],...$contacto]);
             DB::table('clients')->where('id',$client->id)->update([
-                $payload['origen']==='COMPRA'?'barbarito_supplier':'barbarito_customer'=>true]);
+                $payload['origen']==='COMPRA'?'barbarito_supplier':'barbarito_customer'=>true,
+                ...$contacto,
+            ]);
             $native=null;$nativeType=null;
             if($payload['origen']==='VENTA') {
                 $nativeType=$payload['tipo']==='01'?'invoice':'boleta';
@@ -90,7 +96,7 @@ class BarbaritoController extends Controller {
                 abort_if(max($latest,$counter->correlativo_actual)>=99999999,422);
                 $data=['company_id'=>$company->id,'branch_id'=>$branch->id,'serie'=>$payload['serie'],
                     'client'=>['tipo_documento'=>$client->tipo_documento,'numero_documento'=>$client->numero_documento,
-                        'razon_social'=>$payload['tercero']['nombre'],'direccion'=>$payload['tercero']['direccion']??''],
+                        'razon_social'=>$payload['tercero']['nombre'],...$contacto],
                     'fecha_emision'=>$payload['fecha'],'moneda'=>$payload['moneda'],'detalles'=>$details,
                     'usuario_creacion'=>'barbarito'];
                 $service=app(DocumentService::class);

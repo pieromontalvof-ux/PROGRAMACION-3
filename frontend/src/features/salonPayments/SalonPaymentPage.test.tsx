@@ -37,6 +37,28 @@ describe('customer directory in salon payment',()=>{
     await waitFor(()=>expect((screen.getByLabelText('Nombres y apellidos') as HTMLInputElement).value).toBe('Cliente de prueba'))
     expect(api.mock.calls.some(([path])=>path==='clientes')).toBe(false)
   })
+  it('saves optional customer contact details separately from payment',async()=>{
+    api.mockImplementation(async(path)=>{
+      if(path==='clientes/configuracion')return {directorio_disponible:true}
+      if(path==='mesas/7/cuenta')return account
+      if(path==='clientes'||path===`clientes/${uuid}/contacto`)return {id_cliente:uuid}
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button',{name:'Boleta electrónica'}))
+    fireEvent.change(screen.getByLabelText('DNI'),{target:{value:'12345678'}})
+    fireEvent.change(screen.getByLabelText('Nombres y apellidos'),{target:{value:'Ana Prueba'}})
+    fireEvent.change(screen.getByLabelText('Correo (opcional)'),{target:{value:'ana@example.org'}})
+    const guardar=screen.getByRole('button',{name:'Guardar cliente'})
+    await waitFor(()=>expect((guardar as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(guardar)
+    const contacto=await screen.findByRole('button',{name:'Guardar contacto'})
+    expect(api).toHaveBeenCalledWith('clientes',expect.objectContaining({email:'ana@example.org',telefono:null,direccion:null}))
+    fireEvent.change(screen.getByLabelText('Celular o teléfono (opcional)'),{target:{value:'999888777'}})
+    fireEvent.click(contacto)
+    await waitFor(()=>expect(api).toHaveBeenCalledWith(`clientes/${uuid}/contacto`,
+      {email:'ana@example.org',telefono:'999888777',direccion:null},'PATCH'))
+  })
   it('selects a stored customer by document and sends the internal UUID with the payment',async()=>{
     api.mockImplementation(async(path)=>{
       if(path==='clientes/configuracion')return {configurado:true,directorio_disponible:true}
@@ -52,13 +74,14 @@ describe('customer directory in salon payment',()=>{
     await waitFor(()=>expect((search as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(search)
     fireEvent.click(await screen.findByRole('button',{name:/Ana Perez.*10123456789/}))
+    fireEvent.change(screen.getByLabelText('Dirección (opcional)'),{target:{value:'Calle de prueba'}})
     fireEvent.click(screen.getByRole('button',{name:'Efectivo'}))
     fireEvent.click(screen.getByRole('button',{name:'Confirmar cobro'}))
     await waitFor(()=>expect(api.mock.calls.some(([path])=>path==='mesas/7/emitir')).toBe(true))
     expect(await screen.findByRole('dialog',{name:'Comprobante de la venta'})).toBeTruthy()
     expect(screen.getByRole('heading',{name:'Cobrar mesa 7'})).toBeTruthy()
     const body=api.mock.calls.find(([path])=>path==='mesas/7/emitir')?.[1] as Record<string,unknown>
-    expect(body).toMatchObject({id_cliente:uuid,documento:'10123456789',cliente:'Ana Perez',tipo:'FACTURA',metodo:'EFECTIVO'})
+    expect(body).toMatchObject({id_cliente:uuid,documento:'10123456789',cliente:'Ana Perez',tipo:'FACTURA',metodo:'EFECTIVO',contacto:{direccion:'Calle de prueba'}})
     expect(body.id_cliente).not.toBe(body.documento)
     expect(Object.keys(body)).not.toContain('10123456789')
   })

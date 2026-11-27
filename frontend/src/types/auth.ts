@@ -25,6 +25,7 @@ export interface OpcionMenu {
 }
 
 export interface PerfilDisponible {
+  puede_administrar_integraciones?: boolean
   id_perfil: number
   nombre: string
   descripcion: string

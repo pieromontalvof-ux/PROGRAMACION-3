@@ -4,7 +4,7 @@ from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from werkzeug.exceptions import BadRequest, Forbidden, NotFound
 from app.core.local_scope import local_actual
 from app.modules.salon.salon import validar_sesion_salon
-from .service import buscar, crear, directorio_disponible, obtener, perfil_autorizado
+from .service import actualizar_contacto, buscar, crear, directorio_disponible, obtener, perfil_autorizado
 
 clientes_bp=Blueprint('clientes',__name__)
 salon_clientes_bp=Blueprint('salon_clientes',__name__)
@@ -69,8 +69,14 @@ def consultar_documento(local):
 def detalle(local,id_cliente):
     cliente=obtener(local,id_cliente)
     if cliente is None:
-        raise NotFound('Cliente no encontrado en este local')
+        raise NotFound('Cliente no encontrado en el directorio')
     return jsonify(cliente)
+
+
+@clientes_bp.patch('/<uuid:id_cliente>/contacto')
+@acceso
+def guardar_contacto(local, id_cliente):
+    return jsonify(actualizar_contacto(local, id_cliente, request.get_json(silent=True)))
 
 
 salon_clientes_bp.add_url_rule('/clientes/configuracion',view_func=configuracion,methods=['GET'])
@@ -78,6 +84,7 @@ salon_clientes_bp.add_url_rule('/clientes',view_func=listar,methods=['GET'])
 salon_clientes_bp.add_url_rule('/clientes',view_func=registrar,methods=['POST'])
 salon_clientes_bp.add_url_rule('/clientes/consultar-documento',view_func=consultar_documento,methods=['POST'])
 salon_clientes_bp.add_url_rule('/clientes/<uuid:id_cliente>',view_func=detalle,methods=['GET'])
+salon_clientes_bp.add_url_rule('/clientes/<uuid:id_cliente>/contacto',view_func=guardar_contacto,methods=['PATCH'])
 
 
 from sqlalchemy.exc import ProgrammingError

@@ -21,6 +21,21 @@ class FactApiContractTests(unittest.TestCase):
         self.assertEqual(data['igv'], '19.07')
         self.assertEqual(data['serie'], 'F002')
 
+    def test_sale_sends_optional_contact_from_the_receipt_snapshot(self):
+        from app.modules.facturacion.contract import venta
+        base = {'id_cobro': 7, 'id_local': 2, 'tipo': 'FACTURA', 'documento': '20123456789',
+                'cliente': 'Empresa', 'total': 10, 'creado_en': '2026-11-21',
+                'comprobante': {'lineas': [{'nombre': 'A', 'cantidad': 1, 'precio': 10}],
+                                'contacto': {'email': 'caja@example.org', 'telefono': '999777666',
+                                             'direccion': 'Calle de prueba'}}}
+        config = {'tasa_igv': 18, 'serie_factura': 'F002', 'empresa': {}}
+        tercero = venta(base, config)['tercero']
+        self.assertEqual(tercero['direccion'], 'Calle de prueba')
+        self.assertEqual(tercero['email'], 'caja@example.org')
+        self.assertEqual(tercero['telefono'], '999777666')
+        base['comprobante'].pop('contacto')
+        self.assertNotIn('email', venta(base, config)['tercero'])
+
     def test_mismatched_totals_are_not_silently_recomputed(self):
         from app.modules.facturacion.contract import venta
         with self.assertRaises(ValueError):

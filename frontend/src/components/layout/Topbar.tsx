@@ -50,7 +50,7 @@ export function Topbar({ abrirMenu }: TopbarProps) {
     .trim()
   const activeOption = [...menu].filter(option => option.url_menu && (pathname === option.url_menu || pathname.startsWith(option.url_menu + '/')))
     .sort((a, b) => (b.url_menu?.length ?? 0) - (a.url_menu?.length ?? 0))[0]
-  const pageName = pathname === '/home/tiendas' ? 'Tiendas' : pathname === '/home/asistente-ia' ? 'Conversación'
+  const pageName = pathname.startsWith('/home/integraciones/') || pathname === '/home/integraciones' ? 'Integraciones API' : pathname === '/home/tiendas' ? 'Tiendas' : pathname === '/home/asistente-ia' ? 'Conversación'
     : pathname === '/home/asistente-ia/agentes' ? 'Mapa de agentes' : pathname === '/home/asistente-ia/archivos' ? 'Archivos de agentes'
     : pathname === '/home/asistente-ia/permisos' ? 'Permisos de agentes'
     : pathname === '/home/asistente-ia/limites' ? 'Límites y consumo'

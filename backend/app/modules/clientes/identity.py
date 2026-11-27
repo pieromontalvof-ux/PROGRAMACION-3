@@ -34,7 +34,11 @@ def consultar(tipo, numero):
         name=data.get('nombre_completo') if tipo=='DNI' else data.get('nombre_o_razon_social')
         if str(data.get('numero'))!=numero or not isinstance(name,str) or not name.strip() or len(name)>200:
             raise ValueError()
-        return {'tipo_documento':tipo,'numero_documento':numero,'nombre':name.strip(),'fuente':'Factiliza'}
+        resultado = {'tipo_documento':tipo,'numero_documento':numero,'nombre':name.strip(),'fuente':'Factiliza'}
+        direccion = data.get('direccion_completa') or data.get('direccion')
+        if isinstance(direccion, str) and direccion.strip() not in ('', '-'):
+            resultado['direccion'] = direccion.strip()[:300]
+        return resultado
     except HTTPError as error:
         if error.code==429:raise TooManyRequests('Se alcanzo el limite de consultas del proveedor. Puedes completar los datos manualmente.') from None
         if error.code==404:raise NotFound('El proveedor no encontro ese documento.') from None

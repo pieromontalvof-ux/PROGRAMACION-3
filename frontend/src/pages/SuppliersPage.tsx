@@ -659,10 +659,16 @@ export function SuppliersPage() {
           {([
             ['razon_social', 'Razón social', 200], ['nombre_comercial', 'Nombre comercial', 200],
             ['direccion', 'Dirección', 250], ['contacto', 'Persona de contacto', 200],
-            ['telefono', 'Teléfono', 40], ['email', 'Correo', 200],
           ] as const).map(([campo, titulo, limite]) => <label key={campo}>{titulo}<input
-            type={campo === 'email' ? 'email' : 'text'} maxLength={limite} value={comercial[campo] ?? ''}
+            maxLength={limite} value={comercial[campo] ?? ''}
             onChange={e => setComercial(a => ({ ...a, [campo]: e.target.value }))} /></label>)}
+        </div>
+
+        <div className="supplier-commercial-fields">
+          <label>Correo (opcional)<input type="email" maxLength={200} value={comercial.email ?? ''}
+            onChange={e => setComercial(actual => ({ ...actual, email: e.target.value }))} /></label>
+          <label>Celular o teléfono (opcional)<input type="tel" maxLength={40} value={comercial.telefono ?? ''}
+            onChange={e => setComercial(actual => ({ ...actual, telefono: e.target.value }))} /></label>
         </div>
 
         <fieldset className="suppliers-category-picker">

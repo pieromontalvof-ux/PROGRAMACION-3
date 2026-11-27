@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage').then(module => ({ default: module.IntegrationsPage })))
 const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(module => ({ default: module.DiagnosticsPage })))
 const SalesJournalPage = lazy(() => import('./features/salonPayments/SalesJournalPage').then(module => ({ default: module.SalesJournalPage })))
 const AssistantPage = lazy(() => import('./features/asistenteIA/AssistantPage').then(module => ({ default: module.AssistantPage })))
@@ -175,6 +176,8 @@ function App() {
 
         <Route
           path="actividades" element={<ActivityPage />} />
+        <Route path="integraciones" element={<Navigate to="/home/integraciones/claves" replace />} />
+        <Route path="integraciones/:seccion" element={<IntegrationsPage />} />
         <Route path="diagnostico" element={<DiagnosticsPage />} />
         <Route
           path="usuarios"

@@ -10,6 +10,14 @@ def money(value):
     return value.quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
 
 
+def contacto_tercero(datos):
+    return {
+        campo: valor.strip()[:limite]
+        for campo, limite in (('direccion', 255), ('email', 200), ('telefono', 40))
+        if isinstance(valor := datos.get(campo), str) and valor.strip()
+    }
+
+
 def venta(row, config):
     moment=row['creado_en']
     if not isinstance(moment,datetime):
@@ -35,7 +43,8 @@ def venta(row, config):
             'serie': config['serie_factura'] if row['tipo']=='FACTURA' else config['serie_boleta'],
             'fecha': fecha.isoformat(), 'moneda': 'PEN',
             'tercero': {'nombre': row.get('cliente') or 'Consumidor final',
-                        'documento': row.get('documento') or '', 'tipo': '6' if row['tipo']=='FACTURA' else '1'},
+                        'documento': row.get('documento') or '', 'tipo': '6' if row['tipo']=='FACTURA' else '1',
+                        **contacto_tercero(row['comprobante'].get('contacto') or {})},
             'lineas': lines, 'subtotal': str(sum(Decimal(l['subtotal']) for l in lines)),
             'igv': str(sum(Decimal(l['igv']) for l in lines)), 'total': str(total)}
 
@@ -51,7 +60,8 @@ def compra(row, config):
             'numero_proveedor': row['numero_factura'], 'orden_compra': row['codigo_orden'],
             'fecha': invoice['fecha_emision'], 'moneda': invoice['moneda'],
             'tercero': {'nombre': provider.get('razon_social') or provider['nombre'],
-                        'documento': provider.get('ruc',''), 'direccion': provider.get('direccion',''), 'tipo':'6'},
+                        'documento': provider.get('ruc',''), 'direccion': provider.get('direccion',''), 'tipo':'6',
+                        **contacto_tercero(provider)},
             'lineas': [{'codigo': str(l['id_producto']), 'nombre': l.get('nombre') or str(l['id_producto']),
                         'cantidad': str(l['cantidad_facturada']), 'unidad': l.get('unidad','C62'),
                         'subtotal': str(money(l['subtotal'])), 'igv': str(money(l['igv'])),

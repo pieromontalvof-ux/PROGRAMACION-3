@@ -14,6 +14,7 @@ import {
   House,
   PackageCheck,
   PackageOpen,
+  Plug,
   ShoppingCart,
   Users,
   Utensils,
@@ -34,6 +35,7 @@ interface SidebarItemProps {
 
 const iconosPorOpcion: Record<number, LucideIcon> = {
   [-100]: Bot,
+  [-110]: Plug,
   1: House,
   2: Users,
   3: Boxes,

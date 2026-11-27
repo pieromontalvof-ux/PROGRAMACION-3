@@ -294,7 +294,7 @@ def _validar_categorias_proveedor(ids, anteriores=()):
     return True
 
 
-def crear_proveedor_catalogo(id_usuario, datos):
+def crear_proveedor_catalogo(id_usuario, datos, *, commit=True):
     try:
         comercial = validar_comercial(datos.get('datos_comerciales', {})) if 'datos_comerciales' in datos else None
     except ValueError as error:
@@ -312,7 +312,8 @@ def crear_proveedor_catalogo(id_usuario, datos):
         return {"mensaje": "El proveedor ya está registrado"}, 409
     try:
         if not _validar_categorias_proveedor(ids):
-            db.session.rollback()
+            if commit:
+                db.session.rollback()
             return {"mensaje": "Selecciona categorías activas válidas"}, 409
         identidad = repo.crear_proveedor(nombre)
         if comercial is not None:
@@ -324,11 +325,14 @@ def crear_proveedor_catalogo(id_usuario, datos):
                          "proveedor", identidad, None, nuevo)
         registrar_actividad(id_usuario, "CATALOGOS", "CREAR",
                             identidad, f"Creó el proveedor {nombre}")
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return {"mensaje": "Proveedor creado correctamente",
                 "id_proveedor": identidad}, 201
     except Exception:
-        db.session.rollback(); raise
+        if commit:
+            db.session.rollback()
+        raise
 
 
 def editar_proveedor_catalogo(id_proveedor, id_usuario, datos):

@@ -50,6 +50,8 @@ def create_app():
     from app.modules.facturacion.routes import fact_api_bp, salon_fact_api_bp
     app.register_blueprint(fact_api_bp, url_prefix='/api/v1/fact-api')
     app.register_blueprint(salon_fact_api_bp, url_prefix='/api/salon')
+    from app.modules.integraciones.routes import bp as integraciones_bp
+    app.register_blueprint(integraciones_bp, url_prefix="/api/v1/integraciones")
     JWTManager(app)
     app.register_blueprint(deletion_bp, url_prefix='/api/eliminaciones')
 

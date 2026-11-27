@@ -45,3 +45,5 @@
   .payment-receipt-dialog .payment-receipt-columns { height: auto; }
   .payment-receipt-info { overflow: visible; }
 }
+.payment-contact{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))}.payment-contact .payment-note{grid-column:1/-1}
+.payment-contact .payment-address{grid-column:1/-1}

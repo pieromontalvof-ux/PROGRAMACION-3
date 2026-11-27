@@ -81,6 +81,19 @@ export function Sidebar({
       es_configurable: false, orden: 0, permisos: { consultar: true, crear: false, editar: false, revisar: false, cerrar: false, desactivar: false, reactivar: false, eliminar: false, configurar: false }, hijos: [] })),
   }] : []
   const visibleAssistant = filterTree(assistantOptions)
+  const integrationsOptions = perfilActivo?.puede_administrar_integraciones ? [{
+    ...assistantOptions[0], id_opcion_menu: -110, codigo: 'INTEGRACIONES', nombre: 'Integraciones API',
+    hijos: [
+      { id: -111, nombre: 'Nuestra API', ruta: '/home/integraciones/claves' },
+      { id: -112, nombre: 'Consultar otra API', ruta: '/home/integraciones/consulta' },
+      { id: -113, nombre: 'Bandeja', ruta: '/home/integraciones/bandeja' },
+      { id: -114, nombre: 'Historial', ruta: '/home/integraciones/historial' },
+    ].map(child => ({
+      ...assistantOptions[0].hijos[0], id_opcion_menu: child.id, codigo: String(child.id),
+      nombre: child.nombre, url_menu: child.ruta, id_padre: -110,
+    })),
+  }] : []
+  const visibleIntegrations = filterTree(integrationsOptions)
 
   return (
     <>
@@ -143,6 +156,8 @@ export function Sidebar({
             <ul className="sidebar-menu">
               {matches('Tiendas') && perfilActivo?.id_perfil === 1 && menu.some(m => m.id_opcion_menu === 2 && m.permisos.consultar) &&
                 <li className="sidebar-item"><NavLink to="/home/tiendas" onClick={cerrarEnMovil} className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}><span className="sidebar-link__main"><Store className="sidebar-link__icon" aria-hidden="true" /><span className="sidebar-link__text">Tiendas</span></span></NavLink></li>}
+              {visibleIntegrations.map(option => <SidebarItem key={option.id_opcion_menu} opcion={option}
+                alNavegar={cerrarEnMovil} forzarAbierto={Boolean(term)} />)}
               {visibleAssistant.map(option => <SidebarItem key={option.id_opcion_menu} opcion={option} alNavegar={cerrarEnMovil} forzarAbierto={Boolean(term)} />)}
               {matches('Opciones de salon') && perfilActivo?.id_perfil===2 && <li className="sidebar-item"><NavLink to="/home/opciones-salon" onClick={cerrarEnMovil} className={({isActive})=>`sidebar-link ${isActive?'sidebar-link--active':''}`}><span className="sidebar-link__main"><LayoutGrid className="sidebar-link__icon" aria-hidden="true"/><span className="sidebar-link__text">Opciones de salón</span></span></NavLink></li>}
               {visibleMenu.map((opcion) => (
@@ -159,7 +174,7 @@ export function Sidebar({
               No tienes opciones disponibles.
             </p>
           )}
-          {term && visibleMenu.length === 0 && visibleAssistant.length === 0 && !matches('Opciones de salon') && !matches('Tiendas') &&
+          {term && visibleMenu.length === 0 && visibleAssistant.length === 0 && visibleIntegrations.length === 0 && !matches('Opciones de salon') && !matches('Tiendas') &&
             <p className="sidebar-empty" role="status">No hay módulos con ese nombre.</p>}
         </nav>
 

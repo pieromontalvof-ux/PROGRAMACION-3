@@ -2,6 +2,7 @@ import re
 
 from flask_jwt_extended import create_access_token
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.config import CORPORATE_EMAIL_DOMAIN
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
@@ -176,6 +177,7 @@ def _construir_sesion(
             "id_perfil": perfil["id_perfil"],
             "nombre": perfil["nombre"],
             "descripcion": perfil["descripcion"],
+            "puede_administrar_integraciones": perfil_tiene_capacidad(perfil["id_perfil"], "administrar_globalmente"),
         },
         "perfiles_disponibles": _serializar_perfiles(perfiles),
         "puesto_activo": _serializar_puesto_activo(puesto),

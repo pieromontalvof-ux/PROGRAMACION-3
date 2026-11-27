@@ -52,6 +52,17 @@ def consultar_cuenta(mesa):
     return jsonify(**pedido, revision=revision, local=sesion['local'], usuario=sesion['usuario'])
 
 
+def datos_contacto(datos):
+    if not isinstance(datos, dict) or set(datos) - {'direccion', 'email', 'telefono'}:
+        raise BadRequest('Datos de contacto invalidos.')
+    from app.modules.clientes.service import texto_opcional
+    return {
+        campo: texto_opcional(datos, campo, limite)
+        for campo, limite in (('direccion', 300), ('email', 200), ('telefono', 40))
+        if campo in datos
+    }
+
+
 def validar(datos):
     if not isinstance(datos, dict):
         raise BadRequest('Datos de pago inválidos')
@@ -78,8 +89,11 @@ def validar(datos):
     revision = datos.get('revision')
     if not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{64}', revision):
         raise BadRequest('Abre nuevamente la cuenta antes de pagar')
-    return {'clave': clave, 'tipo': tipo, 'metodo': metodo, 'documento': documento,
-            'cliente': cliente, 'revision': revision}
+    resultado = {'clave': clave, 'tipo': tipo, 'metodo': metodo, 'documento': documento,
+                 'cliente': cliente, 'revision': revision}
+    if tipo != 'BOLETA' and 'contacto' in datos:
+        resultado['contacto'] = datos_contacto(datos['contacto'])
+    return resultado
 
 
 def consumos(lineas):
@@ -227,15 +241,17 @@ def comprobante(identidad):
 def emitir(mesa):
     sesion = contexto(mesa)
     preparado()
-    datos = validar(request.get_json(silent=True))
-    cliente_id=(request.get_json(silent=True) or {}).get('id_cliente')
+    solicitud = request.get_json(silent=True)
+    datos = validar(solicitud)
+    cliente_id = solicitud.get('id_cliente') if datos['tipo'] != 'BOLETA' else None
+    registro = {}
     if cliente_id:
         from app.modules.clientes.service import obtener as obtener_cliente
         try: cliente_id=str(uuid.UUID(str(cliente_id)))
         except ValueError: raise BadRequest('Cliente invalido')
         registro=obtener_cliente(sesion['id_local'],cliente_id)
         if not registro or registro['numero_documento']!=datos['documento'] or registro['nombre']!=datos['cliente']:
-            raise Conflict('Los datos cambiaron. Selecciona nuevamente el cliente del local.')
+            raise Conflict('Los datos cambiaron. Selecciona nuevamente el cliente del directorio.')
         datos['id_cliente']=cliente_id
     solicitud_hash = huella({**datos, 'mesa': mesa})
     try:
@@ -264,6 +280,10 @@ def emitir(mesa):
                     'cliente': datos['cliente'], 'local': sesion['local'], 'mesa': mesa,
                     'usuario': sesion['usuario'], 'total': float(total), 'fiscal': False,
                     'lineas': pedido['lineas']}
+        from app.modules.facturacion.contract import contacto_tercero
+        contacto = contacto_tercero({**registro, **datos.get('contacto', {})})
+        if contacto:
+            snapshot['contacto'] = contacto
         # Comparte el mismo bloqueo de numeración que los movimientos manuales.
         db.session.execute(select(func.public.salon_bloquear_codigo()))
         numero = db.session.execute(select(func.public.salon_siguiente_movimiento())).scalar_one()
@@ -348,6 +368,8 @@ def modificar_venta(identidad, accion):
                 raise BadRequest('Revisa el DNI o RUC.')
             if not isinstance(cliente,str) or not 1<=len(cliente.strip())<=200: raise BadRequest('Indica el nombre o razón social.')
             evento['anterior']={k:recibo.get(k) for k in ('tipo','documento','cliente')}
+            if documento != recibo.get('documento'):
+                recibo.pop('contacto', None)
             recibo.update(tipo=tipo,documento=documento,cliente=cliente.strip())
             evento['nuevo']={k:recibo[k] for k in ('tipo','documento','cliente')}
             db.session.execute(select(func.public.salon_actualizar_cliente(

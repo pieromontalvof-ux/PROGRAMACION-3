@@ -1,10 +1,20 @@
-"""Customer directory scoped to the selected restaurant; documents are identifiers, not keys."""
+"""Customer directory shared across restaurants; documents are identifiers, not keys."""
 import re
 from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import BadRequest, Conflict
+from werkzeug.exceptions import BadRequest, Conflict, NotFound
 from app.core.extensions import db
+
+
+def texto_opcional(datos, campo, limite):
+    valor = datos.get(campo)
+    if valor is not None and not isinstance(valor, str):
+        raise BadRequest(f'{campo} debe ser texto')
+    valor = valor.strip() if valor else None
+    if valor and len(valor) > limite:
+        raise BadRequest(f'{campo} excede {limite} caracteres')
+    return valor or None
 
 
 def validar(data):
@@ -12,13 +22,7 @@ def validar(data):
         raise BadRequest('Se requiere un objeto con los datos del cliente')
     result = {}
     for field, maximum in [('nombre',200),('direccion',300),('email',200),('telefono',40),('numero_documento',30)]:
-        value = data.get(field)
-        if value is not None and not isinstance(value, str):
-            raise BadRequest(f'{field} debe ser texto')
-        value = value.strip() if value else None
-        if value and len(value)>maximum:
-            raise BadRequest(f'{field} excede {maximum} caracteres')
-        result[field] = value or None
+        result[field] = texto_opcional(data, field, maximum)
     if not result['nombre']:
         raise BadRequest('El nombre o razon social es obligatorio')
     persona=data.get('tipo_persona','NATURAL')
@@ -78,7 +82,7 @@ def obtener(local,id_cliente):
     return _json(row) if row else None
 
 
-def crear(local,data):
+def crear(local,data, *, commit=True):
     values=validar(data)
     values.update(id_cliente=str(uuid4()),id_local=local)
     try:
@@ -88,11 +92,31 @@ def crear(local,data):
             values['email'], values['telefono'],
         )
         db.session.execute(select(alta))
-        db.session.commit()
+        if commit:
+            db.session.commit()
     except IntegrityError as exc:
-        db.session.rollback()
+        if commit:
+            db.session.rollback()
         if getattr(exc.orig,'pgcode',None)=='23505':
-            raise Conflict('Ya existe un cliente con ese documento en este local') from exc
+            raise Conflict('Ya existe un cliente con ese documento en el directorio') from exc
         raise
     values.pop('id_local')
     return values
+
+
+def actualizar_contacto(local, id_cliente, datos):
+    if (not isinstance(datos, dict) or not {'email', 'telefono'}.issubset(datos)
+            or set(datos) - {'email', 'telefono', 'direccion'}):
+        raise BadRequest('Envia correo y telefono. Puedes dejar cualquiera vacio.')
+    email = texto_opcional(datos, 'email', 200)
+    telefono = texto_opcional(datos, 'telefono', 40)
+    direccion = texto_opcional(datos, 'direccion', 300)
+    consulta = func.public.clientes_actualizar_contacto(
+        local, str(id_cliente), email, telefono, direccion, 'direccion' in datos,
+    ).table_valued('id_cliente', 'email', 'telefono', 'direccion')
+    fila = db.session.execute(select(consulta)).mappings().first()
+    if fila is None:
+        raise NotFound('Cliente no encontrado en el directorio')
+    resultado = _json(fila)
+    db.session.commit()
+    return resultado
