@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 
 ROOT=Path(__file__).resolve().parents[2]
 LARAVEL=ROOT/'services/fact_api'
@@ -83,25 +84,35 @@ def prepare_settings(env, data_root):
 def migrate_application(url):
     # Public business tables and private Laravel schema have independent namespaces.
     engine=create_engine(url)
+    phase = 'connect'
     try:
         with engine.begin() as connection:
+            phase = 'migration lock'
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('barbarito-cloud-fact-setup'))"))
             connection.exec_driver_sql('SET LOCAL search_path TO public')
+            phase = 'fact_api schema'
             connection.exec_driver_sql('CREATE SCHEMA IF NOT EXISTS fact_api')
+            phase = 'unit catalog check'
             existe_catalogo = connection.execute(text("SELECT to_regclass('public.unidad_medida')")).scalar()
             if not existe_catalogo or not connection.execute(text(
                 'SELECT EXISTS (SELECT 1 FROM public.unidad_medida)'
             )).scalar():
+                phase = '20261010_unidades_unece.sql'
                 migration = (ROOT/'database/migrations/20261010_unidades_unece.sql').read_text(encoding='utf-8')
                 connection.exec_driver_sql(migration.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
             for name in ('20261118_clientes.sql','20261121_fact_api_queue.sql','20261121_fact_api_autoscale.sql','20261124_ai_quotas.sql', '20261126_motivos_recepcion.sql', '20261126_motivos_movimiento.sql', '20261126_estandar_unidades.sql', '20261126_unidades_menaje.sql', '20261127_acceso_perfil_locales.sql', '20261127_funciones_alcance_local.sql', '20261127_capacidades_perfil.sql', '20261127_configuracion_operativa.sql', '20261127_funciones_autenticacion.sql', '20261127_funciones_auditoria.sql', '20261127_acciones_permiso.sql', '20261127_funciones_stock_local.sql', '20261127_funcion_categorias_carta.sql', '20261127_funciones_medidas_menaje.sql', '20261127_funciones_editor_presentaciones.sql', '20261127_reglas_sesion_perfil.sql', '20261127_funciones_admin_categorias_carta.sql', '20261127_reglas_medidas_menaje.sql', '20261127_funciones_carta_restantes.sql', '20261127_funciones_catalogos_repositorio.sql', '20261127_funciones_catalogos_stock.sql', '20261127_funciones_catalogos_eliminacion.sql', '20261127_funciones_clientes.sql', '20261127_clientes_contacto.sql', '20261127_clientes_compartidos.sql', '20261127_clientes_direccion.sql', '20261127_funciones_compras.sql', '20261127_funciones_facturacion.sql', '20261127_funcion_health.sql', '20261127_funciones_inventarios_consultas.sql', '20261127_funciones_inventarios.sql', '20261127_funciones_movimientos.sql', '20261127_funciones_produccion.sql', '20261127_funciones_promociones.sql', '20261127_funciones_recepciones.sql', '20261127_funciones_recetas.sql', '20261127_funciones_salon.sql', '20261127_funciones_usuarios.sql', '20261127_integraciones_entrada.sql', '20261127_integraciones_claves.sql', '20261127_integraciones_claves_por_programa.sql', '20261127_integraciones_permisos_historial.sql', '20261127_integraciones_trabajos.sql'):
+                phase = name
                 migration=(ROOT/'database/migrations'/name).read_text(encoding='utf-8')
                 connection.exec_driver_sql(migration.replace('BEGIN;','').replace('COMMIT;',''), execution_options={'no_parameters': True})
+            phase = 'unit catalog initialization check'
             if not connection.execute(text("SELECT to_regclass('public.unidad_medida_catalogo_inicializado')")).scalar():
+                phase = '20261126_catalogo_unidades.sql'
                 migration = (ROOT/'database/migrations/20261126_catalogo_unidades.sql').read_text(encoding='utf-8')
                 connection.exec_driver_sql(migration.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
+            phase = '20261127_funciones_catalogos.sql'
             funciones = (ROOT/'database/migrations/20261127_funciones_catalogos.sql').read_text(encoding='utf-8')
             connection.exec_driver_sql(funciones.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
+            phase = 'fact_api local defaults'
             connection.execute(text('''INSERT INTO fact_api_config
                 (id_local,activo,empresa,serie_factura,serie_boleta,tasa_igv)
                 SELECT id_local,true,CAST(:company AS jsonb),'F'||lpad(id_local::text,3,'0'),
@@ -109,6 +120,12 @@ def migrate_application(url):
                 WHERE estado_registro=1 AND id_local BETWEEN 1 AND 999
                 ON CONFLICT(id_local) DO NOTHING'''),
                 {'company':json.dumps({'nombre':'BARBARIAN','ruc':'00000000000'})})
+    except DBAPIError as error:
+        sqlstate = getattr(error.orig, 'pgcode', None) or getattr(error.orig, 'sqlstate', None)
+        if not isinstance(sqlstate, str) or len(sqlstate) != 5 or not sqlstate.isascii() or not sqlstate.isalnum():
+            sqlstate = 'unknown'
+        print(f'PostgreSQL startup failed at {phase} (SQLSTATE {sqlstate}).', file=sys.stderr, flush=True)
+        raise
     finally:
         engine.dispose()
 
