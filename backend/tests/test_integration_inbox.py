@@ -63,7 +63,25 @@ class InboxTest(unittest.TestCase):
             self.assertEqual(len(cliente.get(base+'/bandeja', headers=admin).json['solicitudes']), 2)
         engine.dispose()
 
-    def test_reception_waits_and_duplicate_submissions_reuse_tracking(self):
+    def test_existing_customer_requires_explicit_update(self):
+        from app.modules.integraciones.routes import candidato_cliente
+        from types import SimpleNamespace
+        existente = {
+            'id_cliente': '676c5ea9-f021-4de7-986b-b60a87a7720d', 'nombre': 'Ana',
+            'tipo_persona': 'NATURAL', 'tipo_documento': 'DNI', 'numero_documento': '12345678',
+            'email': 'actual@example.org', 'telefono': '999999999', 'direccion': None,
+        }
+        item = SimpleNamespace(datos={'nombre': 'Ana', 'tipo_documento': 'DNI', 'numero_documento': '12345678'})
+        with patch('app.modules.integraciones.routes.clientes.por_documento', return_value=existente):
+            self.assertEqual(candidato_cliente(item)[0], 'YA_REGISTRADO')
+            item.datos['email'] = 'nuevo@example.org'
+            modo, identidad, cambios, datos = candidato_cliente(item)
+            self.assertEqual((modo, identidad), ('ACTUALIZAR', existente['id_cliente']))
+            self.assertEqual(cambios, {'email': {'anterior': 'actual@example.org', 'nuevo': 'nuevo@example.org'}})
+            self.assertEqual(datos['telefono'], existente['telefono'])
+
+    @patch('app.modules.integraciones.routes.clientes.por_documento', return_value=None)
+    def test_reception_waits_and_duplicate_submissions_reuse_tracking(self, _por_documento):
         app = create_app()
         app.config.update(TESTING=True, INTEGRACIONES_API_TOKEN='token-local-de-prueba-solo-para-tests',
                           INTEGRACIONES_API_LOCAL=5, INTEGRACIONES_API_ORIGEN='Prueba')
@@ -143,7 +161,13 @@ class InboxTest(unittest.TestCase):
                     self.assertEqual(consultar.call_args.args, (consulta['url'], ''))
                     repetida = pedir(consulta)
                     self.assertTrue(procesar_consulta())
-                    self.assertEqual(consultar_trabajo(repetida)['resumen']['clientes']['repetidos'], 1)
+                    self.assertEqual(consultar_trabajo(repetida)['resumen']['clientes']['repetidos'], 0)
+                    self.assertEqual(consultar_trabajo(repetida)['resumen']['clientes']['nuevos'], 1)
+                    otra = db.session.scalar(select(Solicitud).filter_by(consulta_id=repetida, tipo='clientes'))
+                    client.post(f'/api/v1/integraciones/bandeja/{otra.id}', headers=admin, json={'accion': 'descartar'})
+                    auditada = client.get(f'{historial_url}/{repetida}', headers=admin).json
+                    self.assertIn('DESCARTADO', {fila['estado'] for fila in auditada['registros']})
+                    self.assertIn('Cliente externo', {fila['nombre'] for fila in auditada['respuesta']['datos']})
                     pendiente = db.session.scalar(select(Solicitud).filter_by(consulta_id=identidad, tipo='clientes'))
                     with patch('app.modules.integraciones.routes.clientes.crear',
                                return_value={'id_cliente': 'cliente-prueba'}):
@@ -193,8 +217,9 @@ class InboxTest(unittest.TestCase):
                     segunda = pedir({'anterior': identidad})
                     self.assertTrue(procesar_consulta())
                     self.assertIn('cursor=cursor%2B1', consultar.call_args.args[0])
-                    self.assertEqual(consultar_trabajo(segunda)['resumen']['clientes']['repetidos'], 1)
-                    solicitudes = client.get('/api/v1/integraciones/bandeja?tipo=clientes', headers=admin)
+                    self.assertEqual(consultar_trabajo(segunda)['resumen']['clientes']['repetidos'], 0)
+                    self.assertEqual(consultar_trabajo(segunda)['resumen']['clientes']['nuevos'], 1)
+                    solicitudes = client.get(f'/api/v1/integraciones/bandeja?tipo=clientes&consulta={identidad}', headers=admin)
                     fila = next(f for f in solicitudes.json['solicitudes'] if f['origen'] == 'acadesys-api.onrender.com')
                     self.assertEqual(fila['datos']['nombre'], 'Ana Prueba')
                     self.assertEqual(fila['datos']['numero_documento'], '12345678')
@@ -206,6 +231,17 @@ class InboxTest(unittest.TestCase):
                     self.assertEqual(juridicas.json['solicitudes'], [])
                     por_revisar = client.get(historial_url + '?por_revisar=1', headers=admin).json['consultas']
                     self.assertIn(identidad, {consulta['id'] for consulta in por_revisar})
-                    self.assertNotIn(segunda, {consulta['id'] for consulta in por_revisar})
+                    self.assertIn(segunda, {consulta['id'] for consulta in por_revisar})
+                    with patch('app.modules.integraciones.routes.clientes.por_documento', return_value={
+                        'id_cliente': '676c5ea9-f021-4de7-986b-b60a87a7720d',
+                        **{campo: fila['datos'][campo] for campo in (
+                            'nombre', 'tipo_persona', 'tipo_documento', 'numero_documento', 'email', 'telefono', 'direccion',
+                        )},
+                    }):
+                        tercera = pedir(entrada)
+                        self.assertTrue(procesar_consulta())
+                    guardada = consultar_trabajo(tercera)
+                    self.assertEqual(guardada['resumen']['clientes']['repetidos'], 1)
+                    self.assertEqual(guardada['registros'], {'YA_REGISTRADO': 1})
                     self.assertNotIn('clave-fixture', str(fila))
         db_engine.dispose()

@@ -1,6 +1,7 @@
 """Customer directory shared across restaurants; documents are identifiers, not keys."""
-from uuid import uuid4
-from sqlalchemy import func, select
+from uuid import UUID, uuid4
+from sqlalchemy import cast, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import BadRequest, Conflict, NotFound
 from app.core.extensions import db
@@ -82,6 +83,19 @@ def buscar(local,q='',limit=25,offset=0):
 def obtener(local,id_cliente):
     row = _filas(func.public.clientes_obtener(local, str(id_cliente))).first()
     return _json(row) if row else None
+
+
+def por_documento(tipo, numero):
+    fila = _filas(func.public.clientes_por_documento(tipo, numero)).first()
+    return _json(fila) if fila else None
+
+
+def bloquear_integracion(identidad):
+    return db.session.scalar(select(func.public.clientes_bloquear_integracion(UUID(identidad))))
+
+
+def actualizar_integracion(identidad, datos):
+    return db.session.scalar(select(func.public.clientes_actualizar_integracion(UUID(identidad), cast(datos, JSONB))))
 
 
 def crear(local,data, *, commit=True):

@@ -76,3 +76,12 @@
 .integration-request-detail td { background: #f1f7f3; }
 .integration-request-detail-body { display: grid; gap: .6rem; width: min(100%, 60rem); padding: .45rem 0; }
 .integration-request-detail-body h3, .integration-request-detail-body dl { margin: 0; }
+
+.integration-change-table thead th { position: static; background: #e1eee6; color: #104d3e; }
+.integration-change-table td { overflow-wrap: anywhere; }
+
+.integration-history-detail { display: grid; gap: .75rem; background: #f2f7f4; padding: .8rem; border-radius: .5rem; }
+.integration-history-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .65rem; }
+.integration-history-groups details { background: #fff; border: 1px solid #dce7e2; border-radius: .4rem; padding: .65rem; min-width: 0; }
+.integration-history-groups ul { margin-bottom: 0; padding-left: 1.25rem; overflow-wrap: anywhere; }
+.integration-history-groups small { display: block; color: #465f55; }

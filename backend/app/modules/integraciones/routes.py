@@ -142,13 +142,69 @@ def estado(item):
     return {'id': item.id, 'estado': item.estado, 'id_registro': item.id_registro}
 
 
-def detalle(item):
-    return {
+CAMPOS_ACTUALIZABLES = ('nombre', 'tipo_persona', 'tipo_documento', 'numero_documento', 'email', 'telefono', 'direccion')
+
+
+def candidato_cliente(item, *, bloquear=False):
+    datos = clientes.validar(item.datos)
+    referencia = item.datos.get('acadesys')
+    por_origen = None
+    if referencia:
+        identidad = referencia['idCliente']
+        if bloquear:
+            bloqueo = f'acadesys:{item.origen}:{identidad}'
+            db.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(bloqueo, 0))))
+        previo = db.session.scalar(select(Solicitud.id_registro).filter_by(
+            origen=item.origen, tipo='clientes',
+        ).where(Solicitud.estado.in_(('AGREGADO', 'ACTUALIZADO', 'YA_REGISTRADO')),
+                Solicitud.datos['acadesys']['idCliente'].as_string() == identidad,
+                Solicitud.id_registro.is_not(None)).order_by(Solicitud.revisado_en.desc()).limit(1))
+        if previo:
+            por_origen = clientes.obtener(item.id_local, previo)
+    por_documento = clientes.por_documento(datos['tipo_documento'], datos['numero_documento']) if datos['numero_documento'] else None
+    if por_origen and por_documento and por_origen['id_cliente'] != por_documento['id_cliente']:
+        raise Conflict('El documento corresponde a otro cliente. Revisa la identidad antes de continuar.')
+    existente = por_origen or por_documento
+    if not existente:
+        return 'NUEVO', None, {}, {}
+    if bloquear:
+        if not clientes.bloquear_integracion(existente['id_cliente']):
+            raise Conflict('El cliente cambio mientras se revisaba la solicitud.')
+        existente = clientes.obtener(item.id_local, existente['id_cliente'])
+    nuevos = {campo: existente[campo] for campo in CAMPOS_ACTUALIZABLES}
+    for campo in ('nombre', 'email', 'telefono', 'direccion'):
+        if datos[campo] is not None:
+            nuevos[campo] = datos[campo]
+    if datos['numero_documento']:
+        numero = datos['numero_documento']
+        if datos['tipo_documento'] == existente['tipo_documento'] and numero.upper() == (existente['numero_documento'] or '').strip().upper():
+            numero = existente['numero_documento']
+        nuevos.update(tipo_documento=datos['tipo_documento'], numero_documento=numero,
+                      tipo_persona=datos['tipo_persona'])
+    cambios = {campo: {'anterior': existente[campo], 'nuevo': nuevos[campo]}
+               for campo in CAMPOS_ACTUALIZABLES if existente[campo] != nuevos[campo]}
+    return ('ACTUALIZAR' if cambios else 'YA_REGISTRADO'), existente['id_cliente'], cambios, nuevos
+
+
+def identificar_revision(identidad, cambios):
+    canonico = json.dumps([identidad, cambios], sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+    return sha256(canonico.encode()).hexdigest()
+
+
+def detalle(item, *, comparar=False):
+    resultado = {
         **estado(item), 'id_local': item.id_local, 'origen': item.origen, 'tipo': item.tipo,
         'datos': item.datos, 'recibido_en': item.recibido_en.isoformat(),
         'revisado_en': item.revisado_en.isoformat() if item.revisado_en else None,
         'revisado_por': item.revisado_por, 'mensaje': item.mensaje, 'eventos': item.eventos,
     }
+    if comparar and item.tipo == 'clientes' and item.estado in ('PENDIENTE', 'ERROR'):
+        try:
+            modo, identidad, cambios, _ = candidato_cliente(item)
+            resultado.update(modo=modo, cambios=cambios, revision=identificar_revision(identidad, cambios))
+        except (BadRequest, Conflict) as error:
+            resultado.update(modo='REVISAR', mensaje=error.description)
+    return resultado
 
 
 def seleccionar_campos(datos, campos):
@@ -389,6 +445,24 @@ def historial_consultas(_usuario):
     } for fila in filas[:25]], hay_mas=len(filas) > 25)
 
 
+@bp.get('/historial/consultas/<uuid:identidad>')
+@admin
+def detalle_consulta(_usuario, identidad):
+    consulta = db.session.get(ConsultaIntegracion, str(identidad))
+    if consulta is None:
+        raise NotFound('Consulta no encontrada.')
+    filas = db.session.scalars(select(Solicitud).filter_by(consulta_id=consulta.id)
+        .order_by(Solicitud.recibido_en, Solicitud.id)).all()
+    respuesta = jsonify(
+        registros=[detalle(fila) for fila in filas],
+        respuesta={'resumen': consulta.resumen, 'errores': consulta.errores or [],
+                   'datos': [{'tipo': fila.tipo, **fila.datos} for fila in filas],
+                   'hay_mas': bool(consulta.cursor)},
+    )
+    respuesta.headers['Cache-Control'] = 'no-store'
+    return respuesta
+
+
 def cifrado_consultas():
     secreto = current_app.secret_key
     if not secreto:
@@ -454,7 +528,7 @@ def ejecutar_consulta(trabajo):
         token = current_app.config.get('ACADESYS_API_TOKEN', '') if es_acadesys else ''
     if es_acadesys and not token:
         raise ServiceUnavailable('Falta configurar la clave de lectura de AcadeSys en el servidor.')
-    host, ruta, resultado = external.consultar(url, token)
+    host, _ruta, resultado = external.consultar(url, token)
     if es_acadesys:
         colecciones, cursor = acadesys.leer(resultado)
     else:
@@ -463,41 +537,50 @@ def ejecutar_consulta(trabajo):
     resumen = {}
     errores = []
     for nombre, filas in colecciones.items():
-        resumen[nombre] = {'recibidos': len(filas), 'nuevos': 0, 'repetidos': 0, 'invalidos': 0}
+        conteo = {'recibidos': len(filas), 'nuevos': 0, 'repetidos': 0, 'cambios': 0,
+                  'invalidos': 0, 'duplicados_respuesta': 0}
+        resumen[nombre] = conteo
+        vistos = set()
         for indice, fila in enumerate(filas, 1):
             try:
                 if es_acadesys:
                     cliente, identidad, version = acadesys.mapear(fila)
                     datos = clientes.validar(cliente)
                     datos['acadesys'] = {'idCliente': identidad, 'version': version}
-                    identificador = [host, 'acadesys', identidad, version]
                 else:
                     datos = datos_visibles(nombre, fila)
-                    identificador = [host, ruta, datos]
+                    if nombre == 'clientes':
+                        datos = clientes.validar(datos)
                 if not datos:
                     raise BadRequest('El registro no contiene campos reconocidos.')
-            except BadRequest as error:
-                resumen[nombre]['invalidos'] += 1
+                huella = json.dumps(datos, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+                if huella in vistos:
+                    conteo['duplicados_respuesta'] += 1
+                    continue
+                item = Solicitud(id=str(uuid4()), id_local=local, origen=origen, tipo=nombre,
+                                 clave=f'consulta:{trabajo.id}:{indice}', datos=datos, consulta_id=trabajo.id)
+                if nombre == 'clientes':
+                    modo, id_registro, _, _ = candidato_cliente(item)
+                else:
+                    ruc = (datos.get('datos_comerciales') or {}).get('ruc')
+                    modo = 'YA_REGISTRADO' if ruc and catalogo.ruc_proveedor_repetido(ruc) else 'NUEVO'
+                    id_registro = None
+            except (BadRequest, Conflict) as error:
+                conteo['invalidos'] += 1
                 errores.append({'tipo': nombre, 'fila': indice, 'mensaje': error.description})
                 continue
-            huella = json.dumps(identificador, sort_keys=True, ensure_ascii=True, separators=(',', ':'))
-            clave = 'consulta:' + sha256(huella.encode()).hexdigest()
-            try:
-                with db.session.begin_nested():
-                    db.session.add(Solicitud(id=str(uuid4()), id_local=local, origen=origen, tipo=nombre,
-                                             clave=clave, datos=datos, consulta_id=trabajo.id, eventos=[{
-                                                 'usuario': usuario, 'fecha': datetime.now(timezone.utc).isoformat(),
-                                                 'accion': 'consultar', 'estado': 'PENDIENTE',
-                                                 'mensaje': 'Recibido desde la API externa.',
-                                             }]))
-            except IntegrityError:
-                previo = db.session.scalar(select(Solicitud.id).filter_by(
-                    id_local=local, origen=origen, tipo=nombre, clave=clave))
-                if previo is None:
-                    raise
-                resumen[nombre]['repetidos'] += 1
-            else:
-                resumen[nombre]['nuevos'] += 1
+            vistos.add(huella)
+            item.estado = 'YA_REGISTRADO' if modo == 'YA_REGISTRADO' else 'PENDIENTE'
+            if modo == 'YA_REGISTRADO':
+                item.id_registro = id_registro
+                item.mensaje = 'Ya registrado en el catalogo.'
+            item.eventos = [{
+                'usuario': usuario, 'fecha': datetime.now(timezone.utc).isoformat(),
+                'accion': 'consultar', 'estado': item.estado,
+                'mensaje': item.mensaje or 'Recibido desde la API externa.',
+            }]
+            db.session.add(item)
+            conteo[{'NUEVO': 'nuevos', 'ACTUALIZAR': 'cambios', 'YA_REGISTRADO': 'repetidos'}[modo]] += 1
     return resumen, errores, cursor
 
 
@@ -541,7 +624,7 @@ def procesar_consulta():
 def bandeja(_usuario):
     filtro = request.args.get('estado', 'PENDIENTE')
     pagina = request.args.get('pagina', 1, type=int)
-    if filtro not in ('PENDIENTE', 'ERROR', 'AGREGADO', 'DESCARTADO', 'TODOS', 'POR_REVISAR') or pagina < 1:
+    if filtro not in ('PENDIENTE', 'ERROR', 'AGREGADO', 'DESCARTADO', 'ACTUALIZADO', 'YA_REGISTRADO', 'TODOS', 'POR_REVISAR') or pagina < 1:
         raise BadRequest('Filtro o pagina no validos.')
     tipo = request.args.get('tipo')
     if tipo not in (None, 'clientes', 'proveedores'):
@@ -572,7 +655,7 @@ def bandeja(_usuario):
     filas = db.session.scalars(seleccion.order_by(Solicitud.recibido_en.desc(), Solicitud.id.desc())
                               .offset((pagina - 1) * 25).limit(26)).all()
     categorias = catalogo.listar_categorias_producto() if any(f.tipo == 'proveedores' for f in filas[:25]) else []
-    return jsonify(solicitudes=[detalle(f) for f in filas[:25]], hay_mas=len(filas) > 25,
+    return jsonify(solicitudes=[detalle(f, comparar=True) for f in filas[:25]], hay_mas=len(filas) > 25,
                    categorias=[dict(c) for c in categorias if c['activo']])
 
 
@@ -580,8 +663,8 @@ def bandeja(_usuario):
 @admin
 def revisar(usuario, identidad):
     datos = request.get_json()
-    if not isinstance(datos, dict) or datos.get('accion') not in ('agregar', 'descartar'):
-        raise BadRequest('Elige agregar o descartar.')
+    if not isinstance(datos, dict) or datos.get('accion') not in ('agregar', 'actualizar', 'descartar'):
+        raise BadRequest('Elige agregar, actualizar o descartar.')
     item = db.session.scalar(select(Solicitud).filter_by(id=str(identidad)).with_for_update())
     if item is None:
         raise NotFound('Solicitud no encontrada.')
@@ -594,27 +677,32 @@ def revisar(usuario, identidad):
     else:
         try:
             with db.session.begin_nested():
+                accion = datos['accion']
+                estado_final, mensaje = 'AGREGADO', 'Registro incorporado.'
                 if item.tipo == 'clientes':
-                    referencia = item.datos.get('acadesys')
-                    if referencia:
-                        identidad_externa = referencia['idCliente']
-                        bloqueo = f'acadesys:{item.origen}:{identidad_externa}'
-                        db.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(bloqueo, 0))))
-                        agregado = db.session.scalar(select(Solicitud.id).filter_by(
-                            origen=item.origen, tipo='clientes', estado='AGREGADO',
-                        ).where(Solicitud.datos['acadesys']['idCliente'].as_string() == identidad_externa).limit(1))
-                        if agregado:
-                            raise Conflict('Este alumno ya fue incorporado desde AcadeSys. Revisa el cliente existente.')
-                    resultado = clientes.crear(item.id_local, item.datos, commit=False)
-                    registro = resultado['id_cliente']
+                    modo, identidad_cliente, cambios, nuevos = candidato_cliente(item, bloquear=True)
+                    if modo == 'YA_REGISTRADO':
+                        registro = identidad_cliente
+                        estado_final, mensaje = 'YA_REGISTRADO', 'Cliente ya registrado.'
+                    elif accion == 'actualizar':
+                        if modo != 'ACTUALIZAR' or datos.get('revision') != identificar_revision(identidad_cliente, cambios):
+                            raise Conflict('Los datos cambiaron. Abre el detalle y revisa la actualizacion otra vez.')
+                        registro = clientes.actualizar_integracion(identidad_cliente, clientes.validar(nuevos))
+                        estado_final, mensaje = 'ACTUALIZADO', 'Cliente actualizado en el directorio.'
+                    elif modo == 'ACTUALIZAR':
+                        raise Conflict('Este cliente ya existe. Usa Actualizar para confirmar los cambios.')
+                    else:
+                        registro = clientes.crear(item.id_local, item.datos, commit=False)['id_cliente']
                 else:
+                    if accion != 'agregar':
+                        raise BadRequest('Solo puedes actualizar clientes desde integraciones.')
                     proveedor = {**item.datos, 'ids_categorias': datos.get('ids_categorias')}
                     resultado, codigo = crear_proveedor_catalogo(usuario, proveedor, commit=False)
                     if codigo != 201:
                         raise BadRequest(resultado['mensaje'])
                     registro = resultado['id_proveedor']
             item.id_registro = str(registro)
-            item.estado, item.mensaje = 'AGREGADO', 'Registro incorporado.'
+            item.estado, item.mensaje = estado_final, mensaje
         except (BadRequest, Conflict) as error:
             item.estado, item.mensaje = 'ERROR', error.description
         except IntegrityError:

@@ -10,10 +10,13 @@ type Solicitud = {
   origen: string
   tipo: 'clientes' | 'proveedores'
   datos: Record<string, unknown>
-  estado: 'PENDIENTE' | 'ERROR' | 'AGREGADO' | 'DESCARTADO'
+  estado: 'PENDIENTE' | 'ERROR' | 'AGREGADO' | 'DESCARTADO' | 'ACTUALIZADO' | 'YA_REGISTRADO'
   recibido_en: string
   revisado_por: number | null
   revisado_en: string | null
+  modo?: 'NUEVO' | 'ACTUALIZAR' | 'YA_REGISTRADO' | 'REVISAR'
+  cambios?: Record<string, { anterior: string | null; nuevo: string | null }>
+  revision?: string
   id_registro: string | null
   mensaje: string | null
   eventos: { usuario: number; fecha: string; estado: Solicitud['estado']; mensaje: string }[]
@@ -28,7 +31,14 @@ type ClaveAPI = {
   vence_en: string | null
   revocado_en: string | null
 }
-type Conteo = { recibidos: number; nuevos: number; repetidos: number; invalidos: number }
+type Conteo = { recibidos: number; nuevos: number; repetidos: number; invalidos: number; cambios?: number; duplicados_respuesta?: number }
+type DetalleConsulta = { registros: Solicitud[]; respuesta: Record<string, unknown> }
+const gruposHistorial = [
+  { etiqueta: 'Aceptados', estados: ['AGREGADO', 'ACTUALIZADO'] },
+  { etiqueta: 'Descartados', estados: ['DESCARTADO'] },
+  { etiqueta: 'Ya registrados', estados: ['YA_REGISTRADO'] },
+  { etiqueta: 'Por revisar', estados: ['PENDIENTE', 'ERROR'] },
+]
 const estadosConsulta = {
   EN_COLA: 'En cola o procesando', REINTENTO: 'Reintento programado',
   RESPONDIO: 'Respondida', FALLIDA: 'Fallida',
@@ -61,6 +71,8 @@ const estados = {
   PENDIENTE: 'Pendiente',
   ERROR: 'Con errores',
   AGREGADO: 'Agregado',
+  ACTUALIZADO: 'Actualizado',
+  YA_REGISTRADO: 'Ya registrado',
   DESCARTADO: 'Descartado',
   TODOS: 'Todos',
 }
@@ -79,6 +91,8 @@ export function IntegrationsPage() {
   const [permiso, setPermiso] = useState<ClaveAPI['permiso']>('leer_clientes')
   const [vigencia, setVigencia] = useState('')
   const [configVigencia, setConfigVigencia] = useState<{ dias: number; maximo: number } | null>(null)
+  const [consultaAbierta, setConsultaAbierta] = useState<string | null>(null)
+  const [detalleHistorial, setDetalleHistorial] = useState<{ id: string; datos?: DetalleConsulta; error?: string } | null>(null)
   const [historial, setHistorial] = useState<Historial | null>(null)
   const [paginaHistorial, setPaginaHistorial] = useState(1)
   const [errorHistorial, setErrorHistorial] = useState('')
@@ -177,6 +191,21 @@ export function IntegrationsPage() {
     setAviso('')
   }, [seccion])
 
+  useEffect(() => {
+    if (!token || seccion !== 'historial' || !consultaAbierta) return
+    const control = new AbortController()
+    fetch(`${base}/historial/consultas/${consultaAbierta}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: control.signal, cache: 'no-store',
+    }).then(async respuesta => {
+      const datos = await respuesta.json()
+      if (!respuesta.ok) throw new Error(datos.mensaje ?? 'No se pudo abrir la consulta.')
+      if (!control.signal.aborted) setDetalleHistorial({ id: consultaAbierta, datos })
+    }).catch(fallo => {
+      if (!control.signal.aborted) setDetalleHistorial({ id: consultaAbierta, error: String(fallo.message) })
+    })
+    return () => control.abort()
+  }, [base, consultaAbierta, seccion, token, version])
+
   async function copiar(valor: string) {
     try {
       await navigator.clipboard.writeText(valor)
@@ -251,35 +280,42 @@ export function IntegrationsPage() {
     }
   }
 
-  async function enviarDecision(item: Solicitud, accion: 'agregar' | 'descartar') {
+  async function enviarDecision(item: Solicitud, accion: 'agregar' | 'actualizar' | 'descartar') {
     const respuesta = await fetch(`${base}/bandeja/${item.id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion, ids_categorias: categorias[item.id] }),
+      body: JSON.stringify({ accion, revision: item.revision, ids_categorias: categorias[item.id] }),
     })
     const resultado = await respuesta.json()
     if (!respuesta.ok || resultado.estado === 'ERROR') {
       throw new Error(resultado.mensaje ?? 'No se pudo revisar la solicitud.')
     }
+    return resultado.estado as Solicitud['estado']
   }
 
-  async function revisar(items: Solicitud[], accion: 'agregar' | 'descartar') {
+  async function revisar(items: Solicitud[], accion: 'agregar' | 'actualizar' | 'descartar') {
     setOcupado('revision')
     setError('')
     setAviso('')
     const fallos: string[] = []
     let completados = 0
+    let repetidos = 0
     try {
       for (const item of items) {
         try {
-          await enviarDecision(item, accion)
-          completados += 1
+          const estado = await enviarDecision(item, accion)
+          if (estado === 'YA_REGISTRADO') repetidos += 1
+          else completados += 1
         } catch (fallo) {
           const nombre = typeof item.datos.nombre === 'string' ? item.datos.nombre : item.id
           fallos.push(`${nombre}: ${(fallo as Error).message}`)
         }
       }
-      if (completados) setAviso(`${completados} ${accion === 'agregar' ? 'agregados al catálogo' : 'descartados'}.`)
+      const resumen = []
+      const resultado = { agregar: 'agregados al catálogo', actualizar: 'actualizados', descartar: 'descartados' }
+      if (completados) resumen.push(`${completados} ${resultado[accion]}.`)
+      if (repetidos) resumen.push(`${repetidos} ya estaban registrados.`)
+      if (resumen.length) setAviso(resumen.join(' '))
       if (fallos.length) setError(fallos.join('\n'))
       setSeleccion([])
       setVersion(value => value + 1)
@@ -296,11 +332,12 @@ export function IntegrationsPage() {
     setPagina(nueva)
   }
 
-  const seleccionados = (bandeja?.solicitudes ?? []).filter(item =>
-    seleccion.includes(item.id) && (item.estado === 'PENDIENTE' || item.estado === 'ERROR'))
-  const seleccionables = (bandeja?.solicitudes ?? []).filter(item => item.estado === 'PENDIENTE' || item.estado === 'ERROR')
+  const seleccionables = (bandeja?.solicitudes ?? []).filter(item =>
+    (item.estado === 'PENDIENTE' || item.estado === 'ERROR') && item.modo !== 'YA_REGISTRADO')
+  const seleccionados = seleccionables.filter(item => seleccion.includes(item.id))
+  const altasSeleccionadas = seleccionados.filter(item => !item.modo || item.modo === 'NUEVO')
   const todaLaPagina = seleccionables.length > 0 && seleccionados.length === seleccionables.length
-  const faltanCategorias = seleccionados.some(item => item.tipo === 'proveedores' && !categorias[item.id]?.length)
+  const faltanCategorias = altasSeleccionadas.some(item => item.tipo === 'proveedores' && !categorias[item.id]?.length)
 
   return <section className="integration-inbox">
     <header>
@@ -414,15 +451,20 @@ export function IntegrationsPage() {
       {historial && historial.consultas.length > 0 && <div className="integration-table-scroll" tabIndex={0}>
         <table>
           <thead><tr><th scope="col">Fecha</th><th scope="col">Origen</th><th scope="col">Usuario</th><th scope="col">Resultado</th></tr></thead>
-          <tbody>{historial.consultas.map(item => <tr key={item.id}>
+          <tbody>{historial.consultas.map(item => <Fragment key={item.id}>
+          <tr>
             <td>{new Date(item.fecha).toLocaleString('es-PE')}</td><td>{item.host || 'Sin dominio'}</td><td>{item.usuario}</td>
             <td><strong>{estadosConsulta[item.estado]}</strong>
               {item.codigo > 0 && <span> &middot; HTTP {item.codigo}</span>}
-              {item.intentos > 0 && <p>Intentos {item.intentos}</p>}
+              <p>Intentos de llamada {item.intentos}</p>
               {item.reintentar_en && <p>Próximo intento {new Date(item.reintentar_en).toLocaleString('es-PE')}</p>}
               {item.mensaje && <p>{item.mensaje}</p>}
               {Object.entries(item.resumen ?? {}).map(([clave, dato]) => <p key={clave}>
-                {tipos[clave as Tipo]} · {dato.nuevos} nuevos · {dato.repetidos} repetidos · {dato.invalidos} inválidos
+                <strong>{tipos[clave as Tipo]}</strong> &middot; {dato.recibidos} recibidos &middot; {dato.nuevos} nuevos
+                {dato.cambios !== undefined && <> &middot; {dato.cambios} con cambios</>}
+                {' '}&middot; {dato.repetidos} {dato.cambios === undefined ? 'repetidos (conteo anterior)' : 'ya registrados'}
+                {' '}&middot; {dato.invalidos} inválidos
+                {!!dato.duplicados_respuesta && <> &middot; {dato.duplicados_respuesta} duplicados en la misma respuesta</>}
               </p>)}
               {Object.entries(item.registros).map(([estado, cantidad]) => <p key={estado}>
                 {estados[estado as Solicitud['estado']]} &middot; {cantidad}
@@ -443,13 +485,46 @@ export function IntegrationsPage() {
                     setConsultaRevision(null)
                   } else {
                     setConsultaRevision({ id: item.id, titulo: `${item.host} · ${new Date(item.fecha).toLocaleString('es-PE')}` })
-                    setTipo(item.resumen?.clientes?.nuevos ? 'clientes' : 'proveedores')
+                    setTipo(item.resumen?.clientes?.nuevos || item.resumen?.clientes?.cambios ? 'clientes' : 'proveedores')
                   }
                 }}>{consultaRevision?.id === item.id ? '▴ Ver todas' : '▾ Ver registros'}</button>}
+              {seccion === 'historial' && <button type="button" aria-expanded={consultaAbierta === item.id}
+                aria-controls={consultaAbierta === item.id ? `historial-${item.id}` : undefined}
+                onClick={() => setConsultaAbierta(consultaAbierta === item.id ? null : item.id)}>
+                {consultaAbierta === item.id ? '▴ Cerrar detalle' : '▾ Ver detalle'}
+              </button>}
               {item.tiene_siguiente && <button type="button" disabled={ocupado !== null}
                 onClick={() => void solicitar(item.id)}>Solicitar siguiente página</button>}
             </td>
-          </tr>)}</tbody>
+          </tr>
+          {seccion === 'historial' && consultaAbierta === item.id && <tr><td colSpan={4}>
+            <section id={`historial-${item.id}`} className="integration-history-detail" aria-label="Detalle de la consulta">
+              {detalleHistorial?.id !== item.id && <p role="status">Cargando detalle...</p>}
+              {detalleHistorial?.id === item.id && detalleHistorial.error && <p role="alert">{detalleHistorial.error}</p>}
+              {detalleHistorial?.id === item.id && detalleHistorial.datos && <>
+                <div className="integration-history-groups">
+                  {gruposHistorial.map(grupo => {
+                    const filas = detalleHistorial.datos?.registros.filter(fila => grupo.estados.includes(fila.estado)) ?? []
+                    return <details key={grupo.etiqueta}>
+                      <summary>{grupo.etiqueta} ({filas.length})</summary>
+                      {filas.length === 0 ? <p>No hay registros.</p> : <ul>{filas.map(fila => {
+                        const documento = fila.datos.numero_documento ?? (fila.datos.datos_comerciales as Record<string, unknown> | undefined)?.ruc
+                        return <li key={fila.id}><strong>{String(fila.datos.nombre ?? 'Sin nombre')}</strong>
+                          {documento ? ` · ${String(documento)}` : ''} &middot; {estados[fila.estado]}
+                          {fila.mensaje && <small>{fila.mensaje}</small>}
+                        </li>
+                      })}</ul>}
+                    </details>
+                  })}
+                </div>
+                <details><summary>Ver JSON de los datos recibidos</summary>
+                  <p>Campos reconocidos por Barbarito y errores de validación.</p>
+                  <pre>{JSON.stringify(detalleHistorial.datos.respuesta, null, 2)}</pre>
+                </details>
+              </>}
+            </section>
+          </td></tr>}
+          </Fragment>)}</tbody>
         </table>
       </div>}
       {(paginaHistorial > 1 || historial?.hay_mas) && <nav aria-label="Paginación de consultas">
@@ -482,8 +557,8 @@ export function IntegrationsPage() {
         {Object.entries(tiposPersona).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
       </select></label>}
       <div className="integration-actions">
-        <button className="integration-primary" type="button" disabled={ocupado !== null || !seleccionados.length || faltanCategorias}
-          onClick={() => void revisar(seleccionados, 'agregar')}>Agregar seleccionados ({seleccionados.length})</button>
+        <button className="integration-primary" type="button" disabled={ocupado !== null || !altasSeleccionadas.length || faltanCategorias}
+          onClick={() => void revisar(altasSeleccionadas, 'agregar')}>Agregar nuevos ({altasSeleccionadas.length})</button>
         <button type="button" disabled={ocupado !== null || !seleccionados.length}
           onClick={() => {
             if (window.confirm(`¿Descartar ${seleccionados.length} registros seleccionados?`)) void revisar(seleccionados, 'descartar')
@@ -510,7 +585,10 @@ export function IntegrationsPage() {
           const comercial = item.datos.datos_comerciales as Record<string, unknown> | undefined
           const documento = item.datos.numero_documento ?? comercial?.ruc
           const nombre = typeof item.datos.nombre === 'string' && item.datos.nombre.trim() ? item.datos.nombre : 'Sin nombre'
-          const editable = item.estado === 'PENDIENTE' || item.estado === 'ERROR'
+          const editable = (item.estado === 'PENDIENTE' || item.estado === 'ERROR') && item.modo !== 'YA_REGISTRADO'
+          const alta = !item.modo || item.modo === 'NUEVO'
+          const etiqueta = item.modo === 'YA_REGISTRADO' ? 'Ya registrado'
+            : item.modo === 'ACTUALIZAR' ? 'Cambios por revisar' : estados[item.estado]
           const requiereCategoria = item.tipo === 'proveedores' && !categorias[item.id]?.length
           const abierto = detalleAbierto === item.id
           const recibido = new Date(item.recibido_en)
@@ -530,14 +608,16 @@ export function IntegrationsPage() {
               <td className="integration-request-nowrap"><time dateTime={item.recibido_en}>
                 {recibido.toLocaleDateString('es-PE')}<small>{recibido.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</small>
               </time></td>
-              <td><span className="integration-request-status" data-status={item.estado}>{estados[item.estado]}</span></td>
+              <td><span className="integration-request-status" data-status={item.estado}>{etiqueta}</span></td>
               <td><div className="integration-request-actions">
                 <button type="button" aria-expanded={abierto} aria-controls={abierto ? `solicitud-${item.id}` : undefined}
                   aria-label={`${abierto ? 'Cerrar detalle' : 'Ver detalle'} de ${nombre}`}
                   onClick={() => setDetalleAbierto(abierto ? null : item.id)}>{abierto ? 'Cerrar' : requiereCategoria && editable ? 'Revisar' : 'Detalle'}</button>
                 {editable && <>
-                  <button className="integration-primary" type="button" disabled={ocupado !== null || requiereCategoria}
-                    onClick={() => void revisar([item], 'agregar')} aria-label={`Agregar a ${nombre}`}>Agregar</button>
+                  {alta && <button className="integration-primary" type="button" disabled={ocupado !== null || requiereCategoria}
+                    onClick={() => void revisar([item], 'agregar')} aria-label={`Agregar a ${nombre}`}>Agregar</button>}
+                  {item.modo === 'ACTUALIZAR' && !abierto && <button className="integration-primary" type="button"
+                    onClick={() => setDetalleAbierto(item.id)}>Revisar cambios</button>}
                   <button type="button" disabled={ocupado !== null} onClick={() => void revisar([item], 'descartar')}
                     aria-label={`Descartar a ${nombre}`}>Descartar</button>
                 </>}
@@ -547,6 +627,17 @@ export function IntegrationsPage() {
               <div id={`solicitud-${item.id}`} className="integration-request-detail-body">
                 <h3>Detalle de {nombre}</h3>
                 {item.mensaje && <p>{item.mensaje}</p>}
+                {item.modo === 'ACTUALIZAR' && <>
+                  <table className="integration-change-table" aria-label="Cambios en el cliente">
+                    <thead><tr><th scope="col">Campo</th><th scope="col">Actual</th><th scope="col">Propuesto</th></tr></thead>
+                    <tbody>{Object.entries(item.cambios ?? {}).map(([campo, cambio]) => <tr key={campo}>
+                      <th scope="row">{campo.replaceAll('_', ' ')}</th>
+                      <td>{cambio.anterior ?? 'Vacío'}</td><td>{cambio.nuevo ?? 'Vacío'}</td>
+                    </tr>)}</tbody>
+                  </table>
+                  <div><button className="integration-primary" type="button" disabled={ocupado !== null}
+                    onClick={() => void revisar([item], 'actualizar')}>Actualizar cliente</button></div>
+                </>}
                 {item.id_registro && <p>Registro incorporado <code>{item.id_registro}</code></p>}
                 {item.revisado_en && <p>Revisado por usuario {item.revisado_por} el {new Date(item.revisado_en).toLocaleString('es-PE')}</p>}
                 {editable && item.tipo === 'proveedores' && <fieldset><legend>Categorías para agregar al proveedor</legend>
