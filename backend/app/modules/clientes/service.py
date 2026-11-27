@@ -1,10 +1,10 @@
 """Customer directory shared across restaurants; documents are identifiers, not keys."""
-import re
 from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import BadRequest, Conflict, NotFound
 from app.core.extensions import db
+from .documentos import FORMATOS, documento_valido, inferir_persona
 
 
 def texto_opcional(datos, campo, limite):
@@ -29,15 +29,14 @@ def validar(data):
     documento=data.get('tipo_documento') or None
     if persona not in ('NATURAL','JURIDICA'):
         raise BadRequest('Tipo de persona invalido')
-    if documento not in (None,'DNI','RUC','CE','PASAPORTE'):
+    if documento is not None and (not isinstance(documento, str) or documento not in FORMATOS):
         raise BadRequest('Tipo de documento invalido')
     numero=result['numero_documento']
     if numero and not documento:
         raise BadRequest('Indica el tipo de documento')
-    if numero:
-        pattern={'DNI':r'[0-9]{8}','RUC':r'[0-9]{11}','CE':r'[A-Za-z0-9]{1,20}','PASAPORTE':r'[A-Za-z0-9]{1,30}'}[documento]
-        if not re.fullmatch(pattern,numero):
-            raise BadRequest('Numero de documento invalido')
+    if numero and not documento_valido(documento, numero):
+        raise BadRequest('Numero de documento invalido')
+    persona = inferir_persona(documento, numero) or persona
     if persona=='JURIDICA' and documento not in (None,'RUC'):
         raise BadRequest('Una persona juridica utiliza RUC')
     result.update(tipo_persona=persona,tipo_documento=documento)
@@ -47,6 +46,9 @@ def validar(data):
 def _json(row):
     result=dict(row)
     result['id_cliente']=str(result['id_cliente'])
+    persona = inferir_persona(result.get('tipo_documento'), result.get('numero_documento'))
+    if persona:
+        result['tipo_persona'] = persona
     return result
 
 
@@ -106,14 +108,22 @@ def crear(local,data, *, commit=True):
 
 def actualizar_contacto(local, id_cliente, datos):
     if (not isinstance(datos, dict) or not {'email', 'telefono'}.issubset(datos)
-            or set(datos) - {'email', 'telefono', 'direccion'}):
+            or set(datos) - {'nombre', 'email', 'telefono', 'direccion'}):
         raise BadRequest('Envia correo y telefono. Puedes dejar cualquiera vacio.')
     email = texto_opcional(datos, 'email', 200)
     telefono = texto_opcional(datos, 'telefono', 40)
     direccion = texto_opcional(datos, 'direccion', 300)
-    consulta = func.public.clientes_actualizar_contacto(
-        local, str(id_cliente), email, telefono, direccion, 'direccion' in datos,
-    ).table_valued('id_cliente', 'email', 'telefono', 'direccion')
+    if 'nombre' in datos:
+        nombre = texto_opcional(datos, 'nombre', 200)
+        if not nombre:
+            raise BadRequest('El nombre o razon social es obligatorio')
+        consulta = func.public.clientes_actualizar_datos(
+            id_cliente, nombre, email, telefono, direccion, 'direccion' in datos,
+        ).table_valued('id_cliente', 'nombre', 'email', 'telefono', 'direccion')
+    else:
+        consulta = func.public.clientes_actualizar_contacto(
+            local, str(id_cliente), email, telefono, direccion, 'direccion' in datos,
+        ).table_valued('id_cliente', 'email', 'telefono', 'direccion')
     fila = db.session.execute(select(consulta)).mappings().first()
     if fila is None:
         raise NotFound('Cliente no encontrado en el directorio')

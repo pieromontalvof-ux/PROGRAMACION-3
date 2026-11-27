@@ -29,6 +29,11 @@ class InboxTest(unittest.TestCase):
             admin = {'Authorization': 'Bearer ' + token}
             base = '/api/v1/integraciones'
             ruta = base + '/mi-api/clave'
+            app.config.update(INTEGRACIONES_VIGENCIA_DIAS=10, INTEGRACIONES_VIGENCIA_MAX_DIAS=40)
+            config = cliente.get(ruta, headers=admin).json
+            self.assertEqual((config['vigencia_dias'], config['vigencia_max_dias']), (10, 40))
+            fuera_de_rango = cliente.post(ruta, headers=admin, json={'nombre': 'Prueba', 'vigencia_dias': 41})
+            self.assertEqual(fuera_de_rango.status_code, 400)
             conector_a = cliente.post(ruta, headers=admin, json={'nombre': 'AcadeSys', 'permiso': 'clientes', 'vigencia_dias': 30})
             conector_b = cliente.post(ruta, headers=admin, json={'nombre': 'Otro sistema'})
             self.assertEqual(conector_a.status_code, 201)
@@ -194,5 +199,13 @@ class InboxTest(unittest.TestCase):
                     self.assertEqual(fila['datos']['nombre'], 'Ana Prueba')
                     self.assertEqual(fila['datos']['numero_documento'], '12345678')
                     self.assertEqual(fila['datos']['acadesys']['idCliente'], 'ACAD-01')
+                    revision = '/api/v1/integraciones/bandeja?tipo=clientes&estado=POR_REVISAR'
+                    filtrada = client.get(f'{revision}&consulta={identidad}&persona=NATURAL', headers=admin)
+                    self.assertEqual([registro['id'] for registro in filtrada.json['solicitudes']], [fila['id']])
+                    juridicas = client.get(f'{revision}&consulta={identidad}&persona=JURIDICA', headers=admin)
+                    self.assertEqual(juridicas.json['solicitudes'], [])
+                    por_revisar = client.get(historial_url + '?por_revisar=1', headers=admin).json['consultas']
+                    self.assertIn(identidad, {consulta['id'] for consulta in por_revisar})
+                    self.assertNotIn(segunda, {consulta['id'] for consulta in por_revisar})
                     self.assertNotIn('clave-fixture', str(fila))
         db_engine.dispose()

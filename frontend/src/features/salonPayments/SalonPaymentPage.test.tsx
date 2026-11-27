@@ -52,12 +52,37 @@ describe('customer directory in salon payment',()=>{
     const guardar=screen.getByRole('button',{name:'Guardar cliente'})
     await waitFor(()=>expect((guardar as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(guardar)
-    const contacto=await screen.findByRole('button',{name:'Guardar contacto'})
+    const contacto=await screen.findByRole('button',{name:'Actualizar cliente'})
     expect(api).toHaveBeenCalledWith('clientes',expect.objectContaining({email:'ana@example.org',telefono:null,direccion:null}))
     fireEvent.change(screen.getByLabelText('Celular o teléfono (opcional)'),{target:{value:'999888777'}})
     fireEvent.click(contacto)
     await waitFor(()=>expect(api).toHaveBeenCalledWith(`clientes/${uuid}/contacto`,
-      {email:'ana@example.org',telefono:'999888777',direccion:null},'PATCH'))
+      {nombre:'Ana Prueba',email:'ana@example.org',telefono:'999888777',direccion:null},'PATCH'))
+  })
+  it('offers an explicit update after a duplicate document and preserves the edits',async()=>{
+    api.mockImplementation(async(path)=>{
+      if(path==='clientes/configuracion')return {directorio_disponible:true}
+      if(path==='mesas/7/cuenta')return account
+      if(path==='clientes')throw Object.assign(new Error('Cliente existente'),{status:409})
+      if(path==='clientes?q=12345678&limit=100')return {clientes:[{
+        id_cliente:uuid,nombre:'Nombre anterior',numero_documento:'12345678',tipo_documento:'DNI',
+        tipo_persona:'NATURAL',email:'anterior@example.org',
+      }]}
+      if(path===`clientes/${uuid}/contacto`)return {id_cliente:uuid}
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button',{name:'Boleta electrónica'}))
+    fireEvent.change(screen.getByLabelText('DNI'),{target:{value:'12345678'}})
+    fireEvent.change(screen.getByLabelText('Nombres y apellidos'),{target:{value:'Nombre corregido'}})
+    const crear=screen.getByRole('button',{name:'Guardar cliente'})
+    await waitFor(()=>expect((crear as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(crear)
+    const actualizar=await screen.findByRole('button',{name:'Actualizar cliente'})
+    expect(api.mock.calls.some(([, , method])=>method==='PATCH')).toBe(false)
+    fireEvent.click(actualizar)
+    await waitFor(()=>expect(api).toHaveBeenCalledWith(`clientes/${uuid}/contacto`,
+      {nombre:'Nombre corregido',email:'anterior@example.org',telefono:null,direccion:null},'PATCH'))
   })
   it('selects a stored customer by document and sends the internal UUID with the payment',async()=>{
     api.mockImplementation(async(path)=>{

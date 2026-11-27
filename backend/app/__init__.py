@@ -12,6 +12,7 @@ from werkzeug.exceptions import HTTPException
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from app.core.config import Config
+from app.modules.integraciones.settings import cargar as cargar_integraciones
 from app.core.extensions import db
 from app.core.units import registrar_medidas_api
 from app.core.telemetry import register_http_telemetry
@@ -38,6 +39,7 @@ def create_app():
     instance = os.getenv('APP_DATA_DIR')
     app = Flask(__name__, **({'instance_path': str(Path(instance).resolve())} if instance else {}))
     app.config.from_object(Config)
+    app.config.update(cargar_integraciones())
     register_http_telemetry(app)
     registrar_medidas_api(app)
 

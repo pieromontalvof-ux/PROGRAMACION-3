@@ -30,3 +30,4 @@ services/fact_api/storage/framework/cache/**
 services/fact_api/bootstrap/cache/*.php
 database/backups
 otro poryecto
+Comprobantes

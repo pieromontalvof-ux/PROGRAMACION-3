@@ -4,7 +4,8 @@ from uuid import uuid4
 from xml.etree import ElementTree
 from sqlalchemy import Uuid, bindparam, cast, func, select
 from app.core.extensions import db
-from .worker import storage_root
+from .repository import nombre_local
+from .worker import carpeta_documentos, fecha_local, storage_root
 
 
 def validate_file(data, kind):
@@ -28,7 +29,8 @@ def save_original(local,source,data,kind):
     validate_file(data,kind)
     digest=hashlib.sha256(data).hexdigest()
     identity=str(uuid4())
-    relative=f'{local}/compra/originales/{source}/{identity}.{kind.lower()}'
+    relative = (carpeta_documentos(fecha_local(), local, 'originales-de-compra', nombre_local(local))
+                / str(source) / f'{identity}.{kind.lower()}').as_posix()
     path=storage_root()/relative
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_bytes(data)

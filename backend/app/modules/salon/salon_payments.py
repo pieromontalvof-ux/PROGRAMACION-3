@@ -14,6 +14,7 @@ from werkzeug.exceptions import BadRequest, Conflict, Forbidden, NotFound
 from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.modules.salon.salon_orders import contexto, obtener, nombre_presentacion
+from app.modules.clientes.documentos import documento_valido
 from app.modules.auditoria.service import registrar_actividad
 
 salon_payments_bp = Blueprint('salon_payments', __name__)
@@ -63,6 +64,17 @@ def datos_contacto(datos):
     }
 
 
+def documento_de_cobro(tipo, datos):
+    predeterminado = 'RUC' if tipo == 'FACTURA' else 'DNI'
+    tipo_documento = datos.get('tipo_documento', predeterminado)
+    documento = datos.get('documento', '')
+    if isinstance(documento, str):
+        documento = documento.strip()
+    if (tipo == 'FACTURA' and tipo_documento != 'RUC') or not documento_valido(tipo_documento, documento):
+        raise BadRequest('Ingresa RUC de 11 digitos.' if tipo == 'FACTURA' else 'Revisa el tipo y numero de documento.')
+    return tipo_documento, documento
+
+
 def validar(datos):
     if not isinstance(datos, dict):
         raise BadRequest('Datos de pago inválidos')
@@ -79,18 +91,21 @@ def validar(datos):
     if not isinstance(documento, str) or not isinstance(cliente, str):
         raise BadRequest('Datos del cliente inválidos')
     documento, cliente = documento.strip(), cliente.strip()
+    tipo_documento = None
     if tipo == 'BOLETA':
         documento = cliente = ''
     else:
-        longitud = 11 if tipo == 'FACTURA' else 8
-        if not re.fullmatch(r'[0-9]{%d}' % longitud, documento) or not 1 <= len(cliente) <= 200:
-            raise BadRequest('Ingresa RUC de 11 dígitos y razón social' if tipo == 'FACTURA'
-                             else 'Ingresa DNI de 8 dígitos y nombres y apellidos')
+        tipo_documento, documento = documento_de_cobro(tipo, datos)
+        if not 1 <= len(cliente) <= 200:
+            raise BadRequest('Indica el nombre o razon social.')
     revision = datos.get('revision')
     if not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{64}', revision):
         raise BadRequest('Abre nuevamente la cuenta antes de pagar')
     resultado = {'clave': clave, 'tipo': tipo, 'metodo': metodo, 'documento': documento,
                  'cliente': cliente, 'revision': revision}
+    # Keep the hash of legacy DNI and RUC requests stable.
+    if tipo == 'BOLETA_ELECTRONICA' and tipo_documento != 'DNI':
+        resultado['tipo_documento'] = tipo_documento
     if tipo != 'BOLETA' and 'contacto' in datos:
         resultado['contacto'] = datos_contacto(datos['contacto'])
     return resultado
@@ -244,13 +259,15 @@ def emitir(mesa):
     solicitud = request.get_json(silent=True)
     datos = validar(solicitud)
     cliente_id = solicitud.get('id_cliente') if datos['tipo'] != 'BOLETA' else None
+    tipo_documento = datos.get('tipo_documento', 'RUC' if datos['tipo'] == 'FACTURA' else 'DNI')
     registro = {}
     if cliente_id:
         from app.modules.clientes.service import obtener as obtener_cliente
         try: cliente_id=str(uuid.UUID(str(cliente_id)))
         except ValueError: raise BadRequest('Cliente invalido')
         registro=obtener_cliente(sesion['id_local'],cliente_id)
-        if not registro or registro['numero_documento']!=datos['documento'] or registro['nombre']!=datos['cliente']:
+        if (not registro or registro['numero_documento'] != datos['documento']
+                or registro['nombre'] != datos['cliente'] or registro['tipo_documento'] != tipo_documento):
             raise Conflict('Los datos cambiaron. Selecciona nuevamente el cliente del directorio.')
         datos['id_cliente']=cliente_id
     solicitud_hash = huella({**datos, 'mesa': mesa})
@@ -280,6 +297,8 @@ def emitir(mesa):
                     'cliente': datos['cliente'], 'local': sesion['local'], 'mesa': mesa,
                     'usuario': sesion['usuario'], 'total': float(total), 'fiscal': False,
                     'lineas': pedido['lineas']}
+        if datos['tipo'] != 'BOLETA':
+            snapshot['tipo_documento'] = tipo_documento
         from app.modules.facturacion.contract import contacto_tercero
         contacto = contacto_tercero({**registro, **datos.get('contacto', {})})
         if contacto:
@@ -359,19 +378,16 @@ def modificar_venta(identidad, accion):
             recibo['anulacion'] = evento
         else:
             tipo=datos.get('tipo')
-            documento=datos.get('documento','')
             cliente=datos.get('cliente','')
             if tipo not in ('BOLETA_ELECTRONICA','FACTURA') or tipo == fila['tipo']:
                 raise BadRequest('Selecciona otro tipo de comprobante.')
-            longitud=8 if tipo=='BOLETA_ELECTRONICA' else 11
-            if not isinstance(documento,str) or not re.fullmatch(r'\d{%d}' % longitud,documento):
-                raise BadRequest('Revisa el DNI o RUC.')
+            tipo_documento, documento = documento_de_cobro(tipo, datos)
             if not isinstance(cliente,str) or not 1<=len(cliente.strip())<=200: raise BadRequest('Indica el nombre o razón social.')
-            evento['anterior']={k:recibo.get(k) for k in ('tipo','documento','cliente')}
-            if documento != recibo.get('documento'):
+            evento['anterior']={k:recibo.get(k) for k in ('tipo','tipo_documento','documento','cliente')}
+            if documento != recibo.get('documento') or tipo_documento != recibo.get('tipo_documento'):
                 recibo.pop('contacto', None)
-            recibo.update(tipo=tipo,documento=documento,cliente=cliente.strip())
-            evento['nuevo']={k:recibo[k] for k in ('tipo','documento','cliente')}
+            recibo.update(tipo=tipo,tipo_documento=tipo_documento,documento=documento,cliente=cliente.strip())
+            evento['nuevo']={k:recibo[k] for k in ('tipo','tipo_documento','documento','cliente')}
             db.session.execute(select(func.public.salon_actualizar_cliente(
                 bindparam('tipo'), bindparam('doc'), bindparam('cliente'), bindparam('id'),
             )),

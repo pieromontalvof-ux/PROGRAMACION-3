@@ -21,6 +21,7 @@ from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.modules.catalogos import repository as catalogo
 from app.modules.catalogos.service import crear_proveedor_catalogo
 from app.modules.clientes import service as clientes
+from app.modules.clientes.documentos import inferir_persona
 
 from . import acadesys, external
 
@@ -243,7 +244,9 @@ def salida_clientes():
                 cursor_uuid = None
         except ValueError:
             raise BadRequest('Indica un limite de 1 a 100 y un cursor valido.') from None
-        permitido = db.session.scalar(select(func.public.integracion_consumir_lectura(id_clave)))
+        permitido = db.session.scalar(select(func.public.integracion_consumir_lectura(
+            id_clave, current_app.config['INTEGRACIONES_LECTURA_POR_MINUTO']
+        )))
         db.session.commit()
         if not permitido:
             respuesta = jsonify(mensaje='Limite de solicitudes por minuto alcanzado.')
@@ -257,6 +260,9 @@ def salida_clientes():
             datos = []
             for registro in registros[:limite]:
                 cliente = dict(registro)
+                persona = inferir_persona(cliente['tipo_documento'], cliente['numero_documento'])
+                if persona:
+                    cliente['tipo_persona'] = persona
                 cliente['idCliente'] = f"BRB-{cliente.pop('id_cliente')}"
                 canonico = json.dumps(cliente, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
                 datos.append({**cliente, 'version': sha256(canonico.encode('utf8')).hexdigest()})
@@ -290,7 +296,11 @@ def metadatos_clave(conector):
 def listar_claves(_usuario):
     conectores = db.session.scalars(select(ClaveIntegracion)
                                     .order_by(ClaveIntegracion.creado_en.desc(), ClaveIntegracion.id)).all()
-    respuesta = jsonify(claves=[metadatos_clave(conector) for conector in conectores])
+    respuesta = jsonify(
+        claves=[metadatos_clave(conector) for conector in conectores],
+        vigencia_dias=current_app.config['INTEGRACIONES_VIGENCIA_DIAS'],
+        vigencia_max_dias=current_app.config['INTEGRACIONES_VIGENCIA_MAX_DIAS'],
+    )
     respuesta.headers['Cache-Control'] = 'no-store'
     return respuesta
 
@@ -308,8 +318,9 @@ def generar_clave(usuario):
     vigencia = datos.get('vigencia_dias')
     if permiso not in ('clientes', 'proveedores', 'ambos', 'leer_clientes'):
         raise BadRequest('Selecciona un permiso valido.')
-    if vigencia is not None and (type(vigencia) is not int or not 1 <= vigencia <= 365):
-        raise BadRequest('Indica una vigencia de 1 a 365 dias.')
+    maximo = current_app.config['INTEGRACIONES_VIGENCIA_MAX_DIAS']
+    if vigencia is not None and (type(vigencia) is not int or not 1 <= vigencia <= maximo):
+        raise BadRequest(f'Indica una vigencia de 1 a {maximo} dias.')
     vence = datetime.now(timezone.utc) + timedelta(days=vigencia) if vigencia is not None else None
     nombre = nombre.strip()
     clave = token_urlsafe(32)
@@ -349,6 +360,14 @@ def historial_consultas(_usuario):
     seleccion = select(ConsultaIntegracion)
     if request.args.get('activas') == '1':
         seleccion = seleccion.where(ConsultaIntegracion.estado.in_(('EN_COLA', 'REINTENTO')))
+    por_revisar = request.args.get('por_revisar') == '1'
+    en_curso = ConsultaIntegracion.estado.in_(('EN_COLA', 'REINTENTO'))
+    if por_revisar:
+        pendientes = select(Solicitud.id).where(
+            Solicitud.consulta_id == ConsultaIntegracion.id,
+            Solicitud.estado.in_(('PENDIENTE', 'ERROR')),
+        ).exists()
+        seleccion = seleccion.where(en_curso | pendientes).order_by(en_curso.desc().nulls_last())
     filas = db.session.scalars(seleccion.order_by(ConsultaIntegracion.fecha.desc(), ConsultaIntegracion.id.desc())
         .offset((pagina - 1) * 25).limit(26)).all()
     ids = [fila.id for fila in filas[:25]]
@@ -422,10 +441,10 @@ def consultar_externa(usuario):
 def ejecutar_consulta(trabajo):
     url, tipo, usuario, local = trabajo.url, trabajo.tipo, trabajo.usuario, trabajo.id_local
     destino = urlsplit(url)
-    es_acadesys = destino.hostname == 'acadesys-api.onrender.com' and acadesys.corresponde(destino.path)
+    es_acadesys = destino.hostname == current_app.config['ACADESYS_API_HOST'] and acadesys.corresponde(destino.path)
     if trabajo.clave_cifrada:
         try:
-            secreto = cifrado_consultas().decrypt(trabajo.clave_cifrada.encode('ascii'), ttl=86400).decode('ascii')
+            secreto = cifrado_consultas().decrypt(trabajo.clave_cifrada.encode('ascii'), ttl=current_app.config['INTEGRACIONES_CREDENCIAL_TTL_SEGUNDOS']).decode('ascii')
             host, _, token = secreto.partition('\0')
             if host != external.url_https(url)[1] or not token:
                 raise InvalidToken
@@ -498,9 +517,10 @@ def procesar_consulta():
     except HTTPException as error:
         trabajo.codigo = error.code
         trabajo.mensaje = error.description
-        if isinstance(error, (external.FalloTemporal, external.GatewayTimeout)) and trabajo.intentos < 3:
+        if isinstance(error, (external.FalloTemporal, external.GatewayTimeout)) and trabajo.intentos < current_app.config['INTEGRACIONES_CONSULTA_INTENTOS']:
             trabajo.estado = 'REINTENTO'
-            trabajo.ejecutar_en = datetime.now(timezone.utc) + timedelta(seconds=30 * trabajo.intentos)
+            demora = current_app.config['INTEGRACIONES_REINTENTO_SEGUNDOS'] * trabajo.intentos
+            trabajo.ejecutar_en = datetime.now(timezone.utc) + timedelta(seconds=demora)
         else:
             trabajo.estado = 'FALLIDA'
             trabajo.ejecutar_en = None
@@ -521,15 +541,33 @@ def procesar_consulta():
 def bandeja(_usuario):
     filtro = request.args.get('estado', 'PENDIENTE')
     pagina = request.args.get('pagina', 1, type=int)
-    if filtro not in ('PENDIENTE', 'ERROR', 'AGREGADO', 'DESCARTADO', 'TODOS') or pagina < 1:
+    if filtro not in ('PENDIENTE', 'ERROR', 'AGREGADO', 'DESCARTADO', 'TODOS', 'POR_REVISAR') or pagina < 1:
         raise BadRequest('Filtro o pagina no validos.')
     tipo = request.args.get('tipo')
     if tipo not in (None, 'clientes', 'proveedores'):
         raise BadRequest('Tipo de registros no valido.')
+    consulta = request.args.get('consulta')
+    persona = request.args.get('persona')
+    if persona not in (None, 'NATURAL', 'JURIDICA', 'SIN_CLASIFICAR') or (persona and tipo != 'clientes'):
+        raise BadRequest('Tipo de persona no valido.')
     seleccion = select(Solicitud)
     if tipo:
         seleccion = seleccion.filter_by(tipo=tipo)
-    if filtro != 'TODOS':
+    if consulta:
+        try:
+            consulta = str(UUID(consulta))
+        except ValueError:
+            raise BadRequest('Identificador de consulta no valido.') from None
+        seleccion = seleccion.filter_by(consulta_id=consulta)
+    if persona:
+        valor = Solicitud.datos['tipo_persona'].as_string()
+        if persona == 'SIN_CLASIFICAR':
+            seleccion = seleccion.where(valor.is_(None) | valor.not_in(('NATURAL', 'JURIDICA')))
+        else:
+            seleccion = seleccion.where(valor == persona)
+    if filtro == 'POR_REVISAR':
+        seleccion = seleccion.where(Solicitud.estado.in_(('PENDIENTE', 'ERROR')))
+    elif filtro != 'TODOS':
         seleccion = seleccion.filter_by(estado=filtro)
     filas = db.session.scalars(seleccion.order_by(Solicitud.recibido_en.desc(), Solicitud.id.desc())
                               .offset((pagina - 1) * 25).limit(26)).all()

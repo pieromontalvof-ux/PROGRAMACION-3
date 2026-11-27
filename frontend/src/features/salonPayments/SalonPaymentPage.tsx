@@ -5,6 +5,7 @@ import {salonApi} from '../../services/salonService'
 import { useAuth } from '../../context/authState'
 import {documentNames, money, resumenReposiciones, type Receipt, type ReceiptLine} from './receipt'
 import './SalonPaymentPage.css'
+import {documentosCliente, personaDelDocumento, type TipoDocumentoCliente} from './documentosCliente'
 import {FactApiPanel} from '../../components/FactApiPanel'
 import {FactApiPreviewPane} from '../../components/FactApiPdfPreview'
 
@@ -30,6 +31,8 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
   const [type,setType]=useState('BOLETA')
   const [method,setMethod]=useState('')
   const [document,setDocument]=useState('')
+  const [tipoDocumento,setTipoDocumento]=useState<TipoDocumentoCliente>('DNI')
+  const formatoDocumento=documentosCliente[tipoDocumento]
   const [customer,setCustomer]=useState('')
   const [email,setEmail]=useState('')
   const [telefono,setTelefono]=useState('')
@@ -37,6 +40,8 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
   const [selectedCustomer,setSelectedCustomer]=useState<string|null>(null)
   const [customers,setCustomers]=useState<Customer[]>([])
   const [personType,setPersonType]=useState('NATURAL')
+  const personaDetectada=personaDelDocumento(tipoDocumento,document)
+  const consultaIdentidad=tipoDocumento==='DNI'||tipoDocumento==='RUC'
   const [customerBusy,setCustomerBusy]=useState(false)
   const [customerNotice,setCustomerNotice]=useState('')
   const [directoryReady,setDirectoryReady]=useState(false)
@@ -79,27 +84,48 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
     const requestId=++identityRequest.current
     try{
       if(selectedCustomer){
-        await salonApi(`clientes/${selectedCustomer}/contacto`,contacto,'PATCH')
+        await salonApi(`clientes/${selectedCustomer}/contacto`,{nombre:customer,...contacto},'PATCH')
       }else{
-        const data=await salonApi('clientes',{nombre:customer,tipo_persona:personType,
-          tipo_documento:type==='FACTURA'?'RUC':'DNI',numero_documento:document,...contacto})
+        const data=await salonApi('clientes',{nombre:customer,tipo_persona:personaDetectada??personType,
+          tipo_documento:tipoDocumento,numero_documento:document,...contacto})
         if(requestId===identityRequest.current)setSelectedCustomer(data.id_cliente)
       }
       if(requestId===identityRequest.current){
         setCustomers([])
-        setCustomerNotice(selectedCustomer?'Contacto actualizado.':'Cliente guardado en el directorio compartido.')
+        setCustomerNotice(selectedCustomer?'Cliente actualizado en el directorio compartido.':'Cliente guardado en el directorio compartido.')
       }
     }catch(e){
-      if(requestId===identityRequest.current)setCustomerNotice(e instanceof Error?e.message:'No se pudo guardar el cliente')
+      if(requestId!==identityRequest.current)return
+      if(!selectedCustomer && e instanceof Error && 'status' in e && e.status===409){
+        try{
+          const datos=await salonApi<{clientes:Customer[]}>(`clientes?q=${encodeURIComponent(document)}&limit=100`)
+          if(requestId!==identityRequest.current)return
+          const existente=datos.clientes.find(fila=>fila.numero_documento===document &&
+            fila.tipo_documento===tipoDocumento)
+          if(existente){
+            setSelectedCustomer(existente.id_cliente)
+            setPersonType(existente.tipo_persona)
+            setEmail(actual=>actual || existente.email || '')
+            setTelefono(actual=>actual || existente.telefono || '')
+            setDireccion(actual=>actual || existente.direccion || '')
+            setCustomers([])
+            setCustomerNotice('Este cliente ya existe. Revisa los datos y pulsa Actualizar cliente.')
+            return
+          }
+        }catch{
+          if(requestId!==identityRequest.current)return
+        }
+      }
+      setCustomerNotice(e instanceof Error?e.message:'No se pudo guardar el cliente')
     }finally{setCustomerBusy(false)}
   }
   async function lookupIdentity(){
     const requestId=++identityRequest.current
     setCustomerBusy(true);setCustomerNotice('')
     try{
-      const data=await salonApi('clientes/consultar-documento',{tipo_documento:type==='FACTURA'?'RUC':'DNI',numero_documento:document})
+      const data=await salonApi('clientes/consultar-documento',{tipo_documento:tipoDocumento,numero_documento:document})
       if(requestId!==identityRequest.current)return
-      setCustomer(data.nombre);setSelectedCustomer(null);setCustomers([])
+      setCustomer(data.nombre);setCustomers([])
       if(data.direccion)setDireccion(actual=>actual || data.direccion)
       setCustomerNotice('Datos obtenidos de Factiliza. Revísalos antes de guardar el cliente.')
     }catch(e){if(requestId===identityRequest.current)setCustomerNotice(e instanceof Error?e.message:'No se pudo consultar el documento')}
@@ -111,7 +137,7 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
     submitting.current=true;setBusy(true);setError('')
     try {
       const saved:Receipt=await salonApi(`mesas/${mesa}/emitir`,{clave:key.current,revision:account.revision,
-        tipo:type,metodo:method,documento:document,cliente:customer,
+        tipo:type,metodo:method,tipo_documento:tipoDocumento,documento:document,cliente:customer,
         ...(type!=='BOLETA'?{contacto}:{}),...(selectedCustomer?{id_cliente:selectedCustomer}:{})})
       setReceipt(saved)
     }catch(e){setError(e instanceof Error ? e.message : 'No se pudo registrar el cobro')}
@@ -138,12 +164,19 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
       <form id="payment-form" onSubmit={e=>{e.preventDefault();void emit()}}>
         <fieldset disabled={busy}><legend>Tipo de comprobante</legend>
           <div className="payment-choices">{Object.entries(documentNames).map(([value,label])=><button key={value} type="button" aria-pressed={type===value}
-            onClick={()=>{identityRequest.current++;setType(value);setDocument('');setCustomer('');setEmail('');setTelefono('');setDireccion('');setSelectedCustomer(null);setCustomers([]);setCustomerNotice('')}}>{label}</button>)}</div>
+            onClick={()=>{identityRequest.current++;setType(value);setTipoDocumento(value==='FACTURA'?'RUC':'DNI');setPersonType('NATURAL');setDocument('');setCustomer('');setEmail('');setTelefono('');setDireccion('');setSelectedCustomer(null);setCustomers([]);setCustomerNotice('')}}>{label}</button>)}</div>
           <p className="payment-note">Después de confirmar el cobro podrás descargar el comprobante de prueba en PDF A4 o ticket de 80 mm.</p>
           {type!=='BOLETA' && <div className="payment-customer">
-            <label>{type==='FACTURA' ? 'RUC' : 'DNI'}<input autoComplete="off" inputMode="numeric" required pattern={type==='FACTURA' ? '[0-9]{11}' : '[0-9]{8}'}
-              maxLength={type==='FACTURA' ? 11 : 8} value={document} onChange={e=>{identityRequest.current++;setDocument(e.target.value.replace(/\D/g,''));setEmail('');setTelefono('');setDireccion('');setSelectedCustomer(null);setCustomers([])}}/></label>
-            <label>{type==='FACTURA' ? 'Razón social' : 'Nombres y apellidos'}<input required maxLength={200} value={customer} onChange={e=>{identityRequest.current++;setCustomer(e.target.value);setSelectedCustomer(null)}}/></label>
+            {type==='BOLETA_ELECTRONICA'&&<label>Tipo de documento<select value={tipoDocumento} onChange={e=>{
+              identityRequest.current++;setTipoDocumento(e.target.value as TipoDocumentoCliente);setDocument('')
+              setPersonType('NATURAL');setCustomer('');setEmail('');setTelefono('');setDireccion('')
+              setSelectedCustomer(null);setCustomers([]);setCustomerNotice('')
+            }}>{Object.entries(documentosCliente).map(([codigo, datos])=><option key={codigo} value={codigo}>{datos.etiqueta}</option>)}</select></label>}
+            <label>{formatoDocumento.etiqueta}<input autoComplete="off" inputMode={formatoDocumento.numerico?'numeric':'text'} required
+              pattern={formatoDocumento.patron} maxLength={formatoDocumento.maximo} value={document}
+              onChange={e=>{identityRequest.current++;setDocument(formatoDocumento.numerico?e.target.value.replace(/\D/g,''):e.target.value)
+                setEmail('');setTelefono('');setDireccion('');setSelectedCustomer(null);setCustomers([])}}/></label>
+            <label>{tipoDocumento==='RUC' ? 'Razón social' : 'Nombres y apellidos'}<input required maxLength={200} value={customer} onChange={e=>{identityRequest.current++;setCustomer(e.target.value)}}/></label>
             <div className="payment-contact">
               <label>Correo (opcional)<input inputMode="email" autoComplete="off" maxLength={200} value={email}
                 onChange={e=>setEmail(e.target.value)} /></label>
@@ -151,15 +184,18 @@ function PaymentWorkspace({mesa,id}:{mesa?:string;id?:string}) {
                 onChange={e=>setTelefono(e.target.value)} /></label>
               <label className="payment-address">Dirección (opcional)<input autoComplete="off" maxLength={300} value={direccion}
                 onChange={e=>setDireccion(e.target.value)} /></label>
-              <p className="payment-note">Estos datos se usan en el comprobante. Pulsa Guardar cliente o Guardar contacto para conservarlos en el directorio.</p>
+              <p className="payment-note">Estos datos se usan en el comprobante. Pulsa Guardar cliente o Actualizar cliente para conservarlos en el directorio.</p>
             </div>
             <div>
               <button type="button" disabled={!directoryReady||customerBusy||!document} onClick={()=>void searchCustomers()}>Buscar cliente registrado</button>
-              <button type="button" disabled={!identityReady||customerBusy||document.length!==(type==='FACTURA'?11:8)} onClick={()=>void lookupIdentity()}>Consultar DNI/RUC</button>
-              {!identityReady&&<p className="payment-note">Consulta externa pendiente de configurar el token de Factiliza. Puedes registrar al cliente manualmente.</p>}
-              {type==='FACTURA'&&<label>Tipo de persona<select value={personType} onChange={e=>setPersonType(e.target.value)}><option value="NATURAL">Persona natural con RUC</option><option value="JURIDICA">Persona jur?dica</option></select></label>}
-              <button type="button" disabled={!directoryReady||customerBusy||!customer||!document} onClick={()=>void saveCustomer()}>{selectedCustomer?'Guardar contacto':'Guardar cliente'}</button>
-              {!!customers.length&&<ul>{customers.filter(c=>c.tipo_documento===(type==='FACTURA'?'RUC':'DNI')).map(c=><li key={c.id_cliente}><button type="button" onClick={()=>{setSelectedCustomer(c.id_cliente);setCustomer(c.nombre);setDocument(c.numero_documento);setPersonType(c.tipo_persona);setEmail(c.email ?? '');setTelefono(c.telefono ?? '');setDireccion(c.direccion ?? '');setCustomers([])}}>{c.nombre} ? {c.numero_documento}</button></li>)}</ul>}
+              {consultaIdentidad&&<button type="button" disabled={!identityReady||customerBusy||!new RegExp(`^${formatoDocumento.patron}$`).test(document)} onClick={()=>void lookupIdentity()}>Consultar DNI/RUC</button>}
+              {consultaIdentidad&&!identityReady&&<p className="payment-note">Consulta externa pendiente de configurar el token de Factiliza. Puedes registrar al cliente manualmente.</p>}
+              {tipoDocumento==='RUC'&&<label>Tipo de persona<select value={personaDetectada??personType}
+                disabled={personaDetectada!==null} onChange={e=>setPersonType(e.target.value)}>
+                <option value="NATURAL">Persona natural con RUC</option><option value="JURIDICA">Persona jurídica</option>
+              </select></label>}
+              <button type="button" disabled={!directoryReady||customerBusy||!customer||!document} onClick={()=>void saveCustomer()}>{selectedCustomer?'Actualizar cliente':'Guardar cliente'}</button>
+              {!!customers.length&&<ul>{customers.filter(c=>c.tipo_documento===tipoDocumento).map(c=><li key={c.id_cliente}><button type="button" onClick={()=>{setSelectedCustomer(c.id_cliente);setCustomer(c.nombre);setDocument(c.numero_documento);setPersonType(c.tipo_persona);setEmail(c.email ?? '');setTelefono(c.telefono ?? '');setDireccion(c.direccion ?? '');setCustomers([])}}>{c.nombre} ? {c.numero_documento}</button></li>)}</ul>}
               {customerNotice&&<p role="status">{customerNotice}</p>}
             </div>
           </div>}

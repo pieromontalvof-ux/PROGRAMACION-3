@@ -6,11 +6,8 @@ from http.client import HTTPException, HTTPSConnection
 from time import monotonic
 from urllib.parse import urlsplit
 
+from flask import current_app
 from werkzeug.exceptions import BadGateway, BadRequest, GatewayTimeout
-
-MAX_REGISTROS = 200
-MAX_BYTES = 512 * 1024
-
 
 class FalloTemporal(BadGateway):
     pass
@@ -49,7 +46,7 @@ def destino_publico(url):
 
 class ConexionVerificada(HTTPSConnection):
     def __init__(self, host, direccion):
-        super().__init__(host, timeout=8, context=ssl.create_default_context())
+        super().__init__(host, timeout=current_app.config['INTEGRACIONES_HTTP_TIMEOUT_SEGUNDOS'], context=ssl.create_default_context())
         self.direccion = direccion
 
     def connect(self):
@@ -72,7 +69,8 @@ def consultar(url, token):
     cabeceras = {'Accept': 'application/json'}
     if token:
         cabeceras['Authorization'] = 'Bearer ' + token
-    with_deadline = monotonic() + 12
+    limite_bytes = current_app.config['INTEGRACIONES_HTTP_MAX_BYTES']
+    with_deadline = monotonic() + current_app.config['INTEGRACIONES_HTTP_PLAZO_SEGUNDOS']
     conexion = ConexionVerificada(host, direccion)
     try:
         conexion.request('GET', ruta, headers=cabeceras)
@@ -86,14 +84,14 @@ def consultar(url, token):
         if respuesta.status != 200:
             raise BadGateway(f'La API externa respondio con HTTP {respuesta.status}. Usa la URL final del recurso.')
         datos = bytearray()
-        while len(datos) <= MAX_BYTES:
+        while len(datos) <= limite_bytes:
             if monotonic() > with_deadline:
                 raise GatewayTimeout('La API externa tardo demasiado. Puedes volver a solicitar los datos.')
-            bloque = respuesta.read1(min(65536, MAX_BYTES + 1 - len(datos)))
+            bloque = respuesta.read1(min(65536, limite_bytes + 1 - len(datos)))
             if not bloque:
                 break
             datos.extend(bloque)
-        if len(datos) > MAX_BYTES:
+        if len(datos) > limite_bytes:
             raise BadGateway('La respuesta es demasiado grande. Solicita una pagina mas pequena.')
         try:
             return host, destino.path, json.loads(datos)
@@ -123,6 +121,7 @@ def separar(datos, tipo=None):
             raise BadGateway('La API devolvio una lista sin indicar el tipo. En Opciones de la consulta indica que contiene esa lista.')
     if not colecciones or any(not isinstance(filas, list) for filas in colecciones.values()):
         raise BadGateway('El JSON debe incluir una lista, datos en data o listas de clientes y proveedores.')
-    if sum(map(len, colecciones.values())) > MAX_REGISTROS:
-        raise BadGateway(f'La respuesta supera {MAX_REGISTROS} registros. Solicita una pagina mas pequena.')
+    limite_registros = current_app.config['INTEGRACIONES_HTTP_MAX_REGISTROS']
+    if sum(map(len, colecciones.values())) > limite_registros:
+        raise BadGateway(f'La respuesta supera {limite_registros} registros. Solicita una pagina mas pequena.')
     return colecciones

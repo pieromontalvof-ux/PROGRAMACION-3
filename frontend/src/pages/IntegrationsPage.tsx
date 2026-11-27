@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/authState'
 import { API_BASE_URL } from '../config'
@@ -65,6 +65,9 @@ const estados = {
   TODOS: 'Todos',
 }
 
+const filtrosRevision = { POR_REVISAR: 'Por revisar', PENDIENTE: 'Pendientes', ERROR: 'Con errores' }
+const tiposPersona = { NATURAL: 'Persona natural', JURIDICA: 'Persona jurídica', SIN_CLASIFICAR: 'Sin clasificar' }
+
 export function IntegrationsPage() {
   const { token, localActivo } = useAuth()
   const { seccion: ruta } = useParams()
@@ -74,15 +77,19 @@ export function IntegrationsPage() {
   const [formularioClave, setFormularioClave] = useState(false)
   const [nombreClave, setNombreClave] = useState('')
   const [permiso, setPermiso] = useState<ClaveAPI['permiso']>('leer_clientes')
-  const [vigencia, setVigencia] = useState('30')
+  const [vigencia, setVigencia] = useState('')
+  const [configVigencia, setConfigVigencia] = useState<{ dias: number; maximo: number } | null>(null)
   const [historial, setHistorial] = useState<Historial | null>(null)
   const [paginaHistorial, setPaginaHistorial] = useState(1)
   const [errorHistorial, setErrorHistorial] = useState('')
-  const [filtro, setFiltro] = useState<keyof typeof estados>('PENDIENTE')
+  const [filtro, setFiltro] = useState<keyof typeof filtrosRevision>('POR_REVISAR')
+  const [consultaRevision, setConsultaRevision] = useState<{ id: string; titulo: string } | null>(null)
+  const [persona, setPersona] = useState('')
   const [tipo, setTipo] = useState<Tipo>('clientes')
   const [url, setUrl] = useState('')
   const [claveExterna, setClaveExterna] = useState('')
   const [tipoConsulta, setTipoConsulta] = useState<Tipo | ''>('')
+  const [detalleAbierto, setDetalleAbierto] = useState<string | null>(null)
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [mostrarClave, setMostrarClave] = useState(false)
   const [identificadorVisible, setIdentificadorVisible] = useState<string | null>(null)
@@ -108,9 +115,12 @@ export function IntegrationsPage() {
   }, [seguimiento])
 
   useEffect(() => {
-    if (!token || (seccion !== 'bandeja' && seccion !== 'historial')) return
+    if (!token || seccion !== 'bandeja') return
     const control = new AbortController()
-    fetch(`${base}/bandeja?estado=${seccion === 'historial' ? 'TODOS' : filtro}&pagina=${pagina}&tipo=${tipo}`, {
+    const parametros = new URLSearchParams({ estado: filtro, pagina: String(pagina), tipo })
+    if (consultaRevision) parametros.set('consulta', consultaRevision.id)
+    if (tipo === 'clientes' && persona) parametros.set('persona', persona)
+    fetch(`${base}/bandeja?${parametros}`, {
       headers: { Authorization: `Bearer ${token}` }, signal: control.signal,
     }).then(async respuesta => {
       const datos = await respuesta.json()
@@ -120,7 +130,7 @@ export function IntegrationsPage() {
       if (!control.signal.aborted) setError(String(fallo.message))
     })
     return () => control.abort()
-  }, [base, token, filtro, pagina, tipo, version, seccion, actualizacion])
+  }, [base, token, filtro, pagina, tipo, version, seccion, actualizacion, consultaRevision, persona])
 
   useEffect(() => {
     if (!token || seccion !== 'claves') return
@@ -132,6 +142,7 @@ export function IntegrationsPage() {
       if (!respuesta.ok) throw new Error(datos.mensaje ?? 'No se pudieron cargar las claves.')
       if (!control.signal.aborted) {
         setClaves(datos.claves)
+        setConfigVigencia({ dias: datos.vigencia_dias, maximo: datos.vigencia_max_dias })
         setErrorClaves('')
       }
     }).catch(fallo => {
@@ -144,7 +155,7 @@ export function IntegrationsPage() {
     if (!token || !seguimiento) return
     const control = new AbortController()
     setErrorHistorial('')
-    fetch(`${base}/historial/consultas?pagina=${paginaHistorial}&activas=${seccion === 'bandeja' ? 1 : 0}`, {
+    fetch(`${base}/historial/consultas?pagina=${paginaHistorial}&por_revisar=${seccion === 'bandeja' ? 1 : 0}`, {
       headers: { Authorization: `Bearer ${token}` }, signal: control.signal,
     }).then(async respuesta => {
       const datos = await respuesta.json()
@@ -191,7 +202,6 @@ export function IntegrationsPage() {
       setFormularioClave(false)
       setNombreClave('')
       setPermiso('leer_clientes')
-      setVigencia('30')
       setRevisionClaves(vez => vez + 1)
     } catch (fallo) {
       setErrorClaves(String((fallo as Error).message))
@@ -282,11 +292,14 @@ export function IntegrationsPage() {
     setError('')
     setBandeja(null)
     setSeleccion([])
+    setDetalleAbierto(null)
     setPagina(nueva)
   }
 
   const seleccionados = (bandeja?.solicitudes ?? []).filter(item =>
     seleccion.includes(item.id) && (item.estado === 'PENDIENTE' || item.estado === 'ERROR'))
+  const seleccionables = (bandeja?.solicitudes ?? []).filter(item => item.estado === 'PENDIENTE' || item.estado === 'ERROR')
+  const todaLaPagina = seleccionables.length > 0 && seleccionados.length === seleccionables.length
   const faltanCategorias = seleccionados.some(item => item.tipo === 'proveedores' && !categorias[item.id]?.length)
 
   return <section className="integration-inbox">
@@ -324,8 +337,13 @@ export function IntegrationsPage() {
     <section className="integration-help integration-keys" hidden={seccion !== 'claves'} aria-labelledby="claves-local">
       <div className="integration-toolbar">
         <h2 id="claves-local">Claves de Barbarito</h2>
-        <button className="integration-primary" type="button" disabled={ocupado !== null || !localActivo}
-          onClick={() => { setErrorClaves(''); setFormularioClave(true) }} aria-expanded={formularioClave}>Generar nueva clave</button>
+        <button className="integration-primary" type="button" disabled={ocupado !== null || !localActivo || !configVigencia}
+          onClick={() => {
+            if (!configVigencia) return
+            setVigencia(String(configVigencia.dias))
+            setErrorClaves('')
+            setFormularioClave(true)
+          }} aria-expanded={formularioClave}>Generar nueva clave</button>
       </div>
       {formularioClave && <form className="integration-help integration-create-key" onSubmit={evento => {
         evento.preventDefault()
@@ -339,11 +357,11 @@ export function IntegrationsPage() {
           <option value="clientes">Recibir solo clientes</option>
           <option value="proveedores">Recibir solo proveedores</option>
         </select></label>
-        <label>Caducidad<select value={vigencia} onChange={evento => setVigencia(evento.target.value)}>
-          <option value="7">7 días</option><option value="30">30 días</option>
-          <option value="90">90 días</option><option value="365">365 días</option>
-          <option value="">Sin caducidad</option>
-        </select></label>
+        <label>Caducidad en días
+          <input type="number" min={1} max={configVigencia?.maximo} step={1} value={vigencia}
+            onChange={evento => setVigencia(evento.target.value)} />
+          <small>Deja el campo vacío para crear una clave sin caducidad.</small>
+        </label>
         <div className="integration-actions">
           <button type="button" disabled={ocupado !== null} onClick={() => { setFormularioClave(false); setErrorClaves('') }}>Cancelar</button>
           <button className="integration-primary" type="submit" disabled={ocupado !== null || !nombreClave.trim()}>Crear clave</button>
@@ -389,10 +407,10 @@ export function IntegrationsPage() {
     </section>
     {seccion === 'consulta' && aviso && <Link to="/home/integraciones/bandeja">Ir a la bandeja de solicitudes</Link>}
     {seguimiento && <section className="integration-help integration-keys" aria-label="Consultas externas">
-      <h2>{seccion === 'bandeja' ? 'Consultas en curso' : 'Historial de consultas externas'}</h2>
+      <h2>{seccion === 'bandeja' ? 'Consultas en curso y por revisar' : 'Historial de consultas externas'}</h2>
       {errorHistorial && <p role="alert">{errorHistorial}</p>}
       {!historial && !errorHistorial && <p role="status">Cargando consultas...</p>}
-      {historial?.consultas.length === 0 && <p>{seccion === 'bandeja' ? 'No hay consultas en curso.' : 'No hay consultas registradas.'}</p>}
+      {historial?.consultas.length === 0 && <p>{seccion === 'bandeja' ? 'No hay consultas en curso ni con registros por revisar.' : 'No hay consultas registradas.'}</p>}
       {historial && historial.consultas.length > 0 && <div className="integration-table-scroll" tabIndex={0}>
         <table>
           <thead><tr><th scope="col">Fecha</th><th scope="col">Origen</th><th scope="col">Usuario</th><th scope="col">Resultado</th></tr></thead>
@@ -415,6 +433,19 @@ export function IntegrationsPage() {
                   <li key={`${fallo.tipo}-${fallo.fila}`}>{tipos[fallo.tipo]}, fila {fallo.fila}. {fallo.mensaje}</li>
                 )}</ul>
               </details>}
+              {seccion === 'bandeja' && Boolean(item.registros.PENDIENTE || item.registros.ERROR) && <button
+                type="button" aria-pressed={consultaRevision?.id === item.id}
+                onClick={() => {
+                  cambiarPagina(1)
+                  setFiltro('POR_REVISAR')
+                  setPersona('')
+                  if (consultaRevision?.id === item.id) {
+                    setConsultaRevision(null)
+                  } else {
+                    setConsultaRevision({ id: item.id, titulo: `${item.host} · ${new Date(item.fecha).toLocaleString('es-PE')}` })
+                    setTipo(item.resumen?.clientes?.nuevos ? 'clientes' : 'proveedores')
+                  }
+                }}>{consultaRevision?.id === item.id ? '▴ Ver todas' : '▾ Ver registros'}</button>}
               {item.tiene_siguiente && <button type="button" disabled={ocupado !== null}
                 onClick={() => void solicitar(item.id)}>Solicitar siguiente página</button>}
             </td>
@@ -429,79 +460,124 @@ export function IntegrationsPage() {
     </section>}
     {error && <p role="alert">{error}</p>}
     {aviso && <p role="status">{aviso}</p>}
-    {(seccion === 'bandeja' || seccion === 'historial') && <>
-    <h2>{seccion === 'historial' ? 'Registros recibidos' : 'Bandeja de revisión'}</h2>
+    {seccion === 'bandeja' && <>
+    <h2>Bandeja de revisión</h2>
+    {consultaRevision && <div className="integration-actions">
+      <p>Consulta de {consultaRevision.titulo}</p>
+      <button type="button" onClick={() => { cambiarPagina(1); setConsultaRevision(null) }}>Ver todas las consultas</button>
+    </div>}
     <div className="integration-toolbar">
       <div className="integration-tabs" aria-label="Tipo de registro">
         {(Object.keys(tipos) as Tipo[]).map(nombre => <button type="button" key={nombre} aria-pressed={tipo === nombre}
           onClick={() => { if (tipo !== nombre) { cambiarPagina(1); setTipo(nombre) } }}>{tipos[nombre]}</button>)}
       </div>
-    {seccion === 'bandeja' && <label>Estado <select value={filtro} onChange={e => {
-      cambiarPagina(1)
-      setFiltro(e.target.value as keyof typeof estados)
-    }}>{Object.entries(estados).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</select></label>}
-      {seccion === 'bandeja' && <button className="integration-primary" type="button" disabled={ocupado !== null || !seleccionados.length || faltanCategorias}
-        onClick={() => void revisar(seleccionados, 'agregar')}>Agregar seleccionados ({seleccionados.length})</button>}
+      <label>Estado <select value={filtro} onChange={e => {
+        cambiarPagina(1)
+        setFiltro(e.target.value as keyof typeof filtrosRevision)
+      }}>{Object.entries(filtrosRevision).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}</select></label>
+      {tipo === 'clientes' && <label>Tipo de persona <select value={persona} onChange={e => {
+        cambiarPagina(1)
+        setPersona(e.target.value)
+      }}><option value="">Todos</option>
+        {Object.entries(tiposPersona).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+      </select></label>}
+      <div className="integration-actions">
+        <button className="integration-primary" type="button" disabled={ocupado !== null || !seleccionados.length || faltanCategorias}
+          onClick={() => void revisar(seleccionados, 'agregar')}>Agregar seleccionados ({seleccionados.length})</button>
+        <button type="button" disabled={ocupado !== null || !seleccionados.length}
+          onClick={() => {
+            if (window.confirm(`¿Descartar ${seleccionados.length} registros seleccionados?`)) void revisar(seleccionados, 'descartar')
+          }}>Descartar seleccionados</button>
+      </div>
     </div>
     {faltanCategorias && <p>Elige categorías para cada proveedor seleccionado.</p>}
     {!bandeja && !error && <p role="status">Cargando solicitudes...</p>}
     {bandeja?.solicitudes.length === 0 && <p>No hay solicitudes con este estado.</p>}
-    <div className="integration-items">{bandeja?.solicitudes.map(item => {
-      const comercial = item.datos.datos_comerciales as Record<string, unknown> | undefined
-      const documento = item.datos.numero_documento ?? comercial?.ruc
-      const editable = seccion === 'bandeja' && (item.estado === 'PENDIENTE' || item.estado === 'ERROR')
-      const requiereCategoria = item.tipo === 'proveedores' && !categorias[item.id]?.length
-      return <article key={item.id}>
-        <div className="integration-heading">
-          <div><h2>{typeof item.datos.nombre === 'string' && item.datos.nombre ? item.datos.nombre : 'Sin nombre'}</h2>
-            <p>{item.tipo === 'clientes' ? 'Cliente' : 'Proveedor'} · {item.origen} · Local {item.id_local}</p>
-          </div>
-          <span>{estados[item.estado]}</span>
-          {editable && <label className="integration-select-item">
-            <input type="checkbox" checked={seleccion.includes(item.id)} disabled={ocupado !== null}
-              onChange={e => {
-                const marcado = e.target.checked
-                setSeleccion(ids => marcado ? [...ids, item.id] : ids.filter(id => id !== item.id))
-              }} />Seleccionar
-          </label>}
-        </div>
-        <p>{documento ? `Documento ${String(documento)}` : 'Sin documento'} · {new Date(item.recibido_en).toLocaleString('es-PE')}</p>
-        {item.mensaje && <p>{item.mensaje}</p>}
-        {item.id_registro && <p>Registro incorporado <code>{item.id_registro}</code></p>}
-        {item.revisado_en && <p>Revisado por usuario {item.revisado_por} el {new Date(item.revisado_en).toLocaleString('es-PE')}</p>}
-        <details><summary>Ver datos y seguimiento</summary>
-          <p><code>{item.id}</code></p>
-          {Boolean(item.datos.acadesys) && <p>Alumno en AcadeSys <code>{String((item.datos.acadesys as { idCliente: string }).idCliente)}</code></p>}
-          <dl>{Object.entries({ ...item.datos, ...comercial }).filter(([campo, valor]) =>
-            campo !== 'datos_comerciales' && typeof valor === 'string' && valor.trim()
-          ).map(([campo, valor]) => <div key={campo}>
-            <dt>{campo.replaceAll('_', ' ')}</dt><dd>{String(valor)}</dd>
-          </div>)}</dl>
-          <details><summary>Ver JSON</summary><pre>{JSON.stringify(item.datos, null, 2)}</pre></details>
-          {item.eventos.length > 0 && <ul aria-label="Historial de revisión">{item.eventos.map((evento, indice) =>
-            <li key={indice}>{new Date(evento.fecha).toLocaleString('es-PE')} &middot; Usuario {evento.usuario} &middot; {estados[evento.estado]} &middot; {evento.mensaje}</li>
-          )}</ul>}
-        </details>
-        {editable && <>
-          {item.tipo === 'proveedores' && <fieldset><legend>Categorías para agregar al proveedor</legend>
-            {bandeja.categorias.length === 0 && <p>Primero crea una categoría activa en Productos.</p>}
-            {bandeja.categorias.map(c => <label key={c.id_categoria}>
-              <input type="checkbox" checked={categorias[item.id]?.includes(c.id_categoria) ?? false}
+    {bandeja && bandeja.solicitudes.length > 0 && <div className="integration-request-scroll" tabIndex={0}
+      role="region" aria-label="Tabla de solicitudes">
+      <table className="integration-requests" aria-label="Solicitudes de integración">
+        <thead><tr>
+          <th scope="col" className="integration-request-check">
+            <input type="checkbox" aria-label="Seleccionar todos los registros de esta página"
+              title="Seleccionar toda esta página" checked={todaLaPagina} disabled={ocupado !== null || !seleccionables.length}
+              ref={entrada => { if (entrada) entrada.indeterminate = !todaLaPagina && seleccionados.length > 0 }}
+              onChange={e => setSeleccion(e.target.checked ? seleccionables.map(item => item.id) : [])} />
+          </th>
+          <th scope="col">{tipos[tipo]}</th>{tipo === 'clientes' && <th scope="col">Tipo de persona</th>}<th scope="col">Documento</th><th scope="col">Origen</th>
+          <th scope="col">Recepción</th><th scope="col">Estado</th><th scope="col">Acciones</th>
+        </tr></thead>
+        <tbody>{bandeja.solicitudes.map(item => {
+          const comercial = item.datos.datos_comerciales as Record<string, unknown> | undefined
+          const documento = item.datos.numero_documento ?? comercial?.ruc
+          const nombre = typeof item.datos.nombre === 'string' && item.datos.nombre.trim() ? item.datos.nombre : 'Sin nombre'
+          const editable = item.estado === 'PENDIENTE' || item.estado === 'ERROR'
+          const requiereCategoria = item.tipo === 'proveedores' && !categorias[item.id]?.length
+          const abierto = detalleAbierto === item.id
+          const recibido = new Date(item.recibido_en)
+          return <Fragment key={item.id}>
+            <tr data-selected={seleccion.includes(item.id)}>
+              <td className="integration-request-check">{editable && <input type="checkbox"
+                aria-label={`Seleccionar a ${nombre}`} checked={seleccion.includes(item.id)} disabled={ocupado !== null}
                 onChange={e => {
-                  const checked = e.target.checked
-                  setCategorias(valor => ({ ...valor, [item.id]: checked
-                    ? [...(valor[item.id] ?? []), c.id_categoria]
-                    : (valor[item.id] ?? []).filter(id => id !== c.id_categoria) }))
-                }} />{c.nombre}
-            </label>)}
-          </fieldset>}
-          <div className="integration-actions">
-            <button type="button" disabled={ocupado !== null || requiereCategoria} onClick={() => void revisar([item], 'agregar')}>Agregar al catálogo</button>
-            <button type="button" disabled={ocupado !== null} onClick={() => void revisar([item], 'descartar')}>Descartar</button>
-          </div>
-        </>}
-      </article>
-    })}</div>
+                  const marcado = e.target.checked
+                  setSeleccion(ids => marcado ? [...ids, item.id] : ids.filter(id => id !== item.id))
+                }} />}</td>
+              <th scope="row">{nombre}</th>
+              {tipo === 'clientes' && <td>{item.datos.tipo_persona === 'NATURAL' || item.datos.tipo_persona === 'JURIDICA'
+                ? tiposPersona[item.datos.tipo_persona] : tiposPersona.SIN_CLASIFICAR}</td>}
+              <td className="integration-request-nowrap">{documento ? String(documento) : <span className="integration-request-muted">Sin documento</span>}</td>
+              <td className="integration-request-source">{item.origen}<small>Local {item.id_local}</small></td>
+              <td className="integration-request-nowrap"><time dateTime={item.recibido_en}>
+                {recibido.toLocaleDateString('es-PE')}<small>{recibido.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</small>
+              </time></td>
+              <td><span className="integration-request-status" data-status={item.estado}>{estados[item.estado]}</span></td>
+              <td><div className="integration-request-actions">
+                <button type="button" aria-expanded={abierto} aria-controls={abierto ? `solicitud-${item.id}` : undefined}
+                  aria-label={`${abierto ? 'Cerrar detalle' : 'Ver detalle'} de ${nombre}`}
+                  onClick={() => setDetalleAbierto(abierto ? null : item.id)}>{abierto ? 'Cerrar' : requiereCategoria && editable ? 'Revisar' : 'Detalle'}</button>
+                {editable && <>
+                  <button className="integration-primary" type="button" disabled={ocupado !== null || requiereCategoria}
+                    onClick={() => void revisar([item], 'agregar')} aria-label={`Agregar a ${nombre}`}>Agregar</button>
+                  <button type="button" disabled={ocupado !== null} onClick={() => void revisar([item], 'descartar')}
+                    aria-label={`Descartar a ${nombre}`}>Descartar</button>
+                </>}
+              </div></td>
+            </tr>
+            {abierto && <tr className="integration-request-detail"><td colSpan={tipo === 'clientes' ? 8 : 7}>
+              <div id={`solicitud-${item.id}`} className="integration-request-detail-body">
+                <h3>Detalle de {nombre}</h3>
+                {item.mensaje && <p>{item.mensaje}</p>}
+                {item.id_registro && <p>Registro incorporado <code>{item.id_registro}</code></p>}
+                {item.revisado_en && <p>Revisado por usuario {item.revisado_por} el {new Date(item.revisado_en).toLocaleString('es-PE')}</p>}
+                {editable && item.tipo === 'proveedores' && <fieldset><legend>Categorías para agregar al proveedor</legend>
+                  {bandeja.categorias.length === 0 && <p>Primero crea una categoría activa en Productos.</p>}
+                  {bandeja.categorias.map(c => <label key={c.id_categoria}>
+                    <input type="checkbox" checked={categorias[item.id]?.includes(c.id_categoria) ?? false}
+                      onChange={e => {
+                        const checked = e.target.checked
+                        setCategorias(valor => ({ ...valor, [item.id]: checked
+                          ? [...(valor[item.id] ?? []), c.id_categoria]
+                          : (valor[item.id] ?? []).filter(id => id !== c.id_categoria) }))
+                      }} />{c.nombre}
+                  </label>)}
+                </fieldset>}
+                <p><code>{item.id}</code></p>
+                {Boolean(item.datos.acadesys) && <p>Alumno en AcadeSys <code>{String((item.datos.acadesys as { idCliente: string }).idCliente)}</code></p>}
+                <dl>{Object.entries({ ...item.datos, ...comercial }).filter(([campo, valor]) =>
+                  campo !== 'datos_comerciales' && typeof valor === 'string' && valor.trim()
+                ).map(([campo, valor]) => <div key={campo}>
+                  <dt>{campo.replaceAll('_', ' ')}</dt><dd>{String(valor)}</dd>
+                </div>)}</dl>
+                <details><summary>Ver JSON</summary><pre>{JSON.stringify(item.datos, null, 2)}</pre></details>
+                {item.eventos.length > 0 && <ul aria-label="Historial de revisión">{item.eventos.map((evento, indice) =>
+                  <li key={indice}>{new Date(evento.fecha).toLocaleString('es-PE')} &middot; Usuario {evento.usuario} &middot; {estados[evento.estado]} &middot; {evento.mensaje}</li>
+                )}</ul>}
+              </div>
+            </td></tr>}
+          </Fragment>
+        })}</tbody>
+      </table>
+    </div>}
     {bandeja && (pagina > 1 || bandeja.hay_mas) && <nav aria-label="Páginas de solicitudes">
       <button type="button" disabled={pagina === 1} onClick={() => cambiarPagina(pagina - 1)}>Anterior</button>
       <span>Página {pagina}</span>

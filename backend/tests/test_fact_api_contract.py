@@ -36,6 +36,37 @@ class FactApiContractTests(unittest.TestCase):
         base['comprobante'].pop('contacto')
         self.assertNotIn('email', venta(base, config)['tercero'])
 
+    def test_boleta_sends_identification_code_and_classifies_customer(self):
+        from app.modules.clientes.service import validar as validar_cliente
+        from app.modules.facturacion.contract import venta
+        from app.modules.salon.salon_payments import validar as validar_cobro
+        from werkzeug.exceptions import BadRequest
+
+        for clase, numero, codigo, persona in (
+            ('DNI', '12345678', '1', 'NATURAL'),
+            ('CE', 'ABC123456789', '4', 'NATURAL'),
+            ('PASAPORTE', 'PA12345678901', '7', 'NATURAL'),
+            ('RUC', '10123456789', '6', 'NATURAL'),
+            ('RUC', '15123456789', '6', 'NATURAL'),
+            ('RUC', '20123456789', '6', 'JURIDICA'),
+        ):
+            with self.subTest(documento=clase, codigo=codigo, persona=persona):
+                datos = {'clave': '9dbdacad-5d96-4676-8911-933520ec52dd', 'revision': 'a' * 64,
+                         'metodo': 'TARJETA', 'tipo': 'BOLETA_ELECTRONICA', 'tipo_documento': clase,
+                         'documento': numero, 'cliente': 'Cliente de prueba'}
+                comprobante = validar_cobro(datos)
+                if clase == 'DNI':
+                    self.assertNotIn('tipo_documento', comprobante)
+                payload = venta({'id_cobro': 1, 'id_local': 1, 'tipo': datos['tipo'], 'documento': numero,
+                    'total': 10, 'creado_en': '2026-11-21', 'comprobante': {
+                        **comprobante, 'lineas': [{'nombre': 'A', 'cantidad': 1, 'precio': 10}],
+                    }}, {'tasa_igv': 18, 'serie_boleta': 'B001', 'empresa': {}})
+                self.assertEqual(payload['tercero']['tipo'], codigo)
+                cliente = validar_cliente({'nombre': 'Prueba', 'tipo_documento': clase, 'numero_documento': numero})
+                self.assertEqual(cliente['tipo_persona'], persona)
+        with self.assertRaises(BadRequest):
+            validar_cobro({**datos, 'tipo': 'FACTURA', 'tipo_documento': 'PASAPORTE', 'documento': 'PA12345'})
+
     def test_mismatched_totals_are_not_silently_recomputed(self):
         from app.modules.facturacion.contract import venta
         with self.assertRaises(ValueError):
@@ -58,6 +89,28 @@ class FactApiContractTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 validate_url(url)
         self.assertEqual(validate_url('http://127.0.0.1:8091'), 'http://127.0.0.1:8091')
+
+    def test_pdf_storage_uses_issue_date_and_document_kind(self):
+        from app.modules.facturacion.worker import persist_pdf
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from pathlib import Path
+
+        job = {'id_local': 5, 'nombre_local': 'Santa Anita', 'origen': 'VENTA', 'id_operacion': 'operation', 'lease_token': 'lease'}
+        with TemporaryDirectory() as folder, patch('app.modules.facturacion.worker.storage_root', return_value=Path(folder)):
+            for fecha, origen, tipo, documento, categoria in (
+                ('2026-11-30', 'VENTA', '01', '20123456789', 'facturas'),
+                ('2026-12-01', 'VENTA', '03', '', 'boletas'),
+                ('2027-01-01', 'VENTA', '03', '71234567', 'boletas-electronicas'),
+                ('2027-01-02', 'COMPRA', '01', '20123456789', 'facturas-de-compra'),
+            ):
+                with self.subTest(fecha=fecha, categoria=categoria):
+                    payload = {'fecha': fecha, 'tipo': tipo, 'tercero': {'documento': documento}}
+                    archivo = persist_pdf({**job, 'origen': origen, 'payload': payload}, 'A4', b'%PDF-test', 'F005-123')
+                    ruta = Path(archivo['path'])
+                    self.assertEqual(ruta.parts[:5], (*fecha.split('-'), 'Santa Anita', categoria))
+                    self.assertEqual(ruta.name, 'F005-123_A4.pdf')
+                    self.assertEqual((Path(folder) / ruta).read_bytes(), b'%PDF-test')
 
     def test_late_worker_cannot_overwrite_another_leases_pdf(self):
         from app.modules.facturacion.worker import persist_pdf

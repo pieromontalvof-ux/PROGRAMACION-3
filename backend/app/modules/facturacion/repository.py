@@ -10,6 +10,11 @@ def installed():
     return db.session.execute(select(func.public.facturacion_instalado())).scalar() is True
 
 
+def nombre_local(identidad):
+    locales = func.public.usuarios_listar_locales().table_valued('id_local', 'nombre')
+    return db.session.scalar(select(locales.c.nombre).where(locales.c.id_local == identidad))
+
+
 def enqueue(local, origin, source, payload):
     encoded = json.dumps(payload, sort_keys=True, separators=(',',':'), ensure_ascii=False)
     digest = hashlib.sha256(encoded.encode()).hexdigest()

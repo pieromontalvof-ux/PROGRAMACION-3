@@ -17,7 +17,7 @@ export async function salonApi<Respuesta = any>(
   })
   const contenido = await respuesta.json()
   if (!respuesta.ok) {
-    throw new Error(contenido.mensaje ?? contenido.msg ?? 'No se pudo completar la operación')
+    throw Object.assign(new Error(contenido.mensaje ?? contenido.msg ?? 'No se pudo completar la operación'), {status: respuesta.status})
   }
   return contenido
 }

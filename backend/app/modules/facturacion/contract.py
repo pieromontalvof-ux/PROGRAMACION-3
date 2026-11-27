@@ -1,6 +1,7 @@
 """Immutable bridge payloads; prices in the POS include configured demo tax."""
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone, timedelta
+from app.modules.clientes.documentos import CODIGOS_SUNAT
 
 
 def money(value):
@@ -38,12 +39,13 @@ def venta(row, config):
     total = sum((Decimal(l['total']) for l in lines), Decimal(0))
     if not lines or total != money(row['total']):
         raise ValueError('El detalle no coincide con el total del cobro.')
+    tipo_documento = row['comprobante'].get('tipo_documento') or ('RUC' if row['tipo']=='FACTURA' else 'DNI')
     return {'version': 1, 'origen': 'VENTA', 'referencia': str(row['id_cobro']), 'id_local': row['id_local'],
             'empresa': config['empresa'], 'tipo': '01' if row['tipo']=='FACTURA' else '03',
             'serie': config['serie_factura'] if row['tipo']=='FACTURA' else config['serie_boleta'],
             'fecha': fecha.isoformat(), 'moneda': 'PEN',
             'tercero': {'nombre': row.get('cliente') or 'Consumidor final',
-                        'documento': row.get('documento') or '', 'tipo': '6' if row['tipo']=='FACTURA' else '1',
+                        'documento': row.get('documento') or '', 'tipo': CODIGOS_SUNAT[tipo_documento],
                         **contacto_tercero(row['comprobante'].get('contacto') or {})},
             'lineas': lines, 'subtotal': str(sum(Decimal(l['subtotal']) for l in lines)),
             'igv': str(sum(Decimal(l['igv']) for l in lines)), 'total': str(total)}

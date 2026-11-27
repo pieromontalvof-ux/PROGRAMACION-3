@@ -11,6 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app import create_app
 from app.core.extensions import db
 from sqlalchemy import Uuid, bindparam, cast, func, select
+from app.modules.facturacion.repository import nombre_local
 from app.modules.facturacion.transport import call
 from app.modules.facturacion.worker import persist_pdf
 
@@ -29,6 +30,8 @@ def main():
             identity=str(job['id_operacion'])
             # A unique immutable directory for this representation, never overwrite old bytes.
             job['lease_token']=str(uuid4())
+            job['nombre_local']=nombre_local(job['id_local'])
+            db.session.rollback()
             files=[persist_pdf(job,fmt,call(f'documents/{identity}/pdf?format={fmt}',binary=True))
                    for fmt in ('A4','80mm')]
             eligible=db.session.execute(select(func.public.facturacion_bloquear_pdf_actualizable(cast(bindparam('id'), Uuid))),{'id':identity}).scalar()

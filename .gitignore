@@ -50,3 +50,4 @@ frontend/dist/
 /services/fact_api/**/*.pem
 /services/fact_api/**/*.pfx
 /services/fact_api/**/*.p12
+/Comprobantes
