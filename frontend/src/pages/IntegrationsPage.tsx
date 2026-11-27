@@ -24,7 +24,7 @@ type ClaveAPI = {
   nombre: string
   id_local: number
   creado_en: string
-  permiso: Tipo | 'ambos'
+  permiso: Tipo | 'ambos' | 'leer_clientes'
   vence_en: string | null
   revocado_en: string | null
 }
@@ -73,7 +73,7 @@ export function IntegrationsPage() {
   const [actualizacion, setActualizacion] = useState(0)
   const [formularioClave, setFormularioClave] = useState(false)
   const [nombreClave, setNombreClave] = useState('')
-  const [permiso, setPermiso] = useState<ClaveAPI['permiso']>('ambos')
+  const [permiso, setPermiso] = useState<ClaveAPI['permiso']>('leer_clientes')
   const [vigencia, setVigencia] = useState('30')
   const [historial, setHistorial] = useState<Historial | null>(null)
   const [paginaHistorial, setPaginaHistorial] = useState(1)
@@ -98,7 +98,7 @@ export function IntegrationsPage() {
   const [error, setError] = useState('')
   const clavePropia = claveGenerada?.id_local === localActivo?.id_local ? claveGenerada?.clave : undefined
   const base = API_BASE_URL.replace(/\/$/, '') + '/v1/integraciones'
-  const urlEntrada = new URL(`${base}/entrada`, window.location.origin).href
+  const urlLectura = new URL(`${base}/salida/clientes`, window.location.origin).href
 
   useEffect(() => {
     if (!seguimiento) return
@@ -189,7 +189,7 @@ export function IntegrationsPage() {
       setClaveGenerada(datos)
       setFormularioClave(false)
       setNombreClave('')
-      setPermiso('ambos')
+      setPermiso('leer_clientes')
       setVigencia('30')
       setRevisionClaves(vez => vez + 1)
     } catch (fallo) {
@@ -296,8 +296,8 @@ export function IntegrationsPage() {
       <section className="integration-help" hidden={seccion !== 'claves'} aria-labelledby="mis-endpoints">
         <h2 id="mis-endpoints">Nuestra API</h2>
         <div className="integration-copy">
-          <label>URL de recepción<input readOnly value={urlEntrada} /></label>
-          <button type="button" onClick={() => void copiar(urlEntrada)}>Copiar URL</button>
+          <label>URL para compartir clientes<input readOnly value={urlLectura} /></label>
+          <button type="button" onClick={() => void copiar(urlLectura)}>Copiar URL</button>
         </div>
       </section>
       <form className="integration-help" hidden={seccion !== 'consulta'} autoComplete="off" onSubmit={e => { e.preventDefault(); void solicitar() }}>
@@ -324,12 +324,13 @@ export function IntegrationsPage() {
         evento.preventDefault()
         if (nombreClave.trim() && ocupado === null) void generarClave()
       }}>
-        <h2>Nueva clave de recepción</h2>
+        <h2>Nueva clave de Barbarito</h2>
         <label>Nombre<input value={nombreClave} onChange={evento => setNombreClave(evento.target.value)} maxLength={80} required /></label>
         <label>Permiso<select value={permiso} onChange={evento => setPermiso(evento.target.value as ClaveAPI['permiso'])}>
-          <option value="ambos">Clientes y proveedores</option>
-          <option value="clientes">Solo clientes</option>
-          <option value="proveedores">Solo proveedores</option>
+          <option value="leer_clientes">Leer clientes</option>
+          <option value="ambos">Recibir clientes y proveedores</option>
+          <option value="clientes">Recibir solo clientes</option>
+          <option value="proveedores">Recibir solo proveedores</option>
         </select></label>
         <label>Caducidad<select value={vigencia} onChange={evento => setVigencia(evento.target.value)}>
           <option value="7">7 días</option><option value="30">30 días</option>
@@ -369,7 +370,7 @@ export function IntegrationsPage() {
                 </button>
               </div>
             </td>
-            <td>{clave.permiso === 'ambos' ? 'Clientes y proveedores' : tipos[clave.permiso]}</td>
+            <td>{clave.permiso === 'leer_clientes' ? 'Leer clientes' : clave.permiso === 'ambos' ? 'Recibir clientes y proveedores' : `Recibir ${tipos[clave.permiso].toLowerCase()}`}</td>
             <td>{clave.vence_en ? new Date(clave.vence_en).toLocaleString('es-PE') : 'Sin caducidad'}</td>
             <td>{new Date(clave.creado_en).toLocaleDateString('es-PE')}</td>
             <td>{!clave.revocado_en && <button type="button" disabled={ocupado !== null}

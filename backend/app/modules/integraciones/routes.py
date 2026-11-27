@@ -5,12 +5,12 @@ from hashlib import sha256
 import json
 from secrets import token_urlsafe
 from urllib.parse import parse_qsl, urlencode, urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy import UniqueConstraint, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.exceptions import BadRequest, Conflict, Forbidden, HTTPException, NotFound, ServiceUnavailable, Unauthorized
 
 from app.core.extensions import db
@@ -124,14 +124,14 @@ def identidad_externa():
         pass
     else:
         if compare_digest(recibida.encode(), clave.encode()):
-            return local, origen, 'ambos'
+            return local, origen, 'ambos', None
     huella = sha256(recibida.encode()).hexdigest()
     conector = db.session.scalar(select(ClaveIntegracion).filter_by(huella=huella, revocado_en=None).where(
         (ClaveIntegracion.vence_en.is_(None)) | (ClaveIntegracion.vence_en > func.now())
     ))
     if conector is None:
         raise Unauthorized('Clave API invalida.')
-    return conector.id_local, conector.origen, conector.permiso
+    return conector.id_local, conector.origen, conector.permiso, conector.id
 
 
 def estado(item):
@@ -179,7 +179,7 @@ def datos_visibles(tipo, datos):
 @bp.post('/entrada', defaults={'tipo': None})
 @bp.post('/entrada/<tipo>')
 def recibir(tipo):
-    local, origen, permiso = identidad_externa()
+    local, origen, permiso, _id = identidad_externa()
     if tipo not in (None, 'clientes', 'proveedores'):
         raise NotFound()
     clave = request.headers.get('Idempotency-Key', '').strip()
@@ -211,11 +211,65 @@ def recibir(tipo):
 
 @bp.get('/entrada/estado/<uuid:identidad>')
 def seguimiento(identidad):
-    local, origen, _permiso = identidad_externa()
+    local, origen, permiso, _id = identidad_externa()
+    if permiso == 'leer_clientes':
+        raise Forbidden('Esta clave es de lectura de clientes.')
     item = db.session.scalar(select(Solicitud).filter_by(id=str(identidad), id_local=local, origen=origen))
     if item is None:
         raise NotFound('Solicitud no encontrada.')
     return jsonify(estado(item))
+
+
+@bp.get('/salida/clientes')
+def salida_clientes():
+    codigo = 200
+    try:
+        _local, _origen, permiso, id_clave = identidad_externa()
+        if permiso != 'leer_clientes':
+            raise Unauthorized('Clave de lectura de clientes invalida.')
+        cursor = request.args.get('cursor', '')
+        try:
+            limite = int(request.args.get('limite', '50'))
+            if not 1 <= limite <= 100 or any(len(request.args.getlist(k)) > 1 for k in ('limite', 'cursor')):
+                raise ValueError
+            if cursor:
+                cursor_uuid = UUID(cursor)
+                if str(cursor_uuid) != cursor:
+                    raise ValueError
+            else:
+                cursor_uuid = None
+        except ValueError:
+            raise BadRequest('Indica un limite de 1 a 100 y un cursor valido.') from None
+        permitido = db.session.scalar(select(func.public.integracion_consumir_lectura(id_clave)))
+        db.session.commit()
+        if not permitido:
+            respuesta = jsonify(mensaje='Limite de solicitudes por minuto alcanzado.')
+            codigo = 429
+        else:
+            filas = func.public.integracion_leer_clientes(cursor_uuid, limite + 1).table_valued(
+                'id_cliente', 'nombre', 'tipo_persona', 'tipo_documento',
+                'numero_documento', 'email', 'telefono', 'direccion',
+            )
+            registros = db.session.execute(select(filas).order_by(filas.c.id_cliente)).mappings().all()
+            datos = []
+            for registro in registros[:limite]:
+                cliente = dict(registro)
+                cliente['idCliente'] = f"BRB-{cliente.pop('id_cliente')}"
+                canonico = json.dumps(cliente, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+                datos.append({**cliente, 'version': sha256(canonico.encode('utf8')).hexdigest()})
+            hay_mas = len(registros) > limite
+            respuesta = jsonify(datos=datos, paginacion={
+                'hayMas': hay_mas, 'siguienteCursor': str(registros[limite - 1]['id_cliente']) if hay_mas else None,
+            })
+    except (BadRequest, Unauthorized) as error:
+        respuesta, codigo = jsonify(mensaje=error.description), error.code
+    except SQLAlchemyError:
+        db.session.rollback()
+        respuesta, codigo = jsonify(mensaje='Directorio temporalmente no disponible.'), 503
+    respuesta.headers['Cache-Control'] = 'no-store'
+    if codigo == 429:
+        respuesta.headers['Retry-After'] = str(60 - datetime.now(timezone.utc).second)
+    return respuesta, codigo
 
 
 def metadatos_clave(conector):
@@ -249,8 +303,8 @@ def generar_clave(usuario):
         raise BadRequest('Indica un nombre de programa de hasta 80 caracteres.')
     permiso = datos.get('permiso', 'ambos')
     vigencia = datos.get('vigencia_dias')
-    if permiso not in ('clientes', 'proveedores', 'ambos'):
-        raise BadRequest('Selecciona clientes, proveedores o ambos.')
+    if permiso not in ('clientes', 'proveedores', 'ambos', 'leer_clientes'):
+        raise BadRequest('Selecciona un permiso valido.')
     if vigencia is not None and (type(vigencia) is not int or not 1 <= vigencia <= 365):
         raise BadRequest('Indica una vigencia de 1 a 365 dias.')
     vence = datetime.now(timezone.utc) + timedelta(days=vigencia) if vigencia is not None else None
