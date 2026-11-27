@@ -428,13 +428,25 @@ def historial_consultas(_usuario):
         .offset((pagina - 1) * 25).limit(26)).all()
     ids = [fila.id for fila in filas[:25]]
     conteos = {}
+    pendientes_por_tipo = {}
     if ids:
-        for consulta_id, estado_item, cantidad in db.session.execute(
-            select(Solicitud.consulta_id, Solicitud.estado, func.count()).where(
+        for consulta_id, estado_item, tipo_item, cantidad in db.session.execute(
+            select(Solicitud.consulta_id, Solicitud.estado, Solicitud.tipo, func.count()).where(
                 Solicitud.consulta_id.in_(ids)
-            ).group_by(Solicitud.consulta_id, Solicitud.estado)
+            ).group_by(Solicitud.consulta_id, Solicitud.estado, Solicitud.tipo)
         ):
-            conteos.setdefault(consulta_id, {})[estado_item] = cantidad
+            estados = conteos.setdefault(consulta_id, {})
+            estados[estado_item] = estados.get(estado_item, 0) + cantidad
+            if estado_item in ('PENDIENTE', 'ERROR'):
+                tipos = pendientes_por_tipo.setdefault(consulta_id, {})
+                tipos[tipo_item] = tipos.get(tipo_item, 0) + cantidad
+    entradas_pendientes = {}
+    if por_revisar:
+        entradas_pendientes = dict(db.session.execute(
+            select(Solicitud.tipo, func.count()).where(
+                Solicitud.consulta_id.is_(None), Solicitud.estado.in_(('PENDIENTE', 'ERROR')),
+            ).group_by(Solicitud.tipo)
+        ).all())
     return jsonify(consultas=[{
         'id': fila.id, 'host': fila.host, 'usuario': fila.usuario,
         'fecha': fila.fecha.isoformat(), 'codigo': fila.codigo, 'resumen': fila.resumen,
@@ -442,7 +454,8 @@ def historial_consultas(_usuario):
         'intentos': fila.intentos, 'mensaje': fila.mensaje,
         'reintentar_en': fila.ejecutar_en.isoformat() if fila.estado == 'REINTENTO' else None, 'errores': fila.errores or [],
         'tiene_siguiente': bool(fila.cursor), 'registros': conteos.get(fila.id, {}),
-    } for fila in filas[:25]], hay_mas=len(filas) > 25)
+        'pendientes_por_tipo': pendientes_por_tipo.get(fila.id, {}),
+    } for fila in filas[:25]], hay_mas=len(filas) > 25, entradas_pendientes=entradas_pendientes)
 
 
 @bp.get('/historial/consultas/<uuid:identidad>')
@@ -636,7 +649,9 @@ def bandeja(_usuario):
     seleccion = select(Solicitud)
     if tipo:
         seleccion = seleccion.filter_by(tipo=tipo)
-    if consulta:
+    if consulta == 'entrada':
+        seleccion = seleccion.filter(Solicitud.consulta_id.is_(None))
+    elif consulta:
         try:
             consulta = str(UUID(consulta))
         except ValueError:

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { Copy, Plus, Send } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/authState'
 import { API_BASE_URL } from '../config'
@@ -59,8 +60,10 @@ type Historial = {
     errores: { tipo: Tipo; fila: number; mensaje: string }[]
     tiene_siguiente: boolean
     registros: Partial<Record<Solicitud['estado'], number>>
+    pendientes_por_tipo: Partial<Record<Tipo, number>>
   }[]
   hay_mas: boolean
+  entradas_pendientes: Partial<Record<Tipo, number>>
 }
 const tipos = { clientes: 'Clientes', proveedores: 'Proveedores' } as const
 type Bandeja = {
@@ -133,6 +136,13 @@ function TablaHistorial({ registros }: { registros: Solicitud[] }) {
   </div>
 }
 
+const seccionesIntegracion = {
+  claves: 'Nuestra API',
+  consulta: 'Consultar otra API',
+  bandeja: 'Bandeja',
+  historial: 'Historial',
+} as const
+
 export function IntegrationsPage() {
   const { token, localActivo } = useAuth()
   const { seccion: ruta } = useParams()
@@ -150,7 +160,7 @@ export function IntegrationsPage() {
   const [paginaHistorial, setPaginaHistorial] = useState(1)
   const [errorHistorial, setErrorHistorial] = useState('')
   const [filtro, setFiltro] = useState<keyof typeof filtrosRevision>('POR_REVISAR')
-  const [consultaRevision, setConsultaRevision] = useState<{ id: string; titulo: string } | null>(null)
+  const [consultaRevision, setConsultaRevision] = useState<string | null>(null)
   const [persona, setPersona] = useState('')
   const [tipo, setTipo] = useState<Tipo>('clientes')
   const [url, setUrl] = useState('')
@@ -182,10 +192,10 @@ export function IntegrationsPage() {
   }, [seguimiento])
 
   useEffect(() => {
-    if (!token || seccion !== 'bandeja') return
+    if (!token || seccion !== 'bandeja' || !consultaRevision) return
     const control = new AbortController()
     const parametros = new URLSearchParams({ estado: filtro, pagina: String(pagina), tipo })
-    if (consultaRevision) parametros.set('consulta', consultaRevision.id)
+    parametros.set('consulta', consultaRevision)
     if (tipo === 'clientes' && persona) parametros.set('persona', persona)
     fetch(`${base}/bandeja?${parametros}`, {
       headers: { Authorization: `Bearer ${token}` }, signal: control.signal,
@@ -236,6 +246,7 @@ export function IntegrationsPage() {
 
   useEffect(() => {
     setPagina(1)
+    setConsultaRevision(null)
     setPaginaHistorial(1)
     setBandeja(null)
     setHistorial(null)
@@ -392,194 +403,20 @@ export function IntegrationsPage() {
   const todaLaPagina = seleccionables.length > 0 && seleccionados.length === seleccionables.length
   const faltanCategorias = altasSeleccionadas.some(item => item.tipo === 'proveedores' && !categorias[item.id]?.length)
 
-  return <section className="integration-inbox">
-    <header>
-      <div><h1>Integraciones API</h1><p>Revisa los clientes y proveedores recibidos antes de agregarlos.</p></div>
-      <button type="button" onClick={() => { setError(''); setVersion(value => value + 1); setRevisionClaves(value => value + 1) }}>Actualizar</button>
-    </header>
-    <div className="integration-panels" hidden={seccion !== 'claves' && seccion !== 'consulta'}>
-      <section className="integration-help" hidden={seccion !== 'claves'} aria-labelledby="mis-endpoints">
-        <h2 id="mis-endpoints">Nuestra API</h2>
-        <div className="integration-copy">
-          <label>URL para compartir clientes<input readOnly value={urlLectura} /></label>
-          <button type="button" onClick={() => void copiar(urlLectura)}>Copiar URL</button>
-        </div>
-      </section>
-      <form className="integration-help" hidden={seccion !== 'consulta'} autoComplete="off" onSubmit={e => { e.preventDefault(); void solicitar() }}>
-        <h2>Consultar otra API</h2>
-        <label>URL del otro programa<input type="text" inputMode="url" autoComplete="off" required value={url}
-          onChange={e => { setUrl(e.target.value); setClaveExterna('') }} placeholder="https://sistema.example/api/directorio" /></label>
-        <label>Clave de la API externa (opcional)
-          <input type="password" autoComplete="new-password" value={claveExterna} maxLength={2048}
-            onChange={e => setClaveExterna(e.target.value)} />
-          <small>Pega la clave que te dio el otro programa, sin escribir Bearer.</small>
-        </label>
-        <details><summary>Opciones de la consulta</summary>
-          <label>Si la API devuelve una lista sin identificar <select value={tipoConsulta} onChange={e => setTipoConsulta(e.target.value as Tipo | '')}>
-            <option value="">Detectar automáticamente</option><option value="clientes">La lista contiene clientes</option><option value="proveedores">La lista contiene proveedores</option>
-          </select></label>
-        </details>
-        <button className="integration-primary" type="submit" disabled={ocupado !== null}>
-          {ocupado === 'consulta' ? 'Solicitando...' : 'Solicitar datos'}
-        </button>
-      </form>
-    </div>
-    <section className="integration-help integration-keys" hidden={seccion !== 'claves'} aria-labelledby="claves-local">
-      <div className="integration-toolbar">
-        <h2 id="claves-local">Claves de Barbarito</h2>
-        <button className="integration-primary" type="button" disabled={ocupado !== null || !localActivo || !configVigencia}
-          onClick={() => {
-            if (!configVigencia) return
-            setVigencia(String(configVigencia.dias))
-            setErrorClaves('')
-            setFormularioClave(true)
-          }} aria-expanded={formularioClave}>Generar nueva clave</button>
-      </div>
-      {formularioClave && <form className="integration-help integration-create-key" onSubmit={evento => {
-        evento.preventDefault()
-        if (nombreClave.trim() && ocupado === null) void generarClave()
-      }}>
-        <h2>Nueva clave de Barbarito</h2>
-        <label>Nombre<input value={nombreClave} onChange={evento => setNombreClave(evento.target.value)} maxLength={80} required /></label>
-        <label>Permiso<select value={permiso} onChange={evento => setPermiso(evento.target.value as ClaveAPI['permiso'])}>
-          <option value="leer_clientes">Leer clientes</option>
-          <option value="ambos">Recibir clientes y proveedores</option>
-          <option value="clientes">Recibir solo clientes</option>
-          <option value="proveedores">Recibir solo proveedores</option>
-        </select></label>
-        <label>Caducidad en días
-          <input type="number" min={1} max={configVigencia?.maximo} step={1} value={vigencia}
-            onChange={evento => setVigencia(evento.target.value)} />
-          <small>Deja el campo vacío para crear una clave sin caducidad.</small>
-        </label>
-        <div className="integration-actions">
-          <button type="button" disabled={ocupado !== null} onClick={() => { setFormularioClave(false); setErrorClaves('') }}>Cancelar</button>
-          <button className="integration-primary" type="submit" disabled={ocupado !== null || !nombreClave.trim()}>Crear clave</button>
-        </div>
-      </form>}
-        {clavePropia && <div className="integration-copy">
-          <label>Nueva clave de Barbarito<input type={mostrarClave ? 'text' : 'password'}
-            readOnly value={clavePropia} autoComplete="off" /></label>
-          <button type="button" onClick={() => setMostrarClave(valor => !valor)}>{mostrarClave ? 'Ocultar' : 'Mostrar'}</button>
-          <button type="button" onClick={() => void copiar(clavePropia)}>Copiar clave</button>
-        </div>}
-      {errorClaves && <p role="alert">{errorClaves}</p>}
-      {claves.length > 0 && <div className="integration-table-scroll" tabIndex={0} role="region" aria-labelledby="claves-local">
-        <table aria-labelledby="claves-local">
-          <thead><tr>
-            <th scope="col">Nombre</th><th scope="col">Estado</th>
-            <th scope="col">Identificador</th><th scope="col">Permiso</th><th scope="col">Caducidad</th><th scope="col">Creada</th><th scope="col">Acciones</th>
-          </tr></thead>
-          <tbody>{claves.map(clave => <tr key={clave.id}>
-            <th scope="row">{clave.nombre}</th>
-            <td><span className="integration-key-status" data-revoked={Boolean(clave.revocado_en)}>
-              {clave.revocado_en ? 'Revocada' : clave.vence_en && Date.parse(clave.vence_en) <= Date.now() ? 'Vencida' : 'Activa'}
-            </span></td>
-            <td>
-              <div className="integration-identifier">
-                <code>{identificadorVisible === clave.id ? clave.id : `${clave.id.slice(0, 8)}...`}</code>
-                <button type="button" aria-expanded={identificadorVisible === clave.id}
-                  aria-label={`${identificadorVisible === clave.id ? 'Ocultar' : 'Mostrar'} identificador de ${clave.nombre}`}
-                  onClick={() => setIdentificadorVisible(visible => visible === clave.id ? null : clave.id)}>
-                  {identificadorVisible === clave.id ? 'Ocultar' : 'Mostrar'}
-                </button>
-              </div>
-            </td>
-            <td>{clave.permiso === 'leer_clientes' ? 'Leer clientes' : clave.permiso === 'ambos' ? 'Recibir clientes y proveedores' : `Recibir ${tipos[clave.permiso].toLowerCase()}`}</td>
-            <td>{clave.vence_en ? new Date(clave.vence_en).toLocaleString('es-PE') : 'Sin caducidad'}</td>
-            <td>{new Date(clave.creado_en).toLocaleDateString('es-PE')}</td>
-            <td>{!clave.revocado_en && <button type="button" disabled={ocupado !== null}
-              onClick={() => void revocarClave(clave)} aria-label={`Revocar clave de ${clave.nombre}`}>Revocar</button>}</td>
-          </tr>)}</tbody>
-        </table>
-      </div>}
-      {claves.length === 0 && !errorClaves && <p>No hay claves registradas.</p>}
-    </section>
-    {seccion === 'consulta' && aviso && <Link to="/home/integraciones/bandeja">Ir a la bandeja de solicitudes</Link>}
-    {seguimiento && <section className="integration-help integration-keys" aria-label="Consultas externas">
-      <h2>{seccion === 'bandeja' ? 'Consultas en curso y por revisar' : 'Historial de consultas externas'}</h2>
-      {errorHistorial && <p role="alert">{errorHistorial}</p>}
-      {!historial && !errorHistorial && <p role="status">Cargando consultas...</p>}
-      {historial?.consultas.length === 0 && <p>{seccion === 'bandeja' ? 'No hay consultas en curso ni con registros por revisar.' : 'No hay consultas registradas.'}</p>}
-      {historial && historial.consultas.length > 0 && <div className="integration-table-scroll" tabIndex={0}>
-        <table>
-          <thead><tr><th scope="col">Fecha</th><th scope="col">Origen</th><th scope="col">Usuario</th><th scope="col">Resultado</th></tr></thead>
-          <tbody>{historial.consultas.map(item => <Fragment key={item.id}>
-          <tr>
-            <td>{new Date(item.fecha).toLocaleString('es-PE')}</td><td>{item.host || 'Sin dominio'}</td><td>{item.usuario}</td>
-            <td><strong>{estadosConsulta[item.estado]}</strong>
-              {item.codigo > 0 && <span> &middot; HTTP {item.codigo}</span>}
-              <p>Intentos de llamada {item.intentos}</p>
-              {item.reintentar_en && <p>Próximo intento {new Date(item.reintentar_en).toLocaleString('es-PE')}</p>}
-              {item.mensaje && <p>{item.mensaje}</p>}
-              {Object.entries(item.resumen ?? {}).map(([clave, dato]) => <p key={clave}>
-                <strong>{tipos[clave as Tipo]}</strong> &middot; {dato.recibidos} recibidos &middot; {dato.nuevos} nuevos
-                {dato.cambios !== undefined && <> &middot; {dato.cambios} con cambios</>}
-                {' '}&middot; {dato.repetidos} {dato.cambios === undefined ? 'repetidos (conteo anterior)' : 'ya registrados'}
-                {' '}&middot; {dato.invalidos} inválidos
-                {!!dato.duplicados_respuesta && <> &middot; {dato.duplicados_respuesta} duplicados en la misma respuesta</>}
-              </p>)}
-              {Object.entries(item.registros).map(([estado, cantidad]) => <p key={estado}>
-                {estados[estado as Solicitud['estado']]} &middot; {cantidad}
-              </p>)}
-              {item.errores.length > 0 && <details>
-                <summary>Ver filas inválidas</summary>
-                <ul className="integration-error-list">{item.errores.map(fallo =>
-                  <li key={`${fallo.tipo}-${fallo.fila}`}>{tipos[fallo.tipo]}, fila {fallo.fila}. {fallo.mensaje}</li>
-                )}</ul>
-              </details>}
-              {seccion === 'bandeja' && Boolean(item.registros.PENDIENTE || item.registros.ERROR) && <button
-                type="button" aria-pressed={consultaRevision?.id === item.id}
-                onClick={() => {
-                  cambiarPagina(1)
-                  setFiltro('POR_REVISAR')
-                  setPersona('')
-                  if (consultaRevision?.id === item.id) {
-                    setConsultaRevision(null)
-                  } else {
-                    setConsultaRevision({ id: item.id, titulo: `${item.host} · ${new Date(item.fecha).toLocaleString('es-PE')}` })
-                    setTipo(item.resumen?.clientes?.nuevos || item.resumen?.clientes?.cambios ? 'clientes' : 'proveedores')
-                  }
-                }}>{consultaRevision?.id === item.id ? '▴ Ver todas' : '▾ Ver registros'}</button>}
-              {seccion === 'historial' && <button type="button" aria-expanded={consultaAbierta === item.id}
-                aria-controls={consultaAbierta === item.id ? `historial-${item.id}` : undefined}
-                onClick={() => setConsultaAbierta(consultaAbierta === item.id ? null : item.id)}>
-                {consultaAbierta === item.id ? '▴ Cerrar detalle' : '▾ Ver detalle'}
-              </button>}
-              {item.tiene_siguiente && <button type="button" disabled={ocupado !== null}
-                onClick={() => void solicitar(item.id)}>Solicitar siguiente página</button>}
-            </td>
-          </tr>
-          {seccion === 'historial' && consultaAbierta === item.id && <tr><td colSpan={4}>
-            <section id={`historial-${item.id}`} className="integration-history-detail" aria-label="Detalle de la consulta">
-              {detalleHistorial?.id !== item.id && <p role="status">Cargando detalle...</p>}
-              {detalleHistorial?.id === item.id && detalleHistorial.error && <p role="alert">{detalleHistorial.error}</p>}
-              {detalleHistorial?.id === item.id && detalleHistorial.datos && <>
-                <TablaHistorial key={item.id} registros={detalleHistorial.datos.registros} />
-                <details><summary>Ver JSON de los datos recibidos</summary>
-                  <p>Campos reconocidos por Barbarito y errores de validación.</p>
-                  <pre>{JSON.stringify(detalleHistorial.datos.respuesta, null, 2)}</pre>
-                </details>
-              </>}
-            </section>
-          </td></tr>}
-          </Fragment>)}</tbody>
-        </table>
-      </div>}
-      {(paginaHistorial > 1 || historial?.hay_mas) && <nav aria-label="Paginación de consultas">
-        <button type="button" disabled={paginaHistorial === 1} onClick={() => setPaginaHistorial(valor => valor - 1)}>Anterior</button>
-        <span>Página {paginaHistorial}</span>
-        <button type="button" disabled={!historial?.hay_mas} onClick={() => setPaginaHistorial(valor => valor + 1)}>Siguiente</button>
-      </nav>}
-    </section>}
-    {error && <p role="alert">{error}</p>}
-    {aviso && <p role="status">{aviso}</p>}
-    {seccion === 'bandeja' && <>
-    <h2>Bandeja de revisión</h2>
-    {consultaRevision && <div className="integration-actions">
-      <p>Consulta de {consultaRevision.titulo}</p>
-      <button type="button" onClick={() => { cambiarPagina(1); setConsultaRevision(null) }}>Ver todas las consultas</button>
-    </div>}
+  function alternarRevision(id: string, disponibles: Partial<Record<Tipo, number>>) {
+    cambiarPagina(1)
+    setFiltro('POR_REVISAR')
+    setPersona('')
+    if (consultaRevision === id) {
+      setConsultaRevision(null)
+    } else {
+      setConsultaRevision(id)
+      setTipo(disponibles.clientes ? 'clientes' : 'proveedores')
+    }
+  }
+
+  const tablaRevision = consultaRevision && <section id={`revision-${consultaRevision}`}
+    className="integration-review-panel" aria-label="Registros por revisar">
     <div className="integration-toolbar">
       <div className="integration-tabs" aria-label="Tipo de registro">
         {(Object.keys(tipos) as Tipo[]).map(nombre => <button type="button" key={nombre} aria-pressed={tipo === nombre}
@@ -643,7 +480,7 @@ export function IntegrationsPage() {
               {tipo === 'clientes' && <td>{item.datos.tipo_persona === 'NATURAL' || item.datos.tipo_persona === 'JURIDICA'
                 ? tiposPersona[item.datos.tipo_persona] : tiposPersona.SIN_CLASIFICAR}</td>}
               <td className="integration-request-nowrap">{documento ? String(documento) : <span className="integration-request-muted">Sin documento</span>}</td>
-              <td className="integration-request-source">{item.origen}<small>Local {item.id_local}</small></td>
+              <td className="integration-request-source">{item.origen}</td>
               <td className="integration-request-nowrap"><time dateTime={item.recibido_en}>
                 {recibido.toLocaleDateString('es-PE')}<small>{recibido.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</small>
               </time></td>
@@ -713,6 +550,207 @@ export function IntegrationsPage() {
       <span>Página {pagina}</span>
       <button type="button" disabled={!bandeja.hay_mas} onClick={() => cambiarPagina(pagina + 1)}>Siguiente</button>
     </nav>}
-    </>}
+  </section>
+
+  return <section className="integration-inbox">
+    <header className="integration-banner">
+      <div><h1>Integraciones API</h1><p>Revisa los clientes y proveedores recibidos antes de agregarlos.</p></div>
+      <button type="button" onClick={() => { setError(''); setVersion(value => value + 1); setRevisionClaves(value => value + 1) }}>Actualizar</button>
+    </header>
+    <nav className="integration-section-nav" aria-label="Secciones de Integraciones API">
+      {Object.entries(seccionesIntegracion).map(([ruta, titulo]) =>
+        <Link key={ruta} to={`/home/integraciones/${ruta}`} aria-current={seccion === ruta ? 'page' : undefined}>{titulo}</Link>)}
+    </nav>
+    <div className="integration-panels" hidden={seccion !== 'claves' && seccion !== 'consulta'}>
+      <section className="integration-help" hidden={seccion !== 'claves'} aria-labelledby="mis-endpoints">
+        <h2 id="mis-endpoints">Nuestra API</h2>
+        <div className="integration-copy">
+          <label>URL para compartir clientes<input className="integration-endpoint" readOnly value={urlLectura} /></label>
+          <button type="button" onClick={() => void copiar(urlLectura)}><Copy size={16} aria-hidden="true" />Copiar URL</button>
+        </div>
+      </section>
+      <form className="integration-help integration-query-form" hidden={seccion !== 'consulta'} autoComplete="off" onSubmit={e => { e.preventDefault(); void solicitar() }}>
+        <h2>Consultar otra API</h2>
+        <label>URL del otro programa<input type="text" inputMode="url" autoComplete="off" required value={url}
+          onChange={e => { setUrl(e.target.value); setClaveExterna('') }} placeholder="https://sistema.example/api/directorio" /></label>
+        <label>Clave de la API externa (opcional)
+          <input type="password" autoComplete="new-password" value={claveExterna} maxLength={2048}
+            onChange={e => setClaveExterna(e.target.value)} />
+          <small>Pega la clave que te dio el otro programa, sin escribir Bearer.</small>
+        </label>
+        <details><summary>Opciones de la consulta</summary>
+          <label>Si la API devuelve una lista sin identificar <select value={tipoConsulta} onChange={e => setTipoConsulta(e.target.value as Tipo | '')}>
+            <option value="">Detectar automáticamente</option><option value="clientes">La lista contiene clientes</option><option value="proveedores">La lista contiene proveedores</option>
+          </select></label>
+        </details>
+        <div className="integration-query-actions"><button className="integration-primary" type="submit" disabled={ocupado !== null}>
+          <Send size={16} aria-hidden="true" />{ocupado === 'consulta' ? 'Solicitando...' : 'Solicitar datos'}
+        </button></div>
+      </form>
+    </div>
+    <section className="integration-help integration-keys" hidden={seccion !== 'claves'} aria-labelledby="claves-local">
+      <div className="integration-toolbar">
+        <h2 id="claves-local">Claves de Barbarito</h2>
+        <button className="integration-primary" type="button" disabled={ocupado !== null || !localActivo || !configVigencia}
+          onClick={() => {
+            if (!configVigencia) return
+            setVigencia(String(configVigencia.dias))
+            setErrorClaves('')
+            setFormularioClave(true)
+          }} aria-expanded={formularioClave}><Plus size={18} aria-hidden="true" />Generar nueva clave</button>
+      </div>
+      {formularioClave && <form className="integration-help integration-create-key" onSubmit={evento => {
+        evento.preventDefault()
+        if (nombreClave.trim() && ocupado === null) void generarClave()
+      }}>
+        <h2>Nueva clave de Barbarito</h2>
+        <label>Nombre<input value={nombreClave} onChange={evento => setNombreClave(evento.target.value)} maxLength={80} required /></label>
+        <label>Permiso<select value={permiso} onChange={evento => setPermiso(evento.target.value as ClaveAPI['permiso'])}>
+          <option value="leer_clientes">Leer clientes</option>
+          <option value="ambos">Recibir clientes y proveedores</option>
+          <option value="clientes">Recibir solo clientes</option>
+          <option value="proveedores">Recibir solo proveedores</option>
+        </select></label>
+        <label>Caducidad en días
+          <input type="number" min={1} max={configVigencia?.maximo} step={1} value={vigencia}
+            onChange={evento => setVigencia(evento.target.value)} />
+          <small>Deja el campo vacío para crear una clave sin caducidad.</small>
+        </label>
+        <div className="integration-actions">
+          <button type="button" disabled={ocupado !== null} onClick={() => { setFormularioClave(false); setErrorClaves('') }}>Cancelar</button>
+          <button className="integration-primary" type="submit" disabled={ocupado !== null || !nombreClave.trim()}>Crear clave</button>
+        </div>
+      </form>}
+        {clavePropia && <div className="integration-copy">
+          <label>Nueva clave de Barbarito<input type={mostrarClave ? 'text' : 'password'}
+            readOnly value={clavePropia} autoComplete="off" /></label>
+          <button type="button" onClick={() => setMostrarClave(valor => !valor)}>{mostrarClave ? 'Ocultar' : 'Mostrar'}</button>
+          <button type="button" onClick={() => void copiar(clavePropia)}>Copiar clave</button>
+        </div>}
+      {errorClaves && <p role="alert">{errorClaves}</p>}
+      {claves.length > 0 && <div className="integration-table-scroll" tabIndex={0} role="region" aria-labelledby="claves-local">
+        <table aria-labelledby="claves-local">
+          <thead><tr>
+            <th scope="col">Nombre</th><th scope="col">Estado</th>
+            <th scope="col">Identificador</th><th scope="col">Permiso</th><th scope="col">Caducidad</th><th scope="col">Creada</th><th scope="col">Acciones</th>
+          </tr></thead>
+          <tbody>{claves.map(clave => <tr key={clave.id}>
+            <th scope="row">{clave.nombre}</th>
+            <td><span className="integration-key-status" data-revoked={Boolean(clave.revocado_en)}>
+              {clave.revocado_en ? 'Revocada' : clave.vence_en && Date.parse(clave.vence_en) <= Date.now() ? 'Vencida' : 'Activa'}
+            </span></td>
+            <td>
+              <div className="integration-identifier">
+                <code>{identificadorVisible === clave.id ? clave.id : `${clave.id.slice(0, 8)}...`}</code>
+                <button type="button" aria-expanded={identificadorVisible === clave.id}
+                  aria-label={`${identificadorVisible === clave.id ? 'Ocultar' : 'Mostrar'} identificador de ${clave.nombre}`}
+                  onClick={() => setIdentificadorVisible(visible => visible === clave.id ? null : clave.id)}>
+                  {identificadorVisible === clave.id ? 'Ocultar' : 'Mostrar'}
+                </button>
+              </div>
+            </td>
+            <td>{clave.permiso === 'leer_clientes' ? 'Leer clientes' : clave.permiso === 'ambos' ? 'Recibir clientes y proveedores' : `Recibir ${tipos[clave.permiso].toLowerCase()}`}</td>
+            <td>{clave.vence_en ? new Date(clave.vence_en).toLocaleString('es-PE') : 'Sin caducidad'}</td>
+            <td>{new Date(clave.creado_en).toLocaleDateString('es-PE')}</td>
+            <td>{!clave.revocado_en && <button type="button" disabled={ocupado !== null}
+              onClick={() => void revocarClave(clave)} aria-label={`Revocar clave de ${clave.nombre}`}>Revocar</button>}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+      {claves.length === 0 && !errorClaves && <p>No hay claves registradas.</p>}
+    </section>
+    {seccion === 'consulta' && aviso && <Link to="/home/integraciones/bandeja">Ir a la bandeja de solicitudes</Link>}
+    {seguimiento && <section className="integration-help integration-keys" aria-label="Consultas externas">
+      <h2>{seccion === 'bandeja' ? 'Consultas en curso y por revisar' : 'Historial de consultas externas'}</h2>
+      {errorHistorial && <p role="alert">{errorHistorial}</p>}
+      {!historial && !errorHistorial && <p role="status">Cargando consultas...</p>}
+      {historial?.consultas.length === 0 && <p>{seccion === 'bandeja' ? 'No hay consultas en curso ni con registros por revisar.' : 'No hay consultas registradas.'}</p>}
+      {historial && historial.consultas.length > 0 && <div className="integration-table-scroll integration-query-table" tabIndex={0} role="region" aria-label="Tabla de consultas">
+        <table>
+          <thead><tr>
+            <th scope="col">Fecha</th><th scope="col">Origen</th><th scope="col">Usuario</th>
+            <th scope="col">Estado</th><th scope="col">HTTP</th><th scope="col">Resultado</th><th scope="col">Acciones</th>
+          </tr></thead>
+          <tbody>{historial.consultas.map(item => <Fragment key={item.id}>
+          <tr>
+            <td><time dateTime={item.fecha}>{new Date(item.fecha).toLocaleString('es-PE')}</time></td>
+            <td className="integration-request-source">{item.host || 'Sin dominio'}</td><td>{item.usuario}</td>
+            <td><span className="integration-query-status" data-status={item.estado}>{estadosConsulta[item.estado]}</span></td>
+            <td>{item.codigo > 0 ? item.codigo : '—'}</td>
+            <td className="integration-query-result">
+              <p>Intentos de llamada {item.intentos}</p>
+              {item.reintentar_en && <p>Próximo intento {new Date(item.reintentar_en).toLocaleString('es-PE')}</p>}
+              {item.mensaje && <p>{item.mensaje}</p>}
+              {Object.entries(item.resumen ?? {}).map(([clave, dato]) => <p key={clave}>
+                <strong>{tipos[clave as Tipo]}</strong> &middot; {dato.recibidos} recibidos &middot; {dato.nuevos} nuevos
+                {dato.cambios !== undefined && <> &middot; {dato.cambios} con cambios</>}
+                {' '}&middot; {dato.repetidos} {dato.cambios === undefined ? 'repetidos (conteo anterior)' : 'ya registrados'}
+                {' '}&middot; {dato.invalidos} inválidos
+                {!!dato.duplicados_respuesta && <> &middot; {dato.duplicados_respuesta} duplicados en la misma respuesta</>}
+              </p>)}
+              {Object.entries(item.registros).map(([estado, cantidad]) => <p key={estado}>
+                {estados[estado as Solicitud['estado']]} &middot; {cantidad}
+              </p>)}
+              {item.errores.length > 0 && <details>
+                <summary>Ver filas inválidas</summary>
+                <ul className="integration-error-list">{item.errores.map(fallo =>
+                  <li key={`${fallo.tipo}-${fallo.fila}`}>{tipos[fallo.tipo]}, fila {fallo.fila}. {fallo.mensaje}</li>
+                )}</ul>
+              </details>}
+            </td>
+            <td><div className="integration-query-row-actions">
+              {seccion === 'bandeja' && Boolean(item.registros.PENDIENTE || item.registros.ERROR) && <button
+                type="button" aria-expanded={consultaRevision === item.id}
+                aria-controls={consultaRevision === item.id ? `revision-${item.id}` : undefined}
+                onClick={() => alternarRevision(item.id, item.pendientes_por_tipo)}>
+                {consultaRevision === item.id ? '▴ Cerrar registros' : '▾ Ver registros'}
+              </button>}
+              {seccion === 'historial' && <button type="button" aria-expanded={consultaAbierta === item.id}
+                aria-controls={consultaAbierta === item.id ? `historial-${item.id}` : undefined}
+                onClick={() => setConsultaAbierta(consultaAbierta === item.id ? null : item.id)}>
+                {consultaAbierta === item.id ? '▴ Cerrar detalle' : '▾ Ver detalle'}
+              </button>}
+              {item.tiene_siguiente && <button type="button" disabled={ocupado !== null}
+                onClick={() => void solicitar(item.id)}>Solicitar siguiente página</button>}
+            </div></td>
+          </tr>
+          {seccion === 'bandeja' && consultaRevision === item.id && Boolean(item.registros.PENDIENTE || item.registros.ERROR) &&
+            <tr><td colSpan={7}>{tablaRevision}</td></tr>}
+          {seccion === 'historial' && consultaAbierta === item.id && <tr><td colSpan={7}>
+            <section id={`historial-${item.id}`} className="integration-history-detail" aria-label="Detalle de la consulta">
+              {detalleHistorial?.id !== item.id && <p role="status">Cargando detalle...</p>}
+              {detalleHistorial?.id === item.id && detalleHistorial.error && <p role="alert">{detalleHistorial.error}</p>}
+              {detalleHistorial?.id === item.id && detalleHistorial.datos && <>
+                <TablaHistorial key={item.id} registros={detalleHistorial.datos.registros} />
+                <details><summary>Ver JSON de los datos recibidos</summary>
+                  <p>Campos reconocidos por Barbarito y errores de validación.</p>
+                  <pre>{JSON.stringify(detalleHistorial.datos.respuesta, null, 2)}</pre>
+                </details>
+              </>}
+            </section>
+          </td></tr>}
+          </Fragment>)}</tbody>
+        </table>
+      </div>}
+      {(paginaHistorial > 1 || historial?.hay_mas) && <nav aria-label="Paginación de consultas">
+        <button type="button" disabled={paginaHistorial === 1} onClick={() => setPaginaHistorial(valor => valor - 1)}>Anterior</button>
+        <span>Página {paginaHistorial}</span>
+        <button type="button" disabled={!historial?.hay_mas} onClick={() => setPaginaHistorial(valor => valor + 1)}>Siguiente</button>
+      </nav>}
+    </section>}
+    {seccion === 'bandeja' && historial && Object.keys(historial.entradas_pendientes ?? {}).length > 0 &&
+      <section className="integration-help" aria-label="Envíos directos">
+        <div className="integration-toolbar">
+          <h2>Envíos directos por API</h2>
+          <button type="button" aria-expanded={consultaRevision === 'entrada'}
+            aria-controls={consultaRevision === 'entrada' ? 'revision-entrada' : undefined}
+            onClick={() => alternarRevision('entrada', historial.entradas_pendientes)}>
+            {consultaRevision === 'entrada' ? '▴ Cerrar registros' : '▾ Ver registros'}
+          </button>
+        </div>
+        {consultaRevision === 'entrada' && tablaRevision}
+      </section>}
+    {error && <p role="alert">{error}</p>}
+    {aviso && <p role="status">{aviso}</p>}
   </section>
 }

@@ -156,6 +156,7 @@ class InboxTest(unittest.TestCase):
                     respuesta = consultar_trabajo(identidad)
                     self.assertEqual(respuesta['intentos'], 2)
                     self.assertEqual(respuesta['registros'], {'PENDIENTE': 2})
+                    self.assertEqual(respuesta['pendientes_por_tipo'], {'clientes': 1, 'proveedores': 1})
                     self.assertEqual(respuesta['resumen']['clientes']['nuevos'], 1)
                     self.assertEqual(respuesta['resumen']['proveedores']['invalidos'], 1)
                     self.assertEqual(consultar.call_args.args, (consulta['url'], ''))
