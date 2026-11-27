@@ -655,7 +655,8 @@ CREATE OR REPLACE FUNCTION public.salon_cambio_bloqueado(p_id bigint, p_local bi
 RETURNS TABLE ("id_cobro" bigint, "id_local" integer, "id_usuario" integer, "mesa" character varying, "clave" uuid, "solicitud_hash" character varying, "tipo" character varying, "metodo" character varying, "documento" character varying, "cliente" character varying, "total" numeric, "comprobante" jsonb, "id_movimiento" integer, "creado_en" timestamp with time zone, "id_jornada" bigint, "id_cliente" uuid, "jornada_fecha" date, "cerrado_en" timestamp with time zone, "hoy" date, "fecha_venta" date)
 LANGUAGE sql VOLATILE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT c.*,j.fecha AS jornada_fecha,j.cerrado_en,
+SELECT c.id_cobro, c.id_local, c.id_usuario, c.mesa, c.clave, c.solicitud_hash, c.tipo, c.metodo, c.documento,
+    c.cliente, c.total, c.comprobante, c.id_movimiento, c.creado_en, c.id_jornada, c.id_cliente, j.fecha AS jornada_fecha,j.cerrado_en,
             (clock_timestamp() AT TIME ZONE 'America/Lima')::date AS hoy,
             (c.creado_en AT TIME ZONE 'America/Lima')::date AS fecha_venta
             FROM salon_cobro c LEFT JOIN inventario_jornada j USING(id_jornada)

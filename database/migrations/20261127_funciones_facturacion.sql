@@ -18,7 +18,10 @@ CREATE OR REPLACE FUNCTION public.facturacion_operacion_previa(p_origin text, p_
 RETURNS TABLE (id_operacion uuid, id_local integer, origen text, id_origen bigint, version integer, payload jsonb, payload_hash character, estado text, intentos integer, disponible_en timestamp with time zone, lease_hasta timestamp with time zone, lease_token uuid, ultimo_http integer, ultimo_error text, creado_en timestamp with time zone, actualizado_en timestamp with time zone, max_intentos integer, obsoleto boolean)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT * FROM fact_api_operacion
+SELECT o.id_operacion, o.id_local, o.origen, o.id_origen, o.version, o.payload, o.payload_hash, o.estado,
+    o.intentos, o.disponible_en, o.lease_hasta, o.lease_token, o.ultimo_http, o.ultimo_error, o.creado_en,
+    o.actualizado_en, o.max_intentos, o.obsoleto
+FROM fact_api_operacion o
         WHERE origen=p_origin AND id_origen=p_source ORDER BY version DESC LIMIT 1
 $$;
 
@@ -63,7 +66,9 @@ WITH job AS (
         ORDER BY creado_en FOR UPDATE SKIP LOCKED LIMIT 1
     ) UPDATE fact_api_operacion o SET estado='PROCESANDO',intentos=intentos+1,
         lease_hasta=now()+interval '3 minutes',lease_token=CAST(p_token AS uuid),actualizado_en=now()
-        FROM job WHERE o.id_operacion=job.id_operacion RETURNING o.*
+        FROM job WHERE o.id_operacion=job.id_operacion RETURNING o.id_operacion, o.id_local, o.origen, o.id_origen, o.version, o.payload, o.payload_hash, o.estado,
+    o.intentos, o.disponible_en, o.lease_hasta, o.lease_token, o.ultimo_http, o.ultimo_error, o.creado_en,
+    o.actualizado_en, o.max_intentos, o.obsoleto
 $$;
 
 CREATE OR REPLACE FUNCTION public.facturacion_revisar_agotadas()
@@ -163,21 +168,25 @@ CREATE OR REPLACE FUNCTION public.facturacion_configuracion_activa(p_local integ
 RETURNS TABLE (id_local integer, activo boolean, ambiente text, empresa jsonb, serie_factura character varying, serie_boleta character varying, tasa_igv numeric, creado_en timestamp with time zone)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT * FROM fact_api_config WHERE id_local=p_local AND activo
+SELECT c.id_local, c.activo, c.ambiente, c.empresa, c.serie_factura, c.serie_boleta, c.tasa_igv, c.creado_en
+FROM fact_api_config c WHERE id_local=p_local AND activo
 $$;
 
 CREATE OR REPLACE FUNCTION public.facturacion_bloquear_venta(p_id bigint, p_local integer)
 RETURNS TABLE (id_cobro bigint, id_local integer, id_usuario integer, mesa character varying, clave uuid, solicitud_hash character varying, tipo character varying, metodo character varying, documento character varying, cliente character varying, total numeric, comprobante jsonb, id_movimiento integer, creado_en timestamp with time zone, id_jornada bigint, id_cliente uuid)
 LANGUAGE sql VOLATILE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT * FROM salon_cobro WHERE id_cobro=p_id AND id_local=p_local FOR UPDATE
+SELECT c.id_cobro, c.id_local, c.id_usuario, c.mesa, c.clave, c.solicitud_hash, c.tipo, c.metodo, c.documento,
+    c.cliente, c.total, c.comprobante, c.id_movimiento, c.creado_en, c.id_jornada, c.id_cliente
+FROM salon_cobro c WHERE id_cobro=p_id AND id_local=p_local FOR UPDATE
 $$;
 
 CREATE OR REPLACE FUNCTION public.facturacion_bloquear_compra(p_id integer, p_local integer)
 RETURNS TABLE (id_factura_recepcion integer, id_orden_compra integer, id_proveedor integer, numero_factura character varying, fecha_recepcion date, usuario_recepcion integer, datos_factura jsonb, entregas jsonb, id_local integer, codigo_orden character varying)
 LANGUAGE sql VOLATILE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT f.*,o.id_local,o.codigo AS codigo_orden
+SELECT f.id_factura_recepcion, f.id_orden_compra, f.id_proveedor, f.numero_factura, f.fecha_recepcion,
+    f.usuario_recepcion, f.datos_factura, f.entregas, o.id_local,o.codigo AS codigo_orden
             FROM factura_recepcion f JOIN orden_compra o USING(id_orden_compra)
             WHERE f.id_factura_recepcion=p_id AND o.id_local=p_local FOR UPDATE OF f
 $$;
@@ -240,7 +249,8 @@ CREATE OR REPLACE FUNCTION public.facturacion_original_por_local(p_id uuid, p_lo
 RETURNS TABLE (id_adjunto uuid, id_local integer, id_factura_recepcion integer, formato text, ruta text, sha256 character, bytes integer, creado_en timestamp with time zone)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT * FROM fact_api_adjunto WHERE id_adjunto=p_id AND id_local=p_local
+SELECT a.id_adjunto, a.id_local, a.id_factura_recepcion, a.formato, a.ruta, a.sha256, a.bytes, a.creado_en
+FROM fact_api_adjunto a WHERE id_adjunto=p_id AND id_local=p_local
 $$;
 
 CREATE OR REPLACE FUNCTION public.facturacion_reencolar(p_id uuid, p_local integer)
@@ -265,7 +275,8 @@ CREATE OR REPLACE FUNCTION public.facturacion_archivo_por_local(p_id uuid, p_loc
 RETURNS TABLE (id_archivo uuid, id_documento uuid, formato text, ruta text, sha256 character, bytes integer, creado_en timestamp with time zone)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT a.* FROM fact_api_archivo a JOIN fact_api_documento d USING(id_documento)
+SELECT a.id_archivo, a.id_documento, a.formato, a.ruta, a.sha256, a.bytes, a.creado_en
+FROM fact_api_archivo a JOIN fact_api_documento d USING(id_documento)
         WHERE a.id_archivo=p_id AND d.id_local=p_local
 $$;
 
@@ -303,7 +314,9 @@ CREATE OR REPLACE FUNCTION public.facturacion_obtener_escalado()
 RETURNS TABLE (id integer, supervisor uuid, pid integer, minimo integer, maximo integer, activos integer, objetivo integer, listos integer, ocupados integer, espera_segundos numeric, pausado boolean, workers jsonb, actualizado_en timestamp with time zone)
 LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path TO pg_catalog, public, pg_temp AS $$
-SELECT * FROM fact_api_escalado WHERE id=1
+SELECT e.id, e.supervisor, e.pid, e.minimo, e.maximo, e.activos, e.objetivo, e.listos, e.ocupados,
+    e.espera_segundos, e.pausado, e.workers, e.actualizado_en
+FROM fact_api_escalado e WHERE id=1
 $$;
 
 CREATE OR REPLACE FUNCTION public.facturacion_guardar_adjunto(p_id uuid, p_local integer, p_source integer, p_kind text, p_path text, p_hash text, p_size integer)
