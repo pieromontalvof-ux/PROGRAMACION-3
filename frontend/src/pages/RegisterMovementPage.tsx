@@ -430,7 +430,7 @@ export function RegisterMovementPage() {
                 <b>{producto.codigo}</b>
                 <strong>{producto.nombre}</strong>
                 <small>
-                  {producto.categoria} · {formatearUnidad(producto.unidad)}
+                  {producto.categoria} · {formatearUnidad(producto)}
                 </small>
               </div>
               <Plus />
@@ -472,7 +472,7 @@ export function RegisterMovementPage() {
                       )
                     }
                   />
-                  <b>{formatearUnidad(producto.unidad)}</b>
+                  <b>{formatearUnidad(producto)}</b>
                 </span>
               </label>
               <button

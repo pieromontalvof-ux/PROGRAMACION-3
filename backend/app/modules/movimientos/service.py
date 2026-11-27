@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import bindparam, func, select
+
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
 from app.modules.movimientos.repository import (
@@ -16,62 +18,23 @@ from app.modules.movimientos.repository import (
 )
 
 
-CONFIGURACION_MOTIVOS = {
-    "PRESTAMO_RECIBIDO": {
-        "tipo_movimiento": "ENTRADA",
-        "requiere_local": True,
-        "requiere_proveedor": False,
-    },
-    "MERMA": {
-        "tipo_movimiento": "SALIDA",
-        "requiere_local": False,
-        "requiere_proveedor": False,
-    },
-    "PRESTAMO_ENTREGADO": {
-        "tipo_movimiento": "SALIDA",
-        "requiere_local": True,
-        "requiere_proveedor": False,
-    },
-    "DEVOLUCION_PROVEEDOR": {
-        "tipo_movimiento": "SALIDA",
-        "requiere_local": False,
-        "requiere_proveedor": True,
-    },
-    "REPOSICION_PROVEEDOR": {
-        "tipo_movimiento": "ENTRADA",
-        "requiere_local": False,
-        "requiere_proveedor": True,
-    },
-}
+def motivos_registrables():
+    return [dict(fila) for fila in db.session.execute(select(func.public.catalogo_motivos_movimiento().table_valued('valor', 'etiqueta', 'tipo_movimiento', 'requiere_local', 'requiere_proveedor'))).mappings()]
 
 
-ETIQUETAS_MOTIVOS = {
-    "PRESTAMO_RECIBIDO": "Préstamo recibido",
-    "MERMA": "Merma",
-    "PRESTAMO_ENTREGADO": "Préstamo entregado",
-    "DEVOLUCION_PROVEEDOR": "Devolución a proveedor",
-    "REPOSICION_PROVEEDOR": "Reposición de proveedor",
-}
+def configuracion_motivo(codigo):
+    return db.session.execute(select(func.public.configuracion_motivo_movimiento(codigo).table_valued('tipo_movimiento', 'requiere_local', 'requiere_proveedor', 'registrable', 'motivo_recepcion'))).mappings().first()
 
 
 def obtener_formulario_movimiento():
-    from sqlalchemy import text
     from app.core.local_scope import ejecutar_local
-    locales = ejecutar_local(text("SELECT id_local,nombre FROM local WHERE estado_registro=1 AND id_local<>:id_local_actual ORDER BY nombre")).mappings().all()
+    locales = ejecutar_local(select(func.public.mov_locales_destino(bindparam("id_local_actual")).table_valued("id_local", "nombre"))).mappings().all()
     productos = listar_productos_activos_movimiento()
     proveedores = listar_proveedores_activos_movimiento()
 
     return {
         "locales": [dict(l) for l in locales],
-        "motivos": [
-            {
-                "valor": motivo,
-                "etiqueta": ETIQUETAS_MOTIVOS[motivo],
-                **configuracion,
-            }
-            for motivo, configuracion
-            in CONFIGURACION_MOTIVOS.items() if motivo not in ("PRESTAMO_RECIBIDO", "REPOSICION_PROVEEDOR")
-        ],
+        "motivos": motivos_registrables(),
         "categorias": sorted({
             producto["categoria"]
             for producto in productos
@@ -256,9 +219,10 @@ def registrar_movimiento(id_usuario, datos):
     motivo = str(
         datos.get("motivo_movimiento", "")
     ).strip().upper()
-    if motivo in ("PRESTAMO_RECIBIDO", "REPOSICION_PROVEEDOR"):
-        return {"mensaje": "Recibe desde la guía pendiente en Seguimiento de movimientos"}, 400
-    configuracion = CONFIGURACION_MOTIVOS.get(motivo)
+    configuracion = configuracion_motivo(motivo)
+
+    if configuracion and not configuracion['registrable']:
+        return {"mensaje": "Este motivo se registra desde su flujo de origen"}, 400
 
     if configuracion is None:
         return {
@@ -294,12 +258,15 @@ def registrar_movimiento(id_usuario, datos):
             }, 400
 
     destino = None
-    seguimiento = motivo in ('PRESTAMO_ENTREGADO', 'DEVOLUCION_PROVEEDOR')
+    seguimiento = configuracion['motivo_recepcion'] is not None
     if seguimiento:
         from app.modules.movimientos.tracking import validar_salida
-        destino = validar_salida({**datos, 'motivo_movimiento': motivo}, fecha_movimiento)
-        if destino:
-            local_relacionado = destino['nombre']
+        destino = validar_salida(datos, fecha_movimiento, configuracion['requiere_local'])
+    elif configuracion['requiere_local'] and datos.get('id_local_destino') is not None:
+        from app.modules.movimientos.tracking import destino_local
+        destino = destino_local(datos['id_local_destino'])
+    if destino:
+        local_relacionado = destino['nombre']
 
     error_relacion = _validar_relacion_movimiento(
         configuracion,

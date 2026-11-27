@@ -1,7 +1,7 @@
 """Customer directory scoped to the selected restaurant; documents are identifiers, not keys."""
 import re
 from uuid import uuid4
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import BadRequest, Conflict
 from app.core.extensions import db
@@ -46,23 +46,35 @@ def _json(row):
     return result
 
 
+def perfil_autorizado(perfil, salon=False):
+    if type(perfil) is not int:
+        return False
+    return bool(db.session.execute(select(func.public.clientes_perfil_autorizado(perfil, salon))).scalar())
+
+
+def directorio_disponible():
+    return bool(db.session.execute(select(func.public.clientes_directorio_disponible())).scalar())
+
+
+def _filas(consulta):
+    clientes = consulta.table_valued(
+        'id_cliente', 'tipo_persona', 'tipo_documento', 'numero_documento',
+        'nombre', 'direccion', 'email', 'telefono',
+    )
+    return db.session.execute(select(clientes)).mappings()
+
+
 def buscar(local,q='',limit=25,offset=0):
     q=q.strip()
     if not 1<=limit<=100 or offset<0 or len(q)>200:
         raise BadRequest('Parametros de busqueda invalidos')
     pattern='%'+q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-    rows=db.session.execute(text("""SELECT id_cliente,tipo_persona,tipo_documento,numero_documento,
-        nombre,direccion,email,telefono FROM public.cliente_comercial
-        WHERE id_local=:local AND (:q='' OR numero_documento=:q OR nombre ILIKE :pattern ESCAPE '\\')
-        ORDER BY nombre,id_cliente LIMIT :limit OFFSET :offset"""),
-        dict(local=local,q=q,pattern=pattern,limit=limit,offset=offset)).mappings().all()
+    rows = _filas(func.public.clientes_buscar(local, q, pattern, limit, offset)).all()
     return [_json(row) for row in rows]
 
 
 def obtener(local,id_cliente):
-    row=db.session.execute(text('''SELECT id_cliente,tipo_persona,tipo_documento,numero_documento,
-        nombre,direccion,email,telefono FROM public.cliente_comercial
-        WHERE id_local=:local AND id_cliente=:id'''),dict(local=local,id=str(id_cliente))).mappings().first()
+    row = _filas(func.public.clientes_obtener(local, str(id_cliente))).first()
     return _json(row) if row else None
 
 
@@ -70,9 +82,12 @@ def crear(local,data):
     values=validar(data)
     values.update(id_cliente=str(uuid4()),id_local=local)
     try:
-        db.session.execute(text('''INSERT INTO public.cliente_comercial
-            (id_cliente,id_local,tipo_persona,tipo_documento,numero_documento,nombre,direccion,email,telefono)
-            VALUES (:id_cliente,:id_local,:tipo_persona,:tipo_documento,:numero_documento,:nombre,:direccion,:email,:telefono)'''),values)
+        alta = func.public.clientes_crear(
+            values['id_cliente'], local, values['tipo_persona'], values['tipo_documento'],
+            values['numero_documento'], values['nombre'], values['direccion'],
+            values['email'], values['telefono'],
+        )
+        db.session.execute(select(alta))
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()

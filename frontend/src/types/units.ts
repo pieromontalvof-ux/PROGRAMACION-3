@@ -7,7 +7,7 @@ export interface UnidadMedida {
   codigo_unece: string | null
   codigo_base: string
   factor_a_base: string
-  estandar: 'UNECE Rec. 20' | 'LOCAL'
+  estandar: string | null
 }
 
 export interface MedidaConUnidad {

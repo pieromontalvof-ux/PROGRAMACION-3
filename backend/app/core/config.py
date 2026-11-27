@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+CORPORATE_EMAIL_DOMAIN = os.getenv("CORPORATE_EMAIL_DOMAIN", "barbarian.pe").strip().lower().lstrip("@") or "barbarian.pe"
+
+
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "").replace('postgres://', 'postgresql://', 1) or None
     SQLALCHEMY_TRACK_MODIFICATIONS = False

@@ -12,6 +12,9 @@ from app.multiagente.agents.orchestrator import communication
 ANSWER=[{'type':'message','content':[{'type':'output_text','text':'Revisé las opciones. Falta elegir un menaje.'}]}]
 
 
+from test_tableware_measurements import mock_capacity_catalog
+
+
 class ConversationFirstTests(unittest.TestCase):
     def test_promotion_period_reply_stays_with_its_original_specialist(self):
         initial='Quiero comparar dos opciones de promocion con bebidas, entradas, ventas y stock. No crear todavia.'
@@ -34,6 +37,7 @@ class ConversationFirstTests(unittest.TestCase):
         self.assertEqual(specialist.call_args.args[1],'revisa los ultimo 4 meses')
 
     def setUp(self):
+        mock_capacity_catalog(self)
         self.app=Flask(__name__)
         self.app.config.update(JWT_SECRET_KEY='conversation-test-secret-key-32-characters',SECRET_KEY='conversation-signing')
         JWTManager(self.app)

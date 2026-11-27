@@ -31,7 +31,13 @@ class ValidateCertificate extends Command
         }
 
         // Validar estructura PEM
-        $this->validatePemStructure($company->certificado_pem);
+        try {
+            $certificate = GreenterService::readCompanyCertificate($company);
+        } catch (\Exception $exception) {
+            $this->error($exception->getMessage());
+            return 1;
+        }
+        $this->validatePemStructure($certificate);
         
         // Probar carga en Greenter
         try {
@@ -44,7 +50,7 @@ class ValidateCertificate extends Command
         }
 
         // Mostrar información del certificado
-        $this->showCertificateInfo($company->certificado_pem);
+        $this->showCertificateInfo($certificate);
         
         $this->info("✅ Certificado válido y listo para usar con SUNAT");
     }

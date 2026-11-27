@@ -229,7 +229,7 @@ export function RecipesPage() {
                       </td>
                       <td>{receta.categoria_carta}</td>
                       <td>
-                        {receta.contenido} {formatearUnidad(receta.unidad_presentacion)}
+                        {receta.contenido} {formatearUnidad(receta, 'unidad_presentacion')}
                       </td>
                       <td>
                         {receta.tipo_item}
@@ -289,7 +289,7 @@ export function RecipesPage() {
                                   </header>
                                   <strong>{comp.nombre_componente}</strong>
                                   <span>
-                                    {comp.cantidad} {formatearUnidad(comp.unidad)}
+                                    {comp.cantidad} {formatearUnidad(comp)}
                                   </span>
                                 </article>
                               ))}
@@ -339,7 +339,7 @@ export function RecipesPage() {
                                           <small>{opcion.codigo}</small>
                                           <strong>{opcion.nombre}</strong>
                                           <span>
-                                            {opcion.cantidad} {formatearUnidad(opcion.unidad)}
+                                            {opcion.cantidad} {formatearUnidad(opcion)}
                                           </span>
                                         </div>
                                       </article>

@@ -9,28 +9,28 @@ recetas_bp = Blueprint("recetas", __name__)
 
 
 @recetas_bp.get("")
-@requiere_permiso(id_opcion_menu=28, accion="consultar")
+@requiere_permiso(id_opcion_menu='recetas', accion="consultar")
 def consultar_recetas():
     respuesta, estado = obtener_recetas()
     return jsonify(respuesta), estado
 
 
 @recetas_bp.get("/formulario")
-@requiere_permiso(28, "consultar")
+@requiere_permiso('recetas', "consultar")
 def consultar_formulario():
     respuesta, estado = obtener_formulario()
     return jsonify(respuesta), estado
 
 
 @recetas_bp.post("")
-@requiere_permiso(28, "crear")
+@requiere_permiso('recetas', "crear")
 def crear_receta():
     respuesta, estado = guardar_receta(int(get_jwt_identity()), request.get_json(silent=True))
     return jsonify(respuesta), estado
 
 
 @recetas_bp.put("/<int:id_receta>")
-@requiere_permiso(28, "editar")
+@requiere_permiso('recetas', "editar")
 def editar_receta(id_receta):
     respuesta, estado = guardar_receta(int(get_jwt_identity()), request.get_json(silent=True), id_receta)
     return jsonify(respuesta), estado

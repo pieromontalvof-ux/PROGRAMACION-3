@@ -634,21 +634,6 @@ trait HasCompanyConfigurations
                 'description' => 'Endpoints para guías de remisión en ambiente producción'
             ],
 
-            // Credenciales SUNAT por defecto para beta
-            [
-                'config_type' => 'sunat_credentials',
-                'environment' => 'beta',
-                'service_type' => 'guias_remision',
-                'config_data' => [
-                    'client_id' => 'test-85e5b0ae-255c-4891-a595-0b98c65c9854',
-                    'client_secret' => 'test-Hty/M6QshYvPgItX2P0+Kw==',
-                    'ruc_proveedor' => '20161515648',
-                    'usuario_sol' => 'MODDATOS',
-                    'clave_sol' => 'MODDATOS',
-                ],
-                'description' => 'Credenciales por defecto para GRE en ambiente beta'
-            ],
-
             // Configuraciones de impuestos
             [
                 'config_type' => 'tax_settings',

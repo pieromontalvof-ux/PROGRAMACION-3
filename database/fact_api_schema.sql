@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict f9s1GhKXJgalQrgL0Ok5HvhhOJfLq34Ew6MkFLiubSongizlDrngzx2Bn0Er5dI
+\restrict hzuzEteB9IKQedAfg3QN81HyXsdLI5GCdCNGEhrjOdgq4YNLMiAVhoNH21nAQNI
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -19,63 +19,33 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: barbarito_adquirir_bloqueo(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.barbarito_adquirir_bloqueo() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+            BEGIN
+                PERFORM pg_advisory_xact_lock(hashtext(NEW.clave));
+                RETURN NEW;
+            END;
+            $$;
+
+
+--
+-- Name: barbarito_bloqueos; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.barbarito_bloqueos AS
+ SELECT NULL::text AS clave
+  WHERE false;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
-
---
--- Name: barbarito_documents; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.barbarito_documents (
-    id uuid NOT NULL,
-    company_id bigint NOT NULL,
-    branch_id bigint NOT NULL,
-    origin character varying(10) NOT NULL,
-    source_reference character varying(40) NOT NULL,
-    native_id bigint,
-    native_type character varying(20),
-    number character varying(80) NOT NULL,
-    payload_hash character varying(64) NOT NULL,
-    payload json NOT NULL,
-    state character varying(30) DEFAULT 'DEMO_GENERADO'::character varying NOT NULL,
-    created_at timestamp(0) without time zone,
-    updated_at timestamp(0) without time zone
-);
-
-
---
--- Name: barbarito_files; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.barbarito_files (
-    id bigint NOT NULL,
-    document_id uuid NOT NULL,
-    format character varying(10) NOT NULL,
-    path character varying(255) NOT NULL,
-    sha256 character varying(64) NOT NULL,
-    bytes integer NOT NULL
-);
-
-
---
--- Name: barbarito_files_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.barbarito_files_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: barbarito_files_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.barbarito_files_id_seq OWNED BY public.barbarito_files.id;
-
 
 --
 -- Name: boletas; Type: TABLE; Schema: public; Owner: -
@@ -140,6 +110,155 @@ COMMENT ON COLUMN public.boletas.mto_base_ivap IS 'Base imponible IVAP';
 --
 
 COMMENT ON COLUMN public.boletas.mto_ivap IS 'Monto IVAP';
+
+
+--
+-- Name: invoices; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoices (
+    id bigint NOT NULL,
+    company_id bigint NOT NULL,
+    branch_id bigint NOT NULL,
+    client_id bigint NOT NULL,
+    tipo_documento character varying(2) DEFAULT '01'::character varying NOT NULL,
+    serie character varying(4) NOT NULL,
+    correlativo character varying(8) NOT NULL,
+    numero_completo character varying(15) NOT NULL,
+    fecha_emision date NOT NULL,
+    fecha_vencimiento date,
+    ubl_version character varying(3) DEFAULT '2.1'::character varying NOT NULL,
+    tipo_operacion character varying(4) DEFAULT '0101'::character varying NOT NULL,
+    moneda character varying(3) DEFAULT 'PEN'::character varying NOT NULL,
+    forma_pago_tipo character varying(20) DEFAULT 'Contado'::character varying NOT NULL,
+    forma_pago_cuotas json,
+    valor_venta numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_oper_gravadas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_oper_exoneradas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_oper_inafectas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_oper_exportacion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_oper_gratuitas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_igv_gratuitas numeric(10,2) DEFAULT '0'::numeric NOT NULL,
+    mto_igv numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_isc numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_icbper numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_otros_tributos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_detraccion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_percepcion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_retencion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    total_impuestos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    sub_total numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_imp_venta numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_anticipos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    detalles json NOT NULL,
+    leyendas json,
+    guias json,
+    documentos_relacionados json,
+    detraccion json,
+    percepcion json,
+    retencion json,
+    datos_adicionales json,
+    xml_path character varying(255),
+    cdr_path character varying(255),
+    pdf_path character varying(255),
+    estado_sunat character varying(20) DEFAULT 'PENDIENTE'::character varying NOT NULL,
+    respuesta_sunat text,
+    codigo_hash character varying(255),
+    usuario_creacion character varying(255),
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone,
+    mto_base_ivap numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    mto_ivap numeric(12,2) DEFAULT '0'::numeric NOT NULL,
+    consulta_cpe_estado character varying(2),
+    consulta_cpe_respuesta json,
+    consulta_cpe_fecha timestamp(0) without time zone
+);
+
+
+--
+-- Name: COLUMN invoices.mto_base_ivap; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.invoices.mto_base_ivap IS 'Base imponible IVAP';
+
+
+--
+-- Name: COLUMN invoices.mto_ivap; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.invoices.mto_ivap IS 'Monto IVAP';
+
+
+--
+-- Name: barbarito_correlativos_documentos; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.barbarito_correlativos_documentos AS
+ SELECT invoices.company_id,
+    invoices.serie,
+    'invoice'::text AS tipo,
+    (invoices.correlativo)::bigint AS correlativo
+   FROM public.invoices
+UNION ALL
+ SELECT boletas.company_id,
+    boletas.serie,
+    'boleta'::text AS tipo,
+    (boletas.correlativo)::bigint AS correlativo
+   FROM public.boletas;
+
+
+--
+-- Name: barbarito_documents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.barbarito_documents (
+    id uuid NOT NULL,
+    company_id bigint NOT NULL,
+    branch_id bigint NOT NULL,
+    origin character varying(10) NOT NULL,
+    source_reference character varying(40) NOT NULL,
+    native_id bigint,
+    native_type character varying(20),
+    number character varying(80) NOT NULL,
+    payload_hash character varying(64) NOT NULL,
+    payload json NOT NULL,
+    state character varying(30) DEFAULT 'DEMO_GENERADO'::character varying NOT NULL,
+    created_at timestamp(0) without time zone,
+    updated_at timestamp(0) without time zone
+);
+
+
+--
+-- Name: barbarito_files; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.barbarito_files (
+    id bigint NOT NULL,
+    document_id uuid NOT NULL,
+    format character varying(10) NOT NULL,
+    path character varying(255) NOT NULL,
+    sha256 character varying(64) NOT NULL,
+    bytes integer NOT NULL
+);
+
+
+--
+-- Name: barbarito_files_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.barbarito_files_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: barbarito_files_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.barbarito_files_id_seq OWNED BY public.barbarito_files.id;
 
 
 --
@@ -435,83 +554,6 @@ CREATE SEQUENCE public.failed_jobs_id_seq
 --
 
 ALTER SEQUENCE public.failed_jobs_id_seq OWNED BY public.failed_jobs.id;
-
-
---
--- Name: invoices; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.invoices (
-    id bigint NOT NULL,
-    company_id bigint NOT NULL,
-    branch_id bigint NOT NULL,
-    client_id bigint NOT NULL,
-    tipo_documento character varying(2) DEFAULT '01'::character varying NOT NULL,
-    serie character varying(4) NOT NULL,
-    correlativo character varying(8) NOT NULL,
-    numero_completo character varying(15) NOT NULL,
-    fecha_emision date NOT NULL,
-    fecha_vencimiento date,
-    ubl_version character varying(3) DEFAULT '2.1'::character varying NOT NULL,
-    tipo_operacion character varying(4) DEFAULT '0101'::character varying NOT NULL,
-    moneda character varying(3) DEFAULT 'PEN'::character varying NOT NULL,
-    forma_pago_tipo character varying(20) DEFAULT 'Contado'::character varying NOT NULL,
-    forma_pago_cuotas json,
-    valor_venta numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_oper_gravadas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_oper_exoneradas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_oper_inafectas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_oper_exportacion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_oper_gratuitas numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_igv_gratuitas numeric(10,2) DEFAULT '0'::numeric NOT NULL,
-    mto_igv numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_isc numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_icbper numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_otros_tributos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_detraccion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_percepcion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_retencion numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    total_impuestos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    sub_total numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_imp_venta numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_anticipos numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    detalles json NOT NULL,
-    leyendas json,
-    guias json,
-    documentos_relacionados json,
-    detraccion json,
-    percepcion json,
-    retencion json,
-    datos_adicionales json,
-    xml_path character varying(255),
-    cdr_path character varying(255),
-    pdf_path character varying(255),
-    estado_sunat character varying(20) DEFAULT 'PENDIENTE'::character varying NOT NULL,
-    respuesta_sunat text,
-    codigo_hash character varying(255),
-    usuario_creacion character varying(255),
-    created_at timestamp(0) without time zone,
-    updated_at timestamp(0) without time zone,
-    mto_base_ivap numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    mto_ivap numeric(12,2) DEFAULT '0'::numeric NOT NULL,
-    consulta_cpe_estado character varying(2),
-    consulta_cpe_respuesta json,
-    consulta_cpe_fecha timestamp(0) without time zone
-);
-
-
---
--- Name: COLUMN invoices.mto_base_ivap; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.invoices.mto_base_ivap IS 'Base imponible IVAP';
-
-
---
--- Name: COLUMN invoices.mto_ivap; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN public.invoices.mto_ivap IS 'Monto IVAP';
 
 
 --
@@ -1479,6 +1521,13 @@ CREATE INDEX users_user_type_active_index ON public.users USING btree (user_type
 
 
 --
+-- Name: barbarito_bloqueos tr_barbarito_adquirir_bloqueo; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER tr_barbarito_adquirir_bloqueo INSTEAD OF INSERT ON public.barbarito_bloqueos FOR EACH ROW EXECUTE FUNCTION public.barbarito_adquirir_bloqueo();
+
+
+--
 -- Name: boletas boletas_branch_id_foreign; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1618,4 +1667,4 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict f9s1GhKXJgalQrgL0Ok5HvhhOJfLq34Ew6MkFLiubSongizlDrngzx2Bn0Er5dI
+\unrestrict hzuzEteB9IKQedAfg3QN81HyXsdLI5GCdCNGEhrjOdgq4YNLMiAVhoNH21nAQNI

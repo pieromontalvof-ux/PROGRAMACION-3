@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config'
 ﻿import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Plus, Search, Store, MapPin, Pencil, Trash2, X, Download, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -6,7 +7,7 @@ import './UsersPage.css'
 import './StoresPage.css'
 
 type Tienda = { id_local: number; codigo: string; nombre: string; direccion: string | null; estado_registro: number }
-const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+const api = API_BASE_URL
 const vacio = { nombre: '', direccion: '' }
 
 const ordenar = (a: Tienda, b: Tienda) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true })

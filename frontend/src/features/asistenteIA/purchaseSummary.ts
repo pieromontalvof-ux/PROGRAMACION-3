@@ -3,12 +3,15 @@ import {formatearUnidad} from '../../utils/unitHelpers'
 export const numeric=(value:unknown):value is number=>typeof value==='number' && Number.isFinite(value)
 export const number=(value:number)=>value.toLocaleString('es-PE',{maximumFractionDigits:3})
 
-export function quantity(value:number,unit:unknown) {
-  const label=formatearUnidad(unit)
-  if(label==='L' && value>0 && value<1)return `${number(value*1000)} mL`
-  if(label==='kg' && value>0 && value<1)return `${number(value*1000)} g`
-  if(label==='unidad')return `${number(value)} ${value===1?'unidad':'unidades'}`
-  return `${number(value)} ${label}`.trim()
+export function quantity(value: number, row: Record<string, unknown>) {
+  const unidad = row.unidad_medida as { simbolo_plural?: string; factor_a_base?: string } | undefined
+  const fraccion = row.unidad_fraccion as { simbolo: string; factor_a_base: string } | undefined
+  const convertido = value * Number(unidad?.factor_a_base) / Number(fraccion?.factor_a_base)
+  if (fraccion && value > 0 && value < 1 && Number.isFinite(convertido) && convertido >= 1) {
+    return `${number(convertido)} ${fraccion.simbolo}`
+  }
+  const etiqueta = (value !== 1 && unidad?.simbolo_plural) || formatearUnidad(row)
+  return `${number(value)} ${etiqueta}`.trim()
 }
 
 export function packageCount(row:Record<string,unknown>) {
@@ -31,8 +34,8 @@ export function purchaseSummary(rows:Record<string,unknown>[]) {
     '| --- | --- | --- | --- | --- |',
     ...rows.map(row=>{
       const count=packageCount(row)
-      return '| '+[row.producto,percentage(row),numeric(row.presentacion_compra)?quantity(row.presentacion_compra,row.unidad):'—',
-        count===null?'—':number(count),numeric(row.cantidad_final)?quantity(row.cantidad_final,row.unidad):'—'].map(cell).join(' | ')+' |'
+      return '| '+[row.producto,percentage(row),numeric(row.presentacion_compra)?quantity(row.presentacion_compra,row):'—',
+        count===null?'—':number(count),numeric(row.cantidad_final)?quantity(row.cantidad_final,row):'—'].map(cell).join(' | ')+' |'
     })].join('\n')
 }
 

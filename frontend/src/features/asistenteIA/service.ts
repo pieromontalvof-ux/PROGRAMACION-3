@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../../config'
 export interface EstadoAsistente {
   consultas_habilitadas?: boolean
   estado: 'disponible' | 'sin_configurar'
@@ -47,7 +48,7 @@ export interface ActividadAgentes {
     mensaje?: string; herramienta?: string; parametros?: unknown; resultado?: unknown; estado?: string }[]
 }
 export async function obtenerActividad(token: string, id: string): Promise<ActividadAgentes> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const response = await fetch(`${api}/asistente-ia/actividad/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } })
   const data = await response.json()
   if (!response.ok) throw new Error(data.mensaje ?? 'No se pudo descargar la actividad.')
@@ -59,7 +60,7 @@ export interface FormularioCatalogo {
   titulo: string
   categorias: { id_categoria: number; nombre: string; prefijo: string; activo: boolean }[]
   proveedores: { id_proveedor: number; nombre: string; activo: boolean; ids_categorias: number[] }[]
-  unidades_medida: { codigo: string; nombre: string; simbolo: string }[]
+  unidades_medida: { codigo: string; nombre: string; simbolo: string; codigo_base?: string; factor_a_base?: string }[]
   categorias_proveedor_configurables: boolean
   dependencias_creables: RecursoFormulario[]
   menajes: { id_menaje: number; nombre: string; activo: boolean }[]
@@ -79,7 +80,7 @@ export interface CarpetaAgente {
   ultima_revision?: { informe: InformeConfiguracion; fecha: string; aplicado_por: number } | null
 }
 export async function bibliotecaAgentes<T>(token: string, path = '', method = 'GET', body?: object | FormData, signal?: AbortSignal): Promise<T> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const form = body instanceof FormData
   const response = await fetch(`${api}/asistente-ia/biblioteca${path}`, {
     method, signal, headers: { Authorization: `Bearer ${token}`, ...(!form && body ? { 'Content-Type': 'application/json' } : {}) },
@@ -90,7 +91,7 @@ export async function bibliotecaAgentes<T>(token: string, path = '', method = 'G
   return result as T
 }
 export async function originalDocumentoAgente(token: string, agent: string, document: string, signal?: AbortSignal): Promise<Blob> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const response = await fetch(`${api}/asistente-ia/biblioteca/${agent}/documentos/${document}/original`, { signal, headers: { Authorization: `Bearer ${token}` } })
   if (!response.ok) { const error = await response.json(); throw new Error(error.mensaje ?? 'No se pudo abrir el archivo.') }
   return response.blob()
@@ -117,7 +118,7 @@ export interface ConexionAgentes {
   tipo: 'coordinacion' | 'dependencia'
 }
 export async function solicitar<T>(token: string, ruta: string, body: object | FormData, signal?: AbortSignal): Promise<T> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const form = body instanceof FormData
   const r = await fetch(`${api}/asistente-ia/${ruta}`, {
     method: 'POST', signal,
@@ -130,7 +131,7 @@ export async function solicitar<T>(token: string, ruta: string, body: object | F
   return data
 }
 export async function obtenerAgentesAsistente(token: string, signal: AbortSignal): Promise<CatalogoAgentes> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const respuesta = await fetch(`${api}/asistente-ia/agentes`, {
     headers: { Authorization: `Bearer ${token}` }, signal,
   })
@@ -139,7 +140,7 @@ export async function obtenerAgentesAsistente(token: string, signal: AbortSignal
   return datos as CatalogoAgentes
 }
 export async function obtenerEstadoAsistente(token: string, signal: AbortSignal): Promise<EstadoAsistente> {
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const respuesta = await fetch(`${api}/asistente-ia/estado`, { headers: { Authorization: `Bearer ${token}` }, signal })
   const datos = await respuesta.json()
   if (!respuesta.ok) throw new Error(datos.mensaje ?? 'No se pudo verificar el acceso')

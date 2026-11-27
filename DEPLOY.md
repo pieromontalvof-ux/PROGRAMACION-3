@@ -19,6 +19,16 @@ El Dockerfile compila React con `VITE_API_URL=/api` y lo sirve junto con Flask m
 | APP_DATA_DIR | /data |
 | CORS_ORIGINS | Vacío: frontend y API comparten dominio |
 
+El dominio de correo predeterminado es `barbarian.pe`. Para usar otro, configura el mismo valor en `CORPORATE_EMAIL_DOMAIN` (Flask en ejecución) y `VITE_CORPORATE_EMAIL_DOMAIN` (compilación del frontend). Cambiar estas variables no modifica los correos existentes en PostgreSQL.
+
+Fact API utiliza la configuración de la empresa y del ambiente activo para las guías de remisión. Carga las credenciales GRE y el certificado de cada empresa mediante la configuración de Fact API. PostgreSQL conserva las credenciales y la referencia al certificado. Las cargas nuevas de certificados se guardan en el almacenamiento privado de Laravel, que debe estar en un volumen persistente. Si la empresa todavía apunta al certificado compartido de una instalación anterior, vuelve a cargar su certificado para asociarle un archivo propio.
+
+El catálogo de inventario se lee de PostgreSQL. `unidad_medida` define factores y símbolos, `unidad_medida_alias` conserva los nombres alternativos, y `unidad_medida_contexto` indica qué bases se aceptan para cada uso. En una instalación local, aplica `database/migrations/20261126_catalogo_unidades.sql` como propietario después de `20261010_unidades_unece.sql`. El arranque de Railway aplica estas migraciones si faltan.
+Los motivos de corrección de recepciones se leen de `recepcion_motivo_correccion`. La migración `database/migrations/20261126_motivos_recepcion.sql` conserva las correcciones históricas y carga los motivos iniciales para el formulario.
+Los motivos de movimiento y sus relaciones se leen de `movimiento_motivo`. Aplica `database/migrations/20261126_motivos_movimiento.sql` para habilitar el catálogo y la validación en PostgreSQL.
+Las etiquetas de estándar se guardan en `unidad_medida.estandar` y las capacidades de menaje se configuran en `menaje_unidad_capacidad`. Sus migraciones son `20261126_estandar_unidades.sql` y `20261126_unidades_menaje.sql`.
+El acceso global a locales se configura en `perfiles.acceso_todos_locales`. La migración `20261127_acceso_perfil_locales.sql` conserva inicialmente el acceso del perfil administrador existente. Los demás perfiles requieren una asignación activa en `usuario_local` mientras su acceso global esté deshabilitado.
+
 Railway proporciona PORT. El servicio usa un proceso Gunicorn con cuatro hilos y una réplica; no ampliar réplicas sin compartir los límites de peticiones y validar la concurrencia.
 
 4. Añadir un volumen persistente **al servicio de la aplicación**, montado en `/data`. PostgreSQL tiene su almacenamiento separado. Los archivos privados de agentes se guardan en `/data/agent_library`.

@@ -3,8 +3,14 @@
 La migración sustituye identificadores históricos por códigos estándar sin tocar
 cantidades. Una porción nunca equivale automáticamente a una pieza.
 """
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal, DecimalException, InvalidOperation
+
+from flask import g, has_request_context
+from sqlalchemy import func, select
+
+from app.core.extensions import db
 
 
 @dataclass(frozen=True)
@@ -17,6 +23,8 @@ class Unidad:
     codigo_unece: str | None
     codigo_base: str
     factor_a_base: Decimal = Decimal("1")
+    simbolo_plural: str | None = None
+    estandar: str | None = None
 
     def serializar(self):
         return {
@@ -24,41 +32,45 @@ class Unidad:
             "nombre": self.nombre, "simbolo": self.simbolo,
             "dimension": self.dimension, "codigo_unece": self.codigo_unece,
             "codigo_base": self.codigo_base,
-            "factor_a_base": str(self.factor_a_base),
-            "estandar": "UNECE Rec. 20" if self.codigo_unece else "LOCAL",
+            "factor_a_base": str(self.factor_a_base), "simbolo_plural": self.simbolo_plural,
+            "estandar": self.estandar,
         }
 
 
-CATALOGO = (
-    Unidad("KGM", "Kg", "Kilogramo", "kg", "MASA", "KGM", "KGM"),
-    Unidad("GRM", "g", "Gramo", "g", "MASA", "GRM", "KGM", Decimal("0.001")),
-    Unidad("LTR", "L", "Litro", "L", "VOLUMEN", "LTR", "LTR"),
-    Unidad("MLT", "mL", "Mililitro", "mL", "VOLUMEN", "MLT", "LTR", Decimal("0.001")),
-    Unidad("C62", "UNI", "Unidad", "unidad", "CONTEO", "C62", "C62"),
-    Unidad("PORCION", "PORCIÓN", "Porción", "porción", "CONTEO", None, "PORCION"),
-)
-_ALIAS = {}
-for _unidad in CATALOGO:
-    for _alias in (_unidad.codigo, _unidad.valor, _unidad.simbolo):
-        _ALIAS[_alias] = _unidad
-_ALIAS.update({"ml": _ALIAS["MLT"], "l": _ALIAS["LTR"], "PORCION": _ALIAS["PORCIÓN"]})
+def _leer_catalogo():
+    unidades = tuple(
+        Unidad(valor=fila["codigo"], **fila)
+        for fila in db.session.execute(select(func.public.catalogo_unidades().table_valued('codigo', 'nombre', 'simbolo', 'dimension', 'codigo_unece', 'codigo_base', 'factor_a_base', 'simbolo_plural', 'estandar'))).mappings()
+    )
+    por_codigo = {unidad.codigo: unidad for unidad in unidades}
+    alias = {unidad.simbolo: unidad for unidad in unidades}
+    for nombre, codigo in db.session.execute(select(func.public.catalogo_unidades_alias().table_valued('alias', 'codigo'))):
+        alias[nombre] = por_codigo[codigo]
+    alias.update(por_codigo)
+    contextos = defaultdict(set)
+    for contexto, base in db.session.execute(select(func.public.catalogo_unidades_contextos().table_valued('contexto', 'codigo_base'))):
+        contextos[contexto].add(base)
+    return unidades, alias, contextos
 
-_BASES = {
-    "producto": {"KGM", "LTR", "C62"},
-    "subproducto": {"KGM", "LTR", "PORCION"},
-    "presentacion": {"KGM", "LTR", "C62", "PORCION"},
-}
+
+def _catalogo():
+    if not has_request_context():
+        return _leer_catalogo()
+    if "catalogo_medidas" not in g:
+        g.catalogo_medidas = _leer_catalogo()
+    return g.catalogo_medidas
 
 
 def obtener_unidad(valor):
-    return _ALIAS.get(valor.strip()) if isinstance(valor, str) else None
+    return _catalogo()[1].get(valor.strip()) if isinstance(valor, str) and valor.strip() else None
 
 
 def catalogo_unidades(contexto=None, solo_base=False):
-    if contexto is not None and contexto not in _BASES:
+    unidades, _, contextos = _catalogo()
+    if contexto is not None and contexto not in contextos:
         raise ValueError("Contexto de unidades inválido")
-    return [u.serializar() for u in CATALOGO
-            if (contexto is None or u.codigo_base in _BASES[contexto])
+    return [u.serializar() for u in unidades
+            if (contexto is None or u.codigo_base in contextos[contexto])
             and (not solo_base or u.codigo == u.codigo_base)]
 
 
@@ -68,9 +80,9 @@ def valores_unidades(contexto, solo_base=False):
 
 def unidad_base(valor, contexto):
     unidad = obtener_unidad(valor)
-    if unidad is None or unidad.codigo_base not in _BASES[contexto]:
+    if unidad is None or unidad.codigo_base not in _catalogo()[2].get(contexto, ()):
         raise ValueError("Selecciona una unidad válida")
-    return _ALIAS[unidad.codigo_base].valor
+    return unidad.codigo_base
 
 
 def convertir_cantidad(cantidad, origen, destino):
@@ -95,20 +107,14 @@ def normalizar_medida(cantidad, unidad, contexto):
 
 
 def unidad_almacenamiento(valor):
-    """Escribe códigos UNECE tras la migración y admite bases aún sin actualizar."""
-    from sqlalchemy import text
-    from app.core.extensions import db
     unidad = obtener_unidad(valor)
     if unidad is None:
         raise ValueError("Unidad desconocida")
-    actualizado = db.session.execute(text(
-        "SELECT to_regclass('public.unidad_medida') IS NOT NULL"
-    )).scalar_one()
-    return unidad.codigo if actualizado else unidad.valor
+    return unidad.codigo
 
 
 def describir_medidas(datos):
-    """Expone códigos estables y sus símbolos, también sobre bases sin migrar."""
+    """Expone códigos estables y sus símbolos, para productos y sus presentaciones."""
     if isinstance(datos, list):
         return [describir_medidas(d) for d in datos]
     if not isinstance(datos, dict):
@@ -119,6 +125,14 @@ def describir_medidas(datos):
         if unidad is not None:
             resultado[campo] = unidad.codigo
             resultado[f"{campo}_medida"] = unidad.serializar()
+            if campo == "unidad" and "presentacion_compra" in datos:
+                alternativa = max(
+                    (otra for otra in _catalogo()[0] if otra.codigo_base == unidad.codigo_base
+                     and otra.factor_a_base < unidad.factor_a_base),
+                    key=lambda otra: otra.factor_a_base, default=None,
+                )
+                if alternativa is not None:
+                    resultado["unidad_fraccion"] = alternativa.serializar()
     return resultado
 
 

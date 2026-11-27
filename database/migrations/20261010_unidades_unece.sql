@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS unidad_medida (
     codigo_base VARCHAR(10) NOT NULL REFERENCES unidad_medida(codigo),
     factor_a_base NUMERIC(12,6) NOT NULL CHECK (factor_a_base > 0)
 );
-INSERT INTO unidad_medida VALUES
+INSERT INTO unidad_medida (codigo, nombre, simbolo, dimension, codigo_unece, codigo_base, factor_a_base) VALUES
     ('KGM','Kilogramo','kg','MASA','KGM','KGM',1),
     ('GRM','Gramo','g','MASA','GRM','KGM',0.001),
     ('LTR','Litro','L','VOLUMEN','LTR','LTR',1),
@@ -56,5 +56,10 @@ ALTER TABLE presentacion_venta ADD CONSTRAINT ck_presentacion_venta_unidad CHECK
 ALTER TABLE subproducto_detalle ADD CONSTRAINT ck_subproducto_detalle_unidad CHECK (unidad IN ('KGM','LTR','C62'));
 ALTER TABLE receta_detalle ADD CONSTRAINT ck_receta_detalle_unidad CHECK (unidad IN ('KGM','LTR','C62','PORCION'));
 ALTER TABLE grupo_salsa_opcion ADD CONSTRAINT grupo_salsa_opcion_unidad_check CHECK (unidad IN ('KGM','LTR','C62'));
-GRANT SELECT ON unidad_medida TO multi;
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'multi') THEN
+        GRANT SELECT ON unidad_medida TO multi;
+    END IF;
+END $$;
 COMMIT;

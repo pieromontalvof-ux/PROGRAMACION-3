@@ -5,8 +5,9 @@ import json
 import re
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 from werkzeug.exceptions import BadRequest, Conflict, Forbidden
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.modules.salon.salon import validar_sesion_salon
 from app.modules.salon.salon_layout import leer
@@ -23,34 +24,28 @@ def nombre_presentacion(nombre):
 def contexto(mesa=None):
     sesion=validar_sesion_salon()
     if mesa is not None:
-        db.session.execute(text('SELECT pg_advisory_xact_lock_shared(hashtext(:clave))'),{'clave':f"salon-layout:{sesion['id_local']}"})
+        db.session.execute(select(func.public.salon_bloqueo_compartido(bindparam('clave'))),{'clave':f"salon-layout:{sesion['id_local']}"})
         if mesa not in {e['codigo'] for e in leer(sesion['id_local'])['elementos'] if e['tipo']!='barra'}:
             raise BadRequest('Mesa invalida')
-    if not db.session.execute(text("SELECT to_regclass('public.salon_pedido') IS NOT NULL")).scalar():
+    if not db.session.execute(select(func.public.salon_pedidos_instalados_existe())).scalar():
         raise Conflict('Falta ejecutar database/migrations/20260923_pedidos_salon.sql')
-    if not db.session.execute(text("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='salon_pedido' AND column_name='envio_clave')")).scalar():
+    if not db.session.execute(select(func.public.salon_envios_instalados())).scalar():
         raise Conflict('Falta ejecutar database/migrations/20260923_envios_adicionales_salon.sql')
-    if not db.session.execute(text("SELECT to_regclass('public.promocion_reposicion') IS NOT NULL AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='salon_pedido_linea' AND column_name='id_promocion')")).scalar():
+    if not db.session.execute(select(func.public.salon_promociones_instaladas())).scalar():
         raise Conflict('Falta ejecutar database/migrations/20261016_promociones_reposicion_salon.sql')
-    if not db.session.execute(text("SELECT to_regclass('public.salon_pedido_actual')")).scalar():
+    if not db.session.execute(select(func.public.salon_control_instalado())).scalar():
         raise Conflict('Ejecuta 20260923_control_salon.sql')
     return sesion
 
 
 def catalogo():
-    productos=[dict(p) for p in db.session.execute(text('''
-      SELECT pv.id_presentacion_venta AS id,ic.nombre,pv.contenido,pv.unidad,pv.precio,
-        cc.id_categoria_carta AS id_categoria,cc.nombre AS categoria
-      FROM presentacion_venta pv JOIN item_carta ic USING(id_item_carta)
-      JOIN categoria_carta cc USING(id_categoria_carta)
-      WHERE pv.activo AND ic.activo AND cc.activo ORDER BY cc.nombre,ic.nombre,pv.contenido
-    ''')).mappings()]
-    grupos=db.session.execute(text('''SELECT gs.id_grupo_salsa,gs.id_presentacion_venta,
-       gs.cantidad_maxima,gs.permite_repetir,gso.id_grupo_salsa_opcion AS id,
-       p.nombre,gso.cantidad,p.unidad,gso.id_producto
-       FROM grupo_salsa gs LEFT JOIN grupo_salsa_opcion gso ON gso.id_grupo_salsa=gs.id_grupo_salsa AND gso.activo
-       LEFT JOIN producto p ON p.id_producto=gso.id_producto AND p.activo
-       WHERE gs.activo ORDER BY gs.id_grupo_salsa,p.nombre''')).mappings().all()
+    productos=[dict(p) for p in db.session.execute(select(func.public.salon_catalogo().table_valued(
+        'id', 'nombre', 'contenido', 'unidad', 'precio', 'id_categoria', 'categoria',
+    ))).mappings()]
+    grupos=db.session.execute(select(func.public.salon_grupos_salsa().table_valued(
+        'id_grupo_salsa', 'id_presentacion_venta', 'cantidad_maxima', 'permite_repetir', 'id', 'nombre',
+        'cantidad', 'unidad', 'id_producto',
+    ))).mappings().all()
     por_presentacion={}
     for g in grupos:
         grupo=por_presentacion.setdefault(g['id_presentacion_venta'],{
@@ -64,26 +59,20 @@ def catalogo():
         p['contenido']=float(p['contenido'])
         p['grupo']=por_presentacion.get(p['id'])
     por_id={p['id']:p for p in productos}
-    promociones=db.session.execute(text('''
-      WITH reloj AS (SELECT (clock_timestamp() AT TIME ZONE 'America/Lima')::time AS hora)
-      SELECT p.id_promocion,p.nombre,p.precio FROM promocion p CROSS JOIN reloj
-      WHERE p.activo AND (p.hora_inicio IS NULL OR p.hora_fin IS NULL OR
-        CASE WHEN p.hora_inicio<p.hora_fin THEN reloj.hora>=p.hora_inicio AND reloj.hora<p.hora_fin
-        ELSE reloj.hora>=p.hora_inicio OR reloj.hora<p.hora_fin END)
-      ORDER BY p.nombre,p.id_promocion
-    ''')).mappings().all()
+    promociones=db.session.execute(select(func.public.salon_promociones_activas().table_valued(
+        'id_promocion', 'nombre', 'precio',
+    ))).mappings().all()
     resultado_promociones=[]
     for promo in promociones:
         grupos=[]
-        for grupo in db.session.execute(text('''SELECT id_promocion_grupo,cantidad_elegir,permite_repetir
-          FROM promocion_grupo WHERE id_promocion=:id ORDER BY id_promocion_grupo'''),
+        for grupo in db.session.execute(select(func.public.salon_grupos_promocion(bindparam('id')).table_valued(
+            'id_promocion_grupo', 'cantidad_elegir', 'permite_repetir',
+        )),
           {'id':promo['id_promocion']}).mappings():
             opciones=[]
-            for opcion in db.session.execute(text('''SELECT po.id_presentacion_venta,
-              EXISTS(SELECT 1 FROM promocion_reposicion r WHERE r.id_promocion=:promo
-                AND r.id_presentacion_venta=po.id_presentacion_venta) AS reponible
-              FROM promocion_opcion po WHERE po.id_promocion_grupo=:grupo
-              ORDER BY po.id_presentacion_venta'''),
+            for opcion in db.session.execute(select(func.public.salon_opciones_promocion(bindparam('promo'), bindparam('grupo')).table_valued(
+                'id_presentacion_venta', 'reponible',
+            )),
               {'promo':promo['id_promocion'],'grupo':grupo['id_promocion_grupo']}).mappings():
                 producto=por_id.get(opcion['id_presentacion_venta'])
                 if producto:
@@ -100,17 +89,19 @@ def catalogo():
 
 
 def obtener(mesa,sesion,escritura=False):
-    db.session.execute(text('SELECT pg_advisory_xact_lock_shared(hashtext(:clave))'),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
-    pedidos=db.session.execute(text('SELECT * FROM salon_pedido_actual WHERE id_local=:local AND mesa=:mesa ORDER BY id_pedido'),
+    db.session.execute(select(func.public.salon_bloqueo_compartido(bindparam('clave'))),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
+    pedidos=db.session.execute(select(func.public.salon_pedidos(bindparam('local'), bindparam('mesa')).table_valued(
+        'id_pedido', 'id_local', 'mesa', 'id_usuario', 'estado', 'version', 'creado_en', 'enviado_en',
+        'envio_clave', 'envio_hash',
+    )),
         {'local':sesion['id_local'],'mesa':mesa}).mappings().all()
-    if any(p['id_usuario']!=sesion['id_usuario'] for p in pedidos) and (escritura or sesion.get('perfil') not in (2,3)):
+    if any(p['id_usuario']!=sesion['id_usuario'] for p in pedidos) and (escritura or not perfil_tiene_capacidad(sesion.get('perfil'), 'supervisar_salon')):
         raise Forbidden('Esta mesa está siendo atendida por otro usuario')
     borrador=next((p for p in pedidos if p['estado']=='BORRADOR'),None)
-    filas=db.session.execute(text('''SELECT l.id_linea,l.id_presentacion,l.id_promocion,l.selecciones_promocion,
-        l.id_barra_libre,barra.nombre AS barra_nombre,l.nombre,l.precio,l.cantidad,l.comentario,l.opciones,
-        p.estado='ENVIADO' AS enviada FROM salon_pedido_linea l JOIN salon_pedido_actual p USING(id_pedido)
-        LEFT JOIN salon_pedido_linea barra ON barra.id_linea=l.id_barra_libre
-        WHERE p.id_local=:local AND p.mesa=:mesa AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea) ORDER BY p.id_pedido,l.posicion'''),
+    filas=db.session.execute(select(func.public.salon_lineas(bindparam('local'), bindparam('mesa')).table_valued(
+        'id_linea', 'id_presentacion', 'id_promocion', 'selecciones_promocion', 'id_barra_libre',
+        'barra_nombre', 'nombre', 'precio', 'cantidad', 'comentario', 'opciones', 'enviada',
+    )),
         {'local':sesion['id_local'],'mesa':mesa}).mappings().all()
     reposiciones_por_barra={}
     for fila in filas:
@@ -157,10 +148,9 @@ def carta():
 @jwt_required()
 def mis_mesas():
     sesion=contexto()
-    mesas=db.session.execute(text('''SELECT mesa,CASE WHEN bool_or(estado='BORRADOR') THEN 'BORRADOR' ELSE 'ENVIADO' END AS estado FROM salon_pedido_actual
-      WHERE id_local=:local AND id_usuario=:usuario AND EXISTS(
-        SELECT 1 FROM salon_pedido_linea l WHERE l.id_pedido=salon_pedido_actual.id_pedido)
-      GROUP BY mesa ORDER BY mesa'''),{'local':sesion['id_local'],'usuario':sesion['id_usuario']}).mappings()
+    mesas=db.session.execute(select(func.public.salon_mesas_propias(bindparam('local'), bindparam('usuario')).table_valued(
+        'mesa', 'estado',
+    )),{'local':sesion['id_local'],'usuario':sesion['id_usuario']}).mappings()
     return jsonify(mesas=[dict(m) for m in mesas])
 
 
@@ -242,11 +232,9 @@ def validar_lineas(datos,catalogo_actual,sesion,mesa):
         if barra is not None:
             if type(barra) is not int or barra<=0:
                 raise BadRequest('Selecciona una barra libre válida')
-            padre=db.session.execute(text('''SELECT l.id_promocion,l.selecciones_promocion FROM salon_pedido_linea l
-              JOIN salon_pedido_actual actual USING(id_pedido)
-              WHERE l.id_linea=:id AND l.id_promocion IS NOT NULL AND actual.id_local=:local
-              AND actual.mesa=:mesa AND actual.estado='ENVIADO'
-              AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea)'''),
+            padre=db.session.execute(select(func.public.salon_promocion_padre(bindparam('id'), bindparam('local'), bindparam('mesa')).table_valued(
+                'id_promocion', 'selecciones_promocion',
+            )),
               {'id':barra,'local':sesion['id_local'],'mesa':mesa}).mappings().first()
             reponible=padre and any(s.get('id_presentacion')==p['id'] and s.get('reponible')
                 for s in padre['selecciones_promocion'])
@@ -268,7 +256,7 @@ def guardar(mesa):
         raise BadRequest('Datos de pedido inválidos')
     try:
         # Serializa también el primer pedido, cuando aún no existe la fila de la mesa.
-        db.session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:clave))"),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
+        db.session.execute(select(func.public.salon_bloqueo(bindparam('clave'))),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
         anterior=obtener(mesa,sesion,escritura=True)
         enviar=datos.get('enviar',False)
         envio_clave=None
@@ -277,10 +265,9 @@ def guardar(mesa):
             try: envio_clave=str(uuid.UUID(str(datos.get('envio_clave'))))
             except (ValueError,TypeError,AttributeError): raise BadRequest('Falta el identificador del envío')
             envio_hash=hashlib.sha256(json.dumps(datos.get('lineas'),sort_keys=True).encode()).hexdigest()
-            registro_previo=db.session.execute(text('''SELECT p.envio_hash,coalesce(a.mesa,p.mesa) AS mesa,
-                EXISTS(SELECT 1 FROM salon_pedido_actual actual WHERE actual.id_pedido=p.id_pedido) AS vigente
-                FROM salon_pedido p LEFT JOIN salon_pedido_asignacion a USING(id_pedido)
-                WHERE p.id_local=:local AND p.envio_clave=CAST(:clave AS uuid)'''),
+            registro_previo=db.session.execute(select(func.public.salon_envio_previo(bindparam('local'), bindparam('clave')).table_valued(
+                'envio_hash', 'mesa', 'vigente',
+            )),
                 {'local':sesion['id_local'],'clave':envio_clave}).mappings().first()
             if registro_previo and (registro_previo['mesa']!=mesa or not registro_previo['vigente']):
                 raise Conflict('Este envio ya fue registrado y trasladado. Vuelve al mapa.')
@@ -290,39 +277,37 @@ def guardar(mesa):
                 return jsonify(anterior)
         if anterior['version']!=datos['version']: raise Conflict('El pedido cambió en otra ventana. Vuelve a abrir la mesa.')
         # Protege precios, disponibilidad y opciones durante la captura del pedido.
-        db.session.execute(text('LOCK TABLE presentacion_venta,item_carta,categoria_carta,grupo_salsa,grupo_salsa_opcion,producto,promocion,promocion_grupo,promocion_opcion,promocion_reposicion IN SHARE MODE'))
+        db.session.execute(select(func.public.salon_bloquear_catalogo()))
         lineas=validar_lineas(datos,catalogo(),sesion,mesa)
         enviar=datos.get('enviar',False)
         if enviar and not lineas: raise BadRequest('Agrega al menos un producto antes de enviar')
         if not lineas and anterior['id_borrador'] is not None:
-            db.session.execute(text('DELETE FROM salon_pedido_linea WHERE id_pedido=:id'),{'id':anterior['id_borrador']})
-            db.session.execute(text('DELETE FROM salon_pedido WHERE id_pedido=:id'),{'id':anterior['id_borrador']})
+            db.session.execute(select(func.public.salon_eliminar_lineas(bindparam('id'))),{'id':anterior['id_borrador']})
+            db.session.execute(select(func.public.salon_eliminar_pedido(bindparam('id'))),{'id':anterior['id_borrador']})
             db.session.commit()
             return jsonify(obtener(mesa,sesion))
         if anterior['id_borrador'] is None:
             if not lineas: return jsonify(anterior)
-            identidad=db.session.execute(text('''INSERT INTO salon_pedido(id_local,mesa,id_usuario)
-              VALUES(:local,:mesa,:usuario) RETURNING id_pedido'''),
+            identidad=db.session.execute(select(func.public.salon_crear_pedido(bindparam('local'), bindparam('mesa'), bindparam('usuario'))),
               {'local':sesion['id_local'],'mesa':mesa,'usuario':sesion['id_usuario']}).scalar_one()
         else:
             identidad=anterior['id_borrador']
-            db.session.execute(text('DELETE FROM salon_pedido_linea WHERE id_pedido=:id'),{'id':identidad})
+            db.session.execute(select(func.public.salon_eliminar_lineas(bindparam('id'))),{'id':identidad})
         for posicion,l in enumerate(lineas):
-                        db.session.execute(text('''INSERT INTO salon_pedido_linea(id_pedido,posicion,id_presentacion,id_promocion,
-                            selecciones_promocion,id_barra_libre,nombre,precio,cantidad,comentario,opciones)
-                            VALUES(:pedido,:posicion,:id_presentacion,:id_promocion,CAST(:selecciones_promocion AS jsonb),
-                            :id_barra_libre,:nombre,:precio,:cantidad,:comentario,CAST(:opciones AS jsonb))'''),
+                        db.session.execute(select(func.public.salon_crear_linea(
+                            bindparam('pedido'), bindparam('posicion'), bindparam('id_presentacion'), bindparam('id_promocion'), bindparam('selecciones_promocion'), bindparam('id_barra_libre'), bindparam('nombre'), bindparam('precio'), bindparam('cantidad'), bindparam('comentario'), bindparam('opciones'),
+                        )),
                             {**l,'pedido':identidad,'posicion':posicion,
                              'selecciones_promocion':json.dumps(l['selecciones_promocion'],ensure_ascii=False),
                              'opciones':json.dumps(l['opciones'],ensure_ascii=False)})
-        db.session.execute(text('''UPDATE salon_pedido SET version=:version,estado=:estado,
-            enviado_en=CASE WHEN :enviar THEN clock_timestamp() ELSE NULL END,
-            envio_clave=CAST(:envio_clave AS uuid),envio_hash=:envio_hash WHERE id_pedido=:id'''),
+        db.session.execute(select(func.public.salon_guardar_pedido(
+            bindparam('version'), bindparam('estado'), bindparam('enviar'), bindparam('envio_clave'), bindparam('envio_hash'), bindparam('id'),
+        )),
             {'id':identidad,'version':anterior['version']+1,'estado':'ENVIADO' if enviar else 'BORRADOR','enviar':enviar,'envio_clave':envio_clave,'envio_hash':envio_hash})
         if enviar:
             registrar_actividad(sesion['id_usuario'],'SALON','ENVIAR_PEDIDO',identidad,
                 f"Envió pedido de {mesa}: {sum(l['cantidad'] for l in lineas)} productos",
-                id_perfil_utilizado=sesion.get('perfil',4),id_local=sesion['id_local'])
+                id_perfil_utilizado=sesion.get('perfil'),id_local=sesion['id_local'])
         db.session.commit()
         return jsonify(obtener(mesa,sesion))
     except Exception:
@@ -336,12 +321,12 @@ def cancelar(mesa):
     sesion=contexto(mesa)
     datos=request.get_json(silent=True) or {}
     try:
-        db.session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:clave))"),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
+        db.session.execute(select(func.public.salon_bloqueo(bindparam('clave'))),{'clave':f"salon:{sesion['id_local']}:{mesa}"})
         anterior=obtener(mesa,sesion,escritura=True)
         if datos.get('version')!=anterior['version']: raise Conflict('La mesa cambió en otra ventana. Recarga el pedido.')
         if anterior['id_borrador'] is not None:
-            db.session.execute(text('DELETE FROM salon_pedido_linea WHERE id_pedido=:id'),{'id':anterior['id_borrador']})
-            db.session.execute(text('DELETE FROM salon_pedido WHERE id_pedido=:id'),{'id':anterior['id_borrador']})
+            db.session.execute(select(func.public.salon_eliminar_lineas(bindparam('id'))),{'id':anterior['id_borrador']})
+            db.session.execute(select(func.public.salon_eliminar_pedido(bindparam('id'))),{'id':anterior['id_borrador']})
         db.session.commit()
         return jsonify(obtener(mesa,sesion))
     except Exception:

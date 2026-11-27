@@ -179,12 +179,12 @@ export function PurchaseOrderPage() {
                 <tr key={p.id_producto}>
                   <td><b>{p.codigo}</b><br />{p.nombre}</td>
                   <td>{p.proveedor}</td>
-                  <td>{p.stock_actual ?? 'Sin conteo'} {formatearUnidad(p.unidad)}</td>
-                  <td>{p.presentacion} {formatearUnidad(p.unidad)}</td>
+                  <td>{p.stock_actual ?? 'Sin conteo'} {formatearUnidad(p)}</td>
+                  <td>{p.presentacion} {formatearUnidad(p)}</td>
                   <td><input type="number" min="0.001" step="any" value={p.cantidad_solicitada} onChange={(e) => setDetalles((actuales) => actuales.map((item) => item.id_producto === p.id_producto ? { ...item, cantidad_solicitada: e.target.value } : item))} />
                     {p.calculo_sugerido && <small className="purchase-rounding">
-                      Calculado: {p.calculo_sugerido.sin_redondear.toLocaleString('es-PE', { maximumFractionDigits: 3 })} {formatearUnidad(p.unidad)}<br />
-                      Sugerencia: {p.calculo_sugerido.paquetes} paquetes = {p.calculo_sugerido.cantidad} {formatearUnidad(p.unidad)}
+                      Calculado: {p.calculo_sugerido.sin_redondear.toLocaleString('es-PE', { maximumFractionDigits: 3 })} {formatearUnidad(p)}<br />
+                      Sugerencia: {p.calculo_sugerido.paquetes} paquetes = {p.calculo_sugerido.cantidad} {formatearUnidad(p)}
                     </small>}
                   </td>
                   <td>{p.origen === 'SUGERIDO' ? 'Sugerido' : 'Manual'}</td>

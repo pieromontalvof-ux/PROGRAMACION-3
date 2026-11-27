@@ -57,7 +57,10 @@ class PurchaseInvoiceTests(unittest.TestCase):
         datos = self.datos(); datos['fecha_emision'] = 'ayer'
         with self.assertRaises(ValueError): calcular_factura(datos)
 
-    def test_supplier_optional_fields_and_validation(self):
+    @patch('app.modules.recepciones.invoices.limites_comerciales', return_value={
+        'ruc': 11, 'razon_social': 200, 'email': 200, 'telefono': 40,
+    })
+    def test_supplier_optional_fields_and_validation(self, limites):
         self.assertEqual(validar_comercial({'ruc': '20123456789', 'razon_social': ' Empresa '})['razon_social'], 'Empresa')
         for datos in ({'ruc': '123'}, {'email': 'incorrecto'}, {'telefono': '1'*41}):
             with self.assertRaises(ValueError): validar_comercial(datos)

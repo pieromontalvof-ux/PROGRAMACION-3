@@ -12,7 +12,6 @@ import {
   obtenerHistorialRecepciones,
 } from '../services/receptionService'
 import type {
-  DatosCorregirRecepcion,
   RecepcionHistorial,
   RespuestaDetalleRecepcion,
 } from '../types/reception'
@@ -36,7 +35,7 @@ export function ReceptionHistoryPage() {
   const [busqueda, setBusqueda] = useState('')
   const [numeroFactura, setNumeroFactura] = useState('')
   const [fecha, setFecha] = useState('')
-  const [motivo, setMotivo] = useState<DatosCorregirRecepcion['motivo_correccion']>('ERROR_DIGITACION')
+  const [motivo, setMotivo] = useState('')
   const [observacion, setObservacion] = useState('')
   const [cantidades, setCantidades] = useState<Record<number, string>>({})
   const [cargando, setCargando] = useState(true)
@@ -138,10 +137,10 @@ export function ReceptionHistoryPage() {
             }} />
             {!detalle.recepcion.factura && <>
             <div className="history-edit-grid"><label>Número de factura<input disabled={!editando} value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} /></label><label>Fecha de recepción<input disabled={!editando} type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></label></div>
-            <div className="history-products">{detalle.recepcion.detalles.map((d) => <article key={d.id_factura_recepcion_detalle}><div><b>{d.codigo} · {d.nombre}</b><small>Solicitado: {d.cantidad_solicitada} {formatearUnidad(d.unidad)}</small></div><label>Recibido<input disabled={!editando} type="number" min="0.001" max={d.maximo_permitido} step="any" value={cantidades[d.id_factura_recepcion_detalle] ?? ''} onChange={(e) => setCantidades((a) => ({ ...a, [d.id_factura_recepcion_detalle]: e.target.value }))} /></label><span>Máximo: {d.maximo_permitido} {formatearUnidad(d.unidad)}</span></article>)}</div>
+            <div className="history-products">{detalle.recepcion.detalles.map((d) => <article key={d.id_factura_recepcion_detalle}><div><b>{d.codigo} · {d.nombre}</b><small>Solicitado: {d.cantidad_solicitada} {formatearUnidad(d)}</small></div><label>Recibido<input disabled={!editando} type="number" min="0.001" max={d.maximo_permitido} step="any" value={cantidades[d.id_factura_recepcion_detalle] ?? ''} onChange={(e) => setCantidades((a) => ({ ...a, [d.id_factura_recepcion_detalle]: e.target.value }))} /></label><span>Máximo: {d.maximo_permitido} {formatearUnidad(d)}</span></article>)}</div>
             </>}
-            {editando && <div className="history-correction"><label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value as DatosCorregirRecepcion['motivo_correccion'])}><option value="ERROR_DIGITACION">Error de digitación</option><option value="MAL_CONTADO">Mal contado</option><option value="PRODUCTO_DANADO">Producto dañado</option><option value="PRODUCTO_RECHAZADO">Producto rechazado</option><option value="ERROR_FACTURA">Error en factura</option><option value="OTRO">Otro</option></select></label><label>Observación<textarea maxLength={500} value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder="Explica la corrección realizada" /></label><p>Al guardar se recalculará automáticamente el estado de la orden.</p></div>}
-            {puedeEditar && <div className="history-actions">{!editando ? <button onClick={() => {setNumeroFactura(detalle.recepcion.numero_factura);setFecha(detalle.recepcion.fecha_recepcion);setCantidades(Object.fromEntries(detalle.recepcion.detalles.map(d=>[d.id_factura_recepcion_detalle,String(d.cantidad_recibida)])));setObservacion('');setError('');setEditando(true)}}><Pencil /> Corregir recepción</button> : <><button className="secondary" onClick={() => setEditando(false)}>Cancelar edición</button><button disabled={guardando} onClick={() => void guardar()}><Save /> {guardando ? 'Guardando...' : 'Guardar corrección'}</button></>}</div>}
+            {editando && <div className="history-correction"><label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value)}><option value="">Selecciona un motivo</option>{detalle.motivos_correccion.map(({ codigo, etiqueta }) => <option key={codigo} value={codigo}>{etiqueta}</option>)}</select></label><label>Observación<textarea maxLength={500} value={observacion} onChange={(e) => setObservacion(e.target.value)} placeholder="Explica la corrección realizada" /></label><p>Al guardar se recalculará automáticamente el estado de la orden.</p></div>}
+            {puedeEditar && <div className="history-actions">{!editando ? <button onClick={() => {setNumeroFactura(detalle.recepcion.numero_factura);setFecha(detalle.recepcion.fecha_recepcion);setCantidades(Object.fromEntries(detalle.recepcion.detalles.map(d=>[d.id_factura_recepcion_detalle,String(d.cantidad_recibida)])));setObservacion('');setMotivo(detalle.motivos_correccion[0]?.codigo ?? '');setError('');setEditando(true)}}><Pencil /> Corregir recepción</button> : <><button className="secondary" onClick={() => setEditando(false)}>Cancelar edición</button><button disabled={guardando || !motivo} onClick={() => void guardar()}><Save /> {guardando ? 'Guardando...' : 'Guardar corrección'}</button></>}</div>}
           </div></td></tr>}
         </Fragment>)}{!recepciones.length && <tr><td colSpan={9} className="history-empty">No hay recepciones con los filtros seleccionados.</td></tr>}</tbody>
       </table></div>}

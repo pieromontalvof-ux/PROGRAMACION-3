@@ -27,7 +27,7 @@ export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = f
     </label>
     {texto && !limiteAlcanzado && <div className="recipe-editor__results">
       {coincidencias.map((p) => <button key={p.id} type="button" disabled={disabled || filas.some((f) => f.tipo_componente === tipo && f.id === p.id)} onClick={() => agregar(p)}>
-        <span><b>{p.codigo}</b> · {p.nombre}</span><span>{formatearUnidad(p.unidad)} <Plus size={16} /></span>
+        <span><b>{p.codigo}</b> · {p.nombre}</span><span>{formatearUnidad(p)} <Plus size={16} /></span>
       </button>)}
       {!coincidencias.length && <p>No se encontraron {esSubproducto ? 'subproductos' : 'productos'} activos.</p>}
     </div>}
@@ -45,7 +45,7 @@ export function ListaIngredientes({ titulo, filas, productos, cambiar, unico = f
               <option key={u.codigo} value={u.valor}>{etiquetaUnidad(unidades, u.valor)}</option>
             ))}
             {!unidadesCompatibles(unidades, fila.unidad).length && (
-              <option value={fila.unidad}>{formatearUnidad(fila.unidad)}</option>
+              <option value={fila.unidad}>{formatearUnidad(fila)}</option>
             )}
           </select>
         </label>
@@ -150,7 +150,7 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
 
   return <div className="recipe-editor-backdrop">
     <form className="recipe-editor" role="dialog" aria-modal="true" aria-labelledby="recipe-editor-title" onSubmit={(e) => void guardar(e)}>
-      <header><div><h2 id="recipe-editor-title" tabIndex={-1}>{receta ? 'Editar receta' : 'Nueva receta'}</h2><p>{receta ? `${receta.codigo_item} · ${receta.item_carta} · ${receta.contenido} ${formatearUnidad(receta.unidad_presentacion)}` : 'Selecciona una presentación de Carta que aún no tenga receta.'}</p></div><button type="button" aria-label="Cerrar editor" disabled={guardando} onClick={cerrar}><X /></button></header>
+      <header><div><h2 id="recipe-editor-title" tabIndex={-1}>{receta ? 'Editar receta' : 'Nueva receta'}</h2><p>{receta ? `${receta.codigo_item} · ${receta.item_carta} · ${receta.contenido} ${formatearUnidad(receta, 'unidad_presentacion')}` : 'Selecciona una presentación de Carta que aún no tenga receta.'}</p></div><button type="button" aria-label="Cerrar editor" disabled={guardando} onClick={cerrar}><X /></button></header>
       {error && <p className="recipe-editor__error" role="alert">{error}</p>}
       {!catalogo ? <p>Cargando opciones de la receta…</p> : <fieldset disabled={guardando}>
         {!receta && <>
@@ -162,7 +162,7 @@ export function RecipeEditor({ token, receta, cerrar, guardado }: {
             </select></label>
             <label>Presentación sin receta<select required value={form.id_presentacion_venta || ''} onChange={e => elegirPresentacion(Number(e.target.value))}>
               <option value="">Seleccionar presentación</option>
-              {catalogo.presentaciones.filter(p => p.id_item_carta === form.id_item_carta && p.id_receta === null).map(p => <option key={p.id_presentacion_venta} value={p.id_presentacion_venta}>{p.contenido} {formatearUnidad(p.unidad)} · {catalogo.menajes.find(m => m.id_menaje === p.id_menaje)?.nombre}{p.activo ? '' : ' (fuera de venta)'}</option>)}
+              {catalogo.presentaciones.filter(p => p.id_item_carta === form.id_item_carta && p.id_receta === null).map(p => <option key={p.id_presentacion_venta} value={p.id_presentacion_venta}>{p.contenido} {formatearUnidad(p)} · {catalogo.menajes.find(m => m.id_menaje === p.id_menaje)?.nombre}{p.activo ? '' : ' (fuera de venta)'}</option>)}
             </select></label>
           </div>
           {!catalogo.presentaciones.length && <p role="status">No hay presentaciones pendientes. Crea una en Carta → Presentaciones de venta. Las presentaciones que ya tienen receta se configuran desde Editar.</p>}

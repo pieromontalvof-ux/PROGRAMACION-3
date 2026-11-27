@@ -11,7 +11,13 @@ from app.modules.recetas.editor_service import (
 )
 
 
+from test_units import mock_unit_catalog
+
+
 class RecipeValidationTests(unittest.TestCase):
+    def setUp(self):
+        mock_unit_catalog(self)
+
     def test_cantidades_validas(self):
         self.assertEqual(cantidad('0.060'), Decimal('0.060'))
         self.assertEqual(cantidad(8), Decimal(8))
@@ -102,8 +108,8 @@ class RecipeSavingTests(unittest.TestCase):
         self.repo.reemplazar_detalles.assert_called_once()
         self.repo.guardar_grupo.assert_called_once_with(9, None)
         sqls = [str(c.args[0]) for c in self.repo.ejecutar.call_args_list]
-        self.assertFalse(any('UPDATE presentacion_venta' in s or 'UPDATE item_carta' in s for s in sqls))
-        self.assertTrue(all('precio' not in s for s in sqls))
+        self.assertEqual(len(sqls), 1)
+        self.assertIn('public.receta_actualizar', sqls[0])
         self.audit.assert_called_once()
         self.commit.assert_called_once()
 
@@ -113,7 +119,7 @@ class RecipeSavingTests(unittest.TestCase):
         respuesta, status = guardar_receta(1, self.data)
         self.assertEqual(status, 201)
         self.assertEqual(respuesta['id_receta'], 30)
-        self.assertFalse(any('INSERT INTO presentacion_venta' in c.args[0] or 'INSERT INTO item_carta' in c.args[0] for c in self.repo.ejecutar.call_args_list))
+        self.assertIn('public.receta_crear', str(self.repo.ejecutar.call_args.args[0]))
         self.commit.assert_called_once()
 
     def test_rechaza_presentacion_sin_seleccionar_y_receta_duplicada(self):

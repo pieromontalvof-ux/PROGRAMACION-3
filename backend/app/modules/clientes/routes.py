@@ -4,7 +4,7 @@ from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from werkzeug.exceptions import BadRequest, Forbidden, NotFound
 from app.core.local_scope import local_actual
 from app.modules.salon.salon import validar_sesion_salon
-from .service import buscar, crear, obtener
+from .service import buscar, crear, directorio_disponible, obtener, perfil_autorizado
 
 clientes_bp=Blueprint('clientes',__name__)
 salon_clientes_bp=Blueprint('salon_clientes',__name__)
@@ -16,10 +16,10 @@ def acceso(func):
         verify_jwt_in_request()
         if get_jwt().get('tipo_token') == 'salon':
             session = validar_sesion_salon()
-            if session['perfil'] not in (2,3):
+            if not perfil_autorizado(session['perfil'], salon=True):
                 raise Forbidden('El perfil activo no tiene acceso al directorio de clientes')
             return func(session['id_local'],*args,**kwargs)
-        if get_jwt().get('id_perfil') not in (1,2,3):
+        if not perfil_autorizado(get_jwt().get('id_perfil')):
             raise Forbidden('El perfil activo no tiene acceso al directorio de clientes')
         return func(local_actual(),*args,**kwargs)
     return wrapper
@@ -29,9 +29,7 @@ def acceso(func):
 @acceso
 def configuracion(local):
     import os
-    from app.core.extensions import db
-    from sqlalchemy import text
-    directory=bool(db.session.execute(text("SELECT to_regclass('public.cliente_comercial') IS NOT NULL")).scalar())
+    directory = directorio_disponible()
     return jsonify(directorio_disponible=directory,consulta_identidad_externa=bool(os.getenv('FACTILIZA_TOKEN','').strip()))
 
 

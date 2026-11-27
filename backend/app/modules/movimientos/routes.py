@@ -13,7 +13,7 @@ movimientos_bp = Blueprint("movimientos", __name__)
 
 @movimientos_bp.get("/formulario")
 @requiere_permiso(
-    id_opcion_menu=20,
+    id_opcion_menu='registrar_movimiento',
     accion="consultar",
 )
 def consultar_formulario_movimiento():
@@ -24,7 +24,7 @@ def consultar_formulario_movimiento():
 
 @movimientos_bp.post("")
 @requiere_permiso(
-    id_opcion_menu=20,
+    id_opcion_menu='registrar_movimiento',
     accion="crear",
 )
 def crear_movimiento():
@@ -39,14 +39,14 @@ def crear_movimiento():
     return jsonify(respuesta), estado
 
 @movimientos_bp.get('/seguimiento')
-@requiere_permiso(id_opcion_menu=20, accion='consultar')
+@requiere_permiso(id_opcion_menu='registrar_movimiento', accion='consultar')
 def seguimiento_movimientos():
     from app.modules.movimientos.tracking import listar
     return jsonify(listar())
 
 
 @movimientos_bp.post('/<int:identidad>/recibir')
-@requiere_permiso(id_opcion_menu=20, accion='crear')
+@requiere_permiso(id_opcion_menu='registrar_movimiento', accion='crear')
 def recibir_movimiento(identidad):
     from app.modules.movimientos.tracking import recibir
     respuesta, estado = recibir(identidad, request.get_json(silent=True), int(get_jwt_identity()))

@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from uuid import uuid4
-from sqlalchemy import text
+from sqlalchemy import Numeric, Uuid, bindparam, cast, func, select
 from app.core.extensions import db
 from .scaling import ScalingPolicy
 
@@ -17,19 +17,13 @@ LOCK=(207414,1)
 
 
 def queue_stats():
-    row=db.session.execute(text('''SELECT
-        count(*) FILTER(WHERE (estado IN ('PENDIENTE','REINTENTO') AND disponible_en<=now())
-            OR (estado='PROCESANDO' AND lease_hasta<now())) AS ready,
-        count(*) FILTER(WHERE estado='PROCESANDO' AND lease_hasta>=now()) AS busy,
-        COALESCE(extract(epoch FROM now()-min(disponible_en) FILTER(WHERE estado IN ('PENDIENTE','REINTENTO')
-            AND disponible_en<=now())),0) AS oldest,
-        EXISTS(SELECT 1 FROM fact_api_circuito WHERE abierto_hasta>now()) AS blocked
-        FROM fact_api_operacion WHERE NOT obsoleto AND (intentos<max_intentos
-            OR (estado='PROCESANDO' AND lease_hasta>=now()))''')).mappings().one()
+    row=db.session.execute(select(func.public.facturacion_estadisticas_cola().table_valued(
+        'ready', 'busy', 'oldest', 'blocked'
+    ))).mappings().one()
     # A cap/timeout is a reason to wait, never a reason to multiply traffic.
-    health=db.session.execute(text('''SELECT count(*) AS total,
-        count(*) FILTER(WHERE http_status=429 OR http_status>=500) AS bad
-        FROM fact_api_intento WHERE inicio>now()-interval '60 seconds' AND fin IS NOT NULL''')).mappings().one()
+    health=db.session.execute(select(func.public.facturacion_salud_transporte().table_valued(
+        'total', 'bad'
+    ))).mappings().one()
     db.session.commit()
     return {'ready':row['ready'],'busy':row['busy'],'oldest':float(row['oldest']),
             'blocked':bool(row['blocked']),'unhealthy':health['bad']>=2 and health['bad']/max(health['total'],1)>=.25}
@@ -38,7 +32,7 @@ def queue_stats():
 def acquire_leadership():
     connection=db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
     try:
-        acquired=connection.execute(text('SELECT pg_try_advisory_lock(:group,:identity)'),
+        acquired=connection.execute(select(func.public.facturacion_adquirir_liderazgo(bindparam('group'), bindparam('identity'))),
             {'group':LOCK[0],'identity':LOCK[1]}).scalar()
         if not acquired:
             connection.close();return None
@@ -49,7 +43,7 @@ def acquire_leadership():
 
 def release_leadership(connection):
     try:
-        connection.execute(text('SELECT pg_advisory_unlock(:group,:identity)'),
+        connection.execute(select(func.public.facturacion_liberar_liderazgo(bindparam('group'), bindparam('identity'))),
             {'group':LOCK[0],'identity':LOCK[1]})
     finally:
         # Session locks must never survive a return to SQLAlchemy's pool.
@@ -61,9 +55,9 @@ def acquire_worker_slot():
     connection=db.engine.connect().execution_options(isolation_level='AUTOCOMMIT')
     try:
         for slot in range(4):
-            if connection.execute(text('SELECT pg_try_advisory_lock(:group,:slot)'),
+            if connection.execute(select(func.public.facturacion_adquirir_slot(bindparam('group'), bindparam('slot'))),
                     {'group':LOCK[0],'slot':100+slot}).scalar():
-                pid=connection.execute(text('SELECT pg_backend_pid()')).scalar_one()
+                pid=connection.execute(select(func.public.facturacion_pid_conexion())).scalar_one()
                 return connection,pid
         connection.close();return None
     except Exception:
@@ -76,8 +70,7 @@ def release_worker_slot(connection):
 
 
 def owns_epoch(identity):
-    owned=db.session.execute(text('''SELECT EXISTS(SELECT 1 FROM fact_api_escalado
-        WHERE id=1 AND supervisor=:id AND actualizado_en>now()-interval '20 seconds')'''),{'id':identity}).scalar()
+    owned=db.session.execute(select(func.public.facturacion_es_supervisor(cast(bindparam('id'), Uuid))),{'id':identity}).scalar()
     db.session.commit()
     return bool(owned)
 
@@ -133,13 +126,7 @@ class Supervisor:
         return min(desired,len(self.children)-sum(c.retiring for c in self.children))
 
     def heartbeat(self,stats,desired):
-        db.session.execute(text('''INSERT INTO fact_api_escalado
-            (id,supervisor,pid,minimo,maximo,activos,objetivo,listos,ocupados,espera_segundos,pausado,workers,actualizado_en)
-            VALUES(1,:id,:pid,:minimum,:maximum,:active,:desired,:ready,:busy,:oldest,:paused,CAST(:workers AS jsonb),now())
-            ON CONFLICT(id) DO UPDATE SET supervisor=EXCLUDED.supervisor,pid=EXCLUDED.pid,
-            minimo=EXCLUDED.minimo,maximo=EXCLUDED.maximo,activos=EXCLUDED.activos,objetivo=EXCLUDED.objetivo,
-            listos=EXCLUDED.listos,ocupados=EXCLUDED.ocupados,espera_segundos=EXCLUDED.espera_segundos,
-            pausado=EXCLUDED.pausado,workers=EXCLUDED.workers,actualizado_en=now()'''),
+        db.session.execute(select(func.public.facturacion_actualizar_supervisor(cast(bindparam('id'), Uuid), bindparam('pid'), bindparam('minimum'), bindparam('maximum'), bindparam('active'), bindparam('desired'), bindparam('ready'), bindparam('busy'), cast(bindparam('oldest'), Numeric), bindparam('paused'), bindparam('workers'))),
             {'id':self.identity,'pid':os.getpid(),'minimum':self.policy.minimum,'maximum':self.policy.maximum,
              'active':len(self.children),'desired':desired,'ready':stats['ready'],'busy':stats['busy'],
              'oldest':stats['oldest'],'paused':stats['blocked'] or stats['unhealthy'],

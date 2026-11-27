@@ -30,9 +30,9 @@ Para editar envía SOLO campos solicitados: el servidor conserva el resto. Nunca
 u opciones no solicitados. No alteres unidades ni conviertas cantidades silenciosamente.
 Formulario devuelve tipos/unidades/identificadores permitidos. Consúltalo al crear si está disponible.
 Contrato de datos (datos_json es un objeto JSON serializado):
-productos: nombre,id_categoria,id_proveedor,unidad(KGM,LTR,C62),presentacion; motivo opcional.
+productos: nombre,id_categoria,id_proveedor,unidad (usa las unidades base del formulario),presentacion; motivo opcional.
 Cada producto usa una sola unidad; presentacion expresa el contenido de compra en esa misma unidad.
-Símbolos visibles: kg,L,g,mL. Intercambio: UNECE Rec.20 KGM,LTR,GRM,MLT,C62.
+Usa el símbolo visible y el código de cada unidad del catálogo del formulario.
 PORCIÓN es local: no convertir a piezas, kg ni L sin equivalencia específica.
 categorias_productos y categorias_carta: nombre,prefijo. proveedores: nombre,ids_categorias (una o varias existentes). menajes: nombre; opcionales capacidad,unidad_capacidad (MLT,LTR,FLOZ_US,FLOZ_UK),diametro_cm,altura_cm,largo_cm,ancho_cm. capacidad_ml es solo lectura. Productos: elegir una categoria asignada al proveedor.
 presentaciones: id_item_carta(null si artículo nuevo),nombre_item,tipo_item,id_categoria_carta,

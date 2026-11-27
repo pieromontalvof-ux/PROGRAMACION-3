@@ -408,7 +408,7 @@ export function PromotionsPage() {
                                           </span>
                                           <small>
                                             {opcion.contenido}{' '}
-                                            {formatearUnidad(opcion.unidad)}
+                                            {formatearUnidad(opcion)}
                                             {' · '}
                                             {formatearPrecio(
                                               opcion

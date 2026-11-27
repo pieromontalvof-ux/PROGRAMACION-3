@@ -4,8 +4,9 @@ import math
 import re
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 from werkzeug.exceptions import Forbidden, BadRequest, Conflict
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.core.local_scope import local_actual
 from app.modules.salon.salon import validar_sesion_salon
@@ -14,17 +15,18 @@ from app.modules.auditoria.service import registrar_actividad
 salon_layout_bp=Blueprint('salon_layout',__name__)
 
 def predeterminado():
-    elementos=[dict(codigo='BARRA',tipo='barra',x=15,y=3,ancho=70,alto=12)]
-    elementos += [dict(codigo=f'B{i+1:02}',tipo='puesto',x=20+i*13,y=18,ancho=7,alto=8) for i in range(5)]
-    elementos += [dict(codigo=f'M{i+1:02}',tipo='mesa',x=8+(i%4)*23,y=33+(i//4)*22,ancho=14,alto=14) for i in range(10)]
-    return dict(version=0,elementos=elementos)
+    elementos = db.session.execute(select(func.public.salon_distribucion_predeterminada())).scalar_one()
+    return {'version': 0, 'elementos': elementos}
+
 
 def existe():
-    return db.session.execute(text("SELECT to_regclass('public.salon_distribucion') IS NOT NULL")).scalar()
+    return db.session.execute(select(func.public.salon_distribucion_instalada())).scalar()
 
 def leer(local):
     if existe():
-        fila=db.session.execute(text('SELECT version,elementos FROM salon_distribucion WHERE id_local=:local'),{'local':local}).mappings().first()
+        fila=db.session.execute(select(func.public.salon_distribucion(bindparam('local')).table_valued(
+            'version', 'elementos',
+        )),{'local':local}).mappings().first()
         if fila:return dict(fila)
     return predeterminado()
 
@@ -47,7 +49,7 @@ def validar(datos):
     return [{k:e[k] for k in ('codigo','tipo','x','y','ancho','alto')} for e in elementos]
 
 def gerente():
-    if get_jwt().get('id_perfil')!=2:raise Forbidden('Solo el perfil Gerente puede administrar el salon')
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_salon'):raise Forbidden('Solo el perfil Gerente puede administrar el salon')
     return local_actual()
 
 @salon_layout_bp.get('/distribucion')
@@ -63,16 +65,18 @@ def guardar():
     if not existe():raise Conflict('Ejecuta 20260923_distribucion_salon.sql')
     datos=request.get_json(silent=True); elementos=validar(datos)
     try:
-        db.session.execute(text('SELECT pg_advisory_xact_lock(hashtext(:clave))'),{'clave':f'salon-layout:{local}'})
+        db.session.execute(select(func.public.salon_bloqueo(bindparam('clave'))),{'clave':f'salon-layout:{local}'})
         anterior=leer(local)
         if anterior['version']!=datos['version']:raise Conflict('La distribucion cambio. Recarga antes de editar.')
         disponibles={e['codigo'] for e in elementos if e['tipo']!='barra'}
-        if db.session.execute(text("SELECT to_regclass('public.salon_pedido')")).scalar():
-            tabla='salon_pedido_actual' if db.session.execute(text("SELECT to_regclass('public.salon_pedido_actual')")).scalar() else 'salon_pedido'
-            usadas=set(db.session.execute(text(f'SELECT DISTINCT mesa FROM {tabla} WHERE id_local=:local'),{'local':local}).scalars())
+        if db.session.execute(select(func.public.salon_pedidos_instalados())).scalar():
+            consulta_mesas=func.public.salon_mesas_usadas if db.session.execute(select(func.public.salon_control_instalado())).scalar() else func.public.salon_mesas_usadas_anteriores
+            usadas=set(db.session.execute(select(consulta_mesas(bindparam('local')).table_valued(
+                'mesa',
+            )),{'local':local}).scalars())
             if usadas-disponibles:raise Conflict('No puedes quitar mesas con pedidos registrados: '+', '.join(sorted(usadas-disponibles)))
-        db.session.execute(text('INSERT INTO salon_distribucion(id_local,version,elementos) VALUES(:local,1,CAST(:elementos AS jsonb)) ON CONFLICT(id_local) DO UPDATE SET version=salon_distribucion.version+1,elementos=excluded.elementos'),{'local':local,'elementos':json.dumps(elementos)})
-        registrar_actividad(get_jwt_identity(),'SALON','EDITAR_DISTRIBUCION',local,'Actualizo la distribucion del salon',id_perfil_utilizado=2,id_local=local)
+        db.session.execute(select(func.public.salon_guardar_distribucion(bindparam('local'), bindparam('elementos'))),{'local':local,'elementos':json.dumps(elementos)})
+        registrar_actividad(get_jwt_identity(),'SALON','EDITAR_DISTRIBUCION',local,'Actualizo la distribucion del salon',id_perfil_utilizado=get_jwt().get('id_perfil'),id_local=local)
         db.session.commit()
         return jsonify(leer(local))
     except Exception:

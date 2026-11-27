@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity
-from sqlalchemy import text
+from sqlalchemy import func, select
 from app.core.extensions import db
 from app.modules.promociones.editor import formulario_promocion, guardar_promocion
 
@@ -17,13 +17,13 @@ promociones_bp = Blueprint(
 
 
 def migracion_reposiciones_pendiente():
-    if not db.session.execute(text("SELECT to_regclass('public.promocion_reposicion') IS NOT NULL")).scalar():
+    if not db.session.execute(select(func.public.promo_reposiciones_instaladas())).scalar():
         return jsonify(mensaje='Falta ejecutar database/migrations/20261016_promociones_reposicion_salon.sql'), 503
     return None
 
 
 @promociones_bp.get('/formulario')
-@requiere_permiso(14, 'consultar')
+@requiere_permiso('promociones', 'consultar')
 def formulario():
     pendiente = migracion_reposiciones_pendiente()
     if pendiente: return pendiente
@@ -32,7 +32,7 @@ def formulario():
 
 
 @promociones_bp.post('')
-@requiere_permiso(14, 'crear')
+@requiere_permiso('promociones', 'crear')
 def crear():
     pendiente = migracion_reposiciones_pendiente()
     if pendiente: return pendiente
@@ -41,7 +41,7 @@ def crear():
 
 
 @promociones_bp.put('/<int:id_promocion>')
-@requiere_permiso(14, 'editar')
+@requiere_permiso('promociones', 'editar')
 def editar(id_promocion):
     pendiente = migracion_reposiciones_pendiente()
     if pendiente: return pendiente
@@ -51,7 +51,7 @@ def editar(id_promocion):
 
 @promociones_bp.get("")
 @requiere_permiso(
-    id_opcion_menu=14,
+    id_opcion_menu='promociones',
     accion="consultar",
 )
 def consultar_promociones():

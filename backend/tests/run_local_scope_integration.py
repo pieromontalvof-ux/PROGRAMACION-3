@@ -98,6 +98,60 @@ try:
                 CREATE INDEX ix_inventario_local_fecha ON inventario_cierre(id_local,fecha_inventario);
             '''))
         c.execute(text(fixture))
+        acceso = (ROOT / 'database/migrations/20261127_acceso_perfil_locales.sql').read_text(encoding='utf-8')
+        c.execute(text(acceso.replace('BEGIN;', '').replace('COMMIT;', '')))
+        c.execute(text('UPDATE perfiles SET acceso_todos_locales=true WHERE id_perfil=1'))
+        funciones = (ROOT / 'database/migrations/20261127_funciones_alcance_local.sql').read_text(encoding='utf-8')
+        c.execute(text(funciones.replace('BEGIN;', '').replace('COMMIT;', '')))
+        c.execute(text("INSERT INTO perfiles(id_perfil,nombre,descripcion) VALUES(3,'Supervisor','Prueba'),(4,'Miembro','Prueba') ON CONFLICT DO NOTHING"))
+        # El volcado temporal trae las tablas de permisos sin sus filas iniciales.
+        c.exec_driver_sql('DROP TABLE IF EXISTS public.permiso_recurso, public.menu_requiere_perfil_operativo, public.perfil_capacidad')
+        capacidades_sql = (ROOT / 'database/migrations/20261127_capacidades_perfil.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(capacidades_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+        auth_sql = (ROOT / 'database/migrations/20261127_funciones_autenticacion.sql').read_text(encoding='utf-8')
+        c.execute(text(auth_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        acciones_sql = (ROOT / 'database/migrations/20261127_acciones_permiso.sql').read_text(encoding='utf-8')
+        c.execute(text(acciones_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        stock_sql = (ROOT / 'database/migrations/20261127_funciones_stock_local.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(stock_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+        c.execute(text('SET LOCAL check_function_bodies = on'))
+        carta_sql = (ROOT / 'database/migrations/20261127_funcion_categorias_carta.sql').read_text(encoding='utf-8')
+        c.execute(text(carta_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        medidas_sql = (ROOT / 'database/migrations/20261127_funciones_medidas_menaje.sql').read_text(encoding='utf-8')
+        c.execute(text(medidas_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        reglas_sql = (ROOT / 'database/migrations/20261127_reglas_medidas_menaje.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(reglas_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+        editor_sql = (ROOT / 'database/migrations/20261127_funciones_editor_presentaciones.sql').read_text(encoding='utf-8')
+        c.execute(text(editor_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        categorias_sql = (ROOT / 'database/migrations/20261127_funciones_admin_categorias_carta.sql').read_text(encoding='utf-8')
+        c.execute(text(categorias_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        carta_restante_sql = (ROOT / 'database/migrations/20261127_funciones_carta_restantes.sql').read_text(encoding='utf-8')
+        c.execute(text(carta_restante_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        c.execute(text('UPDATE perfiles SET administra_catalogos_carta=(id_perfil=1)'))
+        for archivo in ('20261127_funciones_catalogos_repositorio.sql', '20261127_funciones_catalogos_stock.sql', '20261127_funciones_catalogos_eliminacion.sql'):
+            catalogos_sql = (ROOT / 'database/migrations' / archivo).read_text(encoding='utf-8')
+            c.exec_driver_sql(catalogos_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                              execution_options={'no_parameters': True})
+        c.execute(text('UPDATE perfiles SET administra_limites_stock=(id_perfil=2)'))
+        for archivo in ('20261118_clientes.sql', '20261127_funciones_clientes.sql', '20261127_funciones_compras.sql', '20261127_funcion_health.sql', '20261127_funciones_produccion.sql', '20261127_funciones_recetas.sql', '20261127_funciones_usuarios.sql', '20261127_configuracion_operativa.sql'):
+            clientes_sql = (ROOT / 'database/migrations' / archivo).read_text(encoding='utf-8')
+            c.exec_driver_sql(clientes_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                              execution_options={'no_parameters': True})
+        inventarios_sql = (ROOT / 'database/migrations/20261127_funciones_inventarios_consultas.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql('SET LOCAL check_function_bodies = off')
+        c.exec_driver_sql(inventarios_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+        c.exec_driver_sql('RESET check_function_bodies')
+        c.execute(text('UPDATE perfiles SET accede_directorio_clientes=(id_perfil IN (1,2,3)), '
+                       'accede_clientes_salon=(id_perfil IN (2,3))'))
+        sesion_sql = (ROOT / 'database/migrations/20261127_reglas_sesion_perfil.sql').read_text(encoding='utf-8')
+        c.execute(text(sesion_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
+        c.execute(text('UPDATE perfiles SET requiere_puesto_activo=(id_perfil=4), puede_cambiar_local=(id_perfil IN (2,3,4))'))
+        auditoria_sql = (ROOT / 'database/migrations/20261127_funciones_auditoria.sql').read_text(encoding='utf-8')
+        c.execute(text(auditoria_sql.replace('BEGIN;', '').replace('COMMIT;', '')))
     # La version actual de la base de origen debe contener las etapas 01 y 02.
     migration = (ROOT / 'database/normalizacion/03_activar_locales_TRAS_ADAPTAR_BACKEND.sql').read_text(encoding='utf-8')
     migration = migration.replace("current_database() <> 'barbarito'", "current_database() <> 'barbarito_test'")
@@ -108,6 +162,14 @@ try:
         if not c.execute(text("SELECT to_regclass('public.movimiento_seguimiento')")).scalar():
             tracking = (ROOT / 'database/migrations/20260922_seguimiento_movimientos.sql').read_text(encoding='utf-8')
             c.execute(text(tracking.replace("current_database() <> 'barbarito'", "current_database() <> 'barbarito_test'")))
+    with engine.begin() as c:
+        movimientos_sql = (ROOT / 'database/migrations/20261127_funciones_movimientos.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(movimientos_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+    with engine.begin() as c:
+        recepciones_sql = (ROOT / 'database/migrations/20261127_funciones_recepciones.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(recepciones_sql.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
     with engine.connect() as c:
         if not c.execute(text("SELECT to_regclass('public.usuario_pin_salon')")).scalar():
             salon = (ROOT / 'database/migrations/20260923_acceso_salon.sql').read_text(encoding='utf-8')
@@ -140,6 +202,16 @@ try:
         if not c.execute(text("SELECT to_regclass('public.promocion_reposicion')")).scalar():
             promociones = (ROOT / 'database/migrations/20261016_promociones_reposicion_salon.sql').read_text(encoding='utf-8')
             c.execute(text(promociones.replace("current_database()<>'barbarito'", "current_database()<>'barbarito_test'")))
+    with engine.begin() as c:
+        funciones_promociones = (ROOT / 'database/migrations/20261127_funciones_promociones.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(funciones_promociones.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
+    with engine.begin() as c:
+        funciones_salon = (ROOT / 'database/migrations/20261127_funciones_salon.sql').read_text(encoding='utf-8')
+        # Esta etapa todav?a no tiene jornadas ni sus columnas en los cobros.
+        c.exec_driver_sql('SET LOCAL check_function_bodies = off')
+        c.exec_driver_sql(funciones_salon.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
     engine.dispose()
     env = {**local_env, 'DATABASE_URL': test_url, 'LOCAL_SCOPE_TEST_DB': '1'}
     patterns = sys.argv[1:]
@@ -165,6 +237,10 @@ try:
     with engine.connect() as c:
         migration = (ROOT / 'database/migrations/20260926_jornadas_conteos.sql').read_text(encoding='utf-8')
         c.execute(text(migration.replace("current_database()<>'barbarito'", "current_database()<>'barbarito_test'")))
+    with engine.begin() as c:
+        funciones = (ROOT / 'database/migrations/20261127_funciones_inventarios.sql').read_text(encoding='utf-8')
+        c.exec_driver_sql(funciones.replace('BEGIN;', '').replace('COMMIT;', ''),
+                          execution_options={'no_parameters': True})
     env['OPERATIONAL_TEST_DB']='1'
     result = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_inventory_operations.py', '-v'],
         cwd=ROOT / 'backend', env=env, creationflags=flags, capture_output=True, text=True)

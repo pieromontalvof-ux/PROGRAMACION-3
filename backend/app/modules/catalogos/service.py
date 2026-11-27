@@ -12,7 +12,7 @@ from app.modules.catalogos.repository import (
 from decimal import Decimal, InvalidOperation
 
 from app.core.extensions import db
-from app.core.units import catalogo_unidades, obtener_unidad, convertir_cantidad
+from app.core.units import catalogo_unidades, obtener_unidad, convertir_cantidad, valores_unidades
 from app.modules.auditoria.service import (
     registrar_actividad,
     registrar_cambio,
@@ -448,7 +448,7 @@ def _datos_producto(datos):
     categoria = _entero(datos, "id_categoria")
     proveedor = _entero(datos, "id_proveedor")
     medida = obtener_unidad(datos.get("unidad"))
-    unidad = medida.codigo if medida and medida.codigo in {"KGM", "LTR", "C62"} else None
+    unidad = medida.codigo if medida and medida.codigo in valores_unidades("producto", solo_base=True) else None
     presentacion = _decimal(datos, "presentacion")
     if unidad and presentacion is not None:
         try:

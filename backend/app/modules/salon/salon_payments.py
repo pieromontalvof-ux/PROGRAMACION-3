@@ -8,9 +8,10 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 from werkzeug.exceptions import BadRequest, Conflict, Forbidden, NotFound
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.modules.salon.salon_orders import contexto, obtener, nombre_presentacion
 from app.modules.auditoria.service import registrar_actividad
@@ -19,7 +20,7 @@ salon_payments_bp = Blueprint('salon_payments', __name__)
 
 
 def preparado():
-    if not db.session.execute(text("SELECT to_regclass('public.salon_cobro')")).scalar():
+    if not db.session.execute(select(func.public.salon_cobros_instalados())).scalar():
         raise Conflict('Falta ejecutar database/migrations/20260926_pagos_salon.sql')
 
 
@@ -29,13 +30,14 @@ def huella(datos):
 
 def cuenta(mesa, sesion):
     pedido = obtener(mesa, sesion)  # Propietario o responsable del mismo local.
-    filas = db.session.execute(text('''SELECT l.*,p.id_usuario FROM salon_pedido_linea l
-        JOIN salon_pedido_actual p USING(id_pedido)
-        WHERE p.id_local=:local AND p.mesa=:mesa AND p.estado='ENVIADO'
-        AND NOT EXISTS(SELECT 1 FROM salon_linea_anulada a WHERE a.id_linea=l.id_linea)
-        ORDER BY l.id_linea'''), {'local': sesion['id_local'], 'mesa': mesa}).mappings().all()
-    pedidos = db.session.execute(text('''SELECT id_pedido,version,estado,id_usuario
-        FROM salon_pedido_actual WHERE id_local=:local AND mesa=:mesa ORDER BY id_pedido'''),
+    filas = db.session.execute(select(func.public.salon_lineas_cobro(bindparam('local'), bindparam('mesa')).table_valued(
+        'id_linea', 'id_pedido', 'posicion', 'id_presentacion', 'nombre', 'precio', 'cantidad',
+        'comentario', 'opciones', 'id_promocion', 'selecciones_promocion', 'id_barra_libre',
+        'id_usuario',
+    )), {'local': sesion['id_local'], 'mesa': mesa}).mappings().all()
+    pedidos = db.session.execute(select(func.public.salon_pedidos_cobro(bindparam('local'), bindparam('mesa')).table_valued(
+        'id_pedido', 'version', 'estado', 'id_usuario',
+    )),
         {'local': sesion['id_local'], 'mesa': mesa}).mappings().all()
     revision = huella({'pedidos': [dict(p) for p in pedidos], 'lineas': [dict(l) for l in filas]})
     return pedido, filas, pedidos, revision
@@ -85,19 +87,21 @@ def consumos(lineas):
     totales = defaultdict(Decimal)
 
     def producto(identidad, cantidad, unidad):
-        registro = db.session.execute(text('SELECT nombre,unidad FROM producto WHERE id_producto=:id'),
+        registro = db.session.execute(select(func.public.salon_producto_consumo(bindparam('id')).table_valued(
+            'nombre', 'unidad',
+        )),
                                       {'id': identidad}).mappings().first()
         if not registro or registro['unidad'] != unidad or cantidad <= 0:
             raise Conflict('Revisa las unidades y cantidades de los ingredientes antes de cobrar')
         totales[identidad] += cantidad
 
     def consumir_presentacion(identidad_presentacion, cantidad_unidades, opciones):
-        receta = db.session.execute(text('''SELECT id_receta FROM receta
-            WHERE id_presentacion_venta=:id AND activo'''), {'id': identidad_presentacion}).scalar()
-        detalles = [] if receta is None else db.session.execute(text(
-            'SELECT * FROM receta_detalle WHERE id_receta=:id'), {'id': receta}).mappings().all()
-        fila = db.session.execute(text('''SELECT ic.nombre FROM presentacion_venta pv
-            JOIN item_carta ic USING(id_item_carta) WHERE pv.id_presentacion_venta=:id'''),
+        receta = db.session.execute(select(func.public.salon_receta_activa(bindparam('id'))), {'id': identidad_presentacion}).scalar()
+        detalles = [] if receta is None else db.session.execute(select(func.public.salon_detalles_receta(bindparam('id')).table_valued(
+            'id_receta_detalle', 'id_receta', 'tipo_componente', 'id_producto', 'id_subproducto',
+            'cantidad', 'unidad',
+        )), {'id': receta}).mappings().all()
+        fila = db.session.execute(select(func.public.salon_nombre_presentacion(bindparam('id'))),
             {'id': identidad_presentacion}).mappings().first()
         if not detalles or not fila:
             raise Conflict('Falta configurar la receta de la presentación. No se registró el cobro.')
@@ -106,9 +110,14 @@ def consumos(lineas):
             if detalle['tipo_componente'] == 'PRODUCTO':
                 producto(detalle['id_producto'], cantidad, detalle['unidad'])
             else:
-                sub = db.session.execute(text('SELECT * FROM subproducto WHERE id_subproducto=:id'),
+                sub = db.session.execute(select(func.public.salon_subproducto(bindparam('id')).table_valued(
+                    'id_subproducto', 'codigo', 'nombre', 'rendimiento', 'unidad', 'instruccion',
+                    'activo',
+                )),
                                          {'id': detalle['id_subproducto']}).mappings().one()
-                ingredientes = db.session.execute(text('SELECT * FROM subproducto_detalle WHERE id_subproducto=:id'),
+                ingredientes = db.session.execute(select(func.public.salon_ingredientes_subproducto(bindparam('id')).table_valued(
+                    'id_subproducto_detalle', 'id_subproducto', 'id_producto', 'cantidad', 'unidad',
+                )),
                                                   {'id': detalle['id_subproducto']}).mappings().all()
                 if not ingredientes or sub['rendimiento'] <= 0 or sub['unidad'] != detalle['unidad']:
                     raise Conflict(f"Revisa el rendimiento y los ingredientes de {sub['nombre']}")
@@ -118,9 +127,7 @@ def consumos(lineas):
             # Los pedidos nuevos guardan la identidad; los anteriores conservan el ID de opción.
             identidad = opcion.get('id_producto')
             if identidad is None:
-                identidad = db.session.execute(text('''SELECT o.id_producto FROM grupo_salsa_opcion o
-                    JOIN grupo_salsa g USING(id_grupo_salsa)
-                    WHERE o.id_grupo_salsa_opcion=:id AND g.id_presentacion_venta=:presentacion'''),
+                identidad = db.session.execute(select(func.public.salon_producto_salsa(bindparam('id'), bindparam('presentacion'))),
                     {'id': opcion['id'], 'presentacion': identidad_presentacion}).scalar()
             if identidad is None:
                 raise Conflict('No se puede identificar una opción enviada. Revisa la receta antes de cobrar.')
@@ -172,30 +179,17 @@ def diario_ventas():
     from .salon_daily_closures import listar_cierres_diarios
 
     sesion=contexto()
-    if sesion['perfil'] not in (2,3):
+    if not perfil_tiene_capacidad(sesion['perfil'], 'supervisar_salon'):
         raise Forbidden('Solo gerentes y supervisores pueden consultar el diario de ventas.')
     preparado()
     filtros=filtros_diario(request.args)
     params={**filtros,'local':sesion['id_local'],'offset':(filtros['pagina']-1)*20}
-    condiciones=["id_local=:local","creado_en>=:inicio","creado_en<:fin"]
-    if filtros['tipo']: condiciones.append('tipo=:tipo')
-    if filtros['metodo']: condiciones.append('metodo=:metodo')
-    if filtros['codigo']:
-        condiciones.append("strpos('INT-' || lpad(id_cobro::text,8,'0'),:codigo)>0")
-        params['codigo']=filtros['codigo'].upper()
-    where=' AND '.join(condiciones)
     # One statement gives the list and totals the same database snapshot.
-    row=db.session.execute(text(f"""WITH filtradas AS (
-        SELECT id_cobro,creado_en,mesa,tipo,metodo,total,comprobante->'anulacion' AS anulacion,
-            comprobante->>'usuario' AS usuario, comprobante ? 'prueba' AS simulacion
-        FROM salon_cobro WHERE {where}
-    ), pagina AS (SELECT * FROM filtradas ORDER BY creado_en DESC,id_cobro DESC LIMIT 20 OFFSET :offset)
-    SELECT (SELECT count(*) FROM filtradas) AS cantidad,
-        (SELECT coalesce(sum(total) FILTER (WHERE anulacion IS NULL),0) FROM filtradas) AS total,
-        (SELECT coalesce(sum(total) FILTER (WHERE metodo='EFECTIVO' AND anulacion IS NULL),0) FROM filtradas) AS efectivo,
-        (SELECT coalesce(sum(total) FILTER (WHERE metodo='TARJETA' AND anulacion IS NULL),0) FROM filtradas) AS tarjeta,
-        coalesce((SELECT jsonb_agg(to_jsonb(pagina) ORDER BY creado_en DESC,id_cobro DESC) FROM pagina),'[]'::jsonb) AS ventas
-    """),params).mappings().one()
+    row=db.session.execute(select(func.public.salon_diario(
+        bindparam('local'), bindparam('inicio'), bindparam('fin'), bindparam('tipo'), bindparam('metodo'), bindparam('codigo'), bindparam('offset'),
+    ).table_valued(
+        'cantidad', 'total', 'efectivo', 'tarjeta', 'ventas',
+    )),params).mappings().one()
     ventas=[]
     for venta in row['ventas']:
         ventas.append({**venta,'numero':f"INT-{venta['id_cobro']:08d}"})
@@ -209,17 +203,22 @@ def diario_ventas():
 def comprobante(identidad):
     sesion = contexto()
     preparado()
-    fila = db.session.execute(text('SELECT * FROM salon_cobro WHERE id_cobro=:id AND id_local=:local'),
+    fila = db.session.execute(select(func.public.salon_comprobante(bindparam('id'), bindparam('local')).table_valued(
+        'id_cobro', 'id_local', 'id_usuario', 'mesa', 'clave', 'solicitud_hash', 'tipo', 'metodo',
+        'documento', 'cliente', 'total', 'comprobante', 'id_movimiento', 'creado_en', 'id_cliente',
+    )),
                               {'id': identidad, 'local': sesion['id_local']}).mappings().first()
     if not fila:
         raise NotFound('Comprobante no encontrado en este local')
-    if fila['id_usuario'] != sesion['id_usuario'] and sesion['perfil'] not in (2, 3):
+    if fila['id_usuario'] != sesion['id_usuario'] and not perfil_tiene_capacidad(sesion['perfil'], 'supervisar_salon'):
         raise Forbidden('No tienes acceso a este comprobante')
     resultado=respuesta(fila)
     estado = None
-    if db.session.execute(text("SELECT to_regclass('public.inventario_jornada')")).scalar():
-        estado=db.session.execute(text("""SELECT j.cerrado_en IS NULL AND j.fecha=(clock_timestamp() AT TIME ZONE 'America/Lima')::date AND (c.creado_en AT TIME ZONE 'America/Lima')::date=j.fecha AS editable FROM salon_cobro c LEFT JOIN inventario_jornada j USING(id_jornada) WHERE c.id_cobro=:id"""),{'id':identidad}).mappings().first()
-    resultado['editable']=bool(estado and estado['editable'] and sesion['perfil'] in (2,3) and not resultado.get('anulacion'))
+    if db.session.execute(select(func.public.salon_jornadas_instaladas())).scalar():
+        estado=db.session.execute(select(func.public.salon_comprobante_editable(bindparam('id')).table_valued(
+            'editable',
+        )),{'id':identidad}).mappings().first()
+    resultado['editable']=bool(estado and estado['editable'] and perfil_tiene_capacidad(sesion['perfil'], 'supervisar_salon') and not resultado.get('anulacion'))
     return jsonify(resultado)
 
 
@@ -242,8 +241,11 @@ def emitir(mesa):
     try:
         # Reintentos y operaciones sobre la mesa se serializan antes de consultar el estado.
         for clave in (f"salon-cobro:{sesion['id_local']}:{datos['clave']}", f"salon:{sesion['id_local']}:{mesa}"):
-            db.session.execute(text('SELECT pg_advisory_xact_lock(hashtext(:clave))'), {'clave': clave})
-        previo = db.session.execute(text('SELECT * FROM salon_cobro WHERE id_local=:local AND clave=CAST(:clave AS uuid)'),
+            db.session.execute(select(func.public.salon_bloqueo(bindparam('clave'))), {'clave': clave})
+        previo = db.session.execute(select(func.public.salon_cobro_previo(bindparam('local'), bindparam('clave')).table_valued(
+            'id_cobro', 'id_local', 'id_usuario', 'mesa', 'clave', 'solicitud_hash', 'tipo', 'metodo',
+            'documento', 'cliente', 'total', 'comprobante', 'id_movimiento', 'creado_en', 'id_cliente',
+        )),
                                     {'local': sesion['id_local'], 'clave': datos['clave']}).mappings().first()
         if previo:
             if previo['id_usuario'] != sesion['id_usuario'] or previo['solicitud_hash'] != solicitud_hash:
@@ -255,7 +257,7 @@ def emitir(mesa):
         if not lineas or any(p['estado'] != 'ENVIADO' for p in pedidos):
             raise Conflict('Envía o cancela los productos pendientes antes de pagar una cuenta con productos enviados')
         # Evita que una edición de receta deje un consumo calculado a medias.
-        db.session.execute(text('LOCK TABLE receta,receta_detalle,subproducto,subproducto_detalle,producto,grupo_salsa,grupo_salsa_opcion IN SHARE MODE'))
+        db.session.execute(select(func.public.salon_bloquear_recetas()))
         consumo = consumos(lineas)
         total = sum(l['precio'] * l['cantidad'] for l in lineas)
         snapshot = {'tipo': datos['tipo'], 'metodo': datos['metodo'], 'documento': datos['documento'],
@@ -263,29 +265,28 @@ def emitir(mesa):
                     'usuario': sesion['usuario'], 'total': float(total), 'fiscal': False,
                     'lineas': pedido['lineas']}
         # Comparte el mismo bloqueo de numeración que los movimientos manuales.
-        db.session.execute(text("SELECT pg_advisory_xact_lock(hashtext('movimiento_inventario_codigo'))"))
-        numero = db.session.execute(text("""SELECT coalesce(max(CASE WHEN codigo ~ '^MI-[0-9]+$'
-            THEN substring(codigo FROM 4)::integer END),0)+1 FROM movimiento_inventario""")).scalar_one()
-        movimiento = db.session.execute(text('''INSERT INTO movimiento_inventario
-            (codigo,tipo_movimiento,motivo_movimiento,fecha_movimiento,usuario_registro,id_local,observacion)
-            VALUES(:codigo,'SALIDA','VENTA_SALON',(clock_timestamp() AT TIME ZONE 'America/Lima')::date,:usuario,:local,:observacion)
-            RETURNING id_movimiento_inventario'''),
+        db.session.execute(select(func.public.salon_bloquear_codigo()))
+        numero = db.session.execute(select(func.public.salon_siguiente_movimiento())).scalar_one()
+        movimiento = db.session.execute(select(func.public.salon_crear_movimiento(
+            bindparam('codigo'), bindparam('usuario'), bindparam('local'), bindparam('observacion'),
+        )),
             {'codigo': f'MI-{numero:03d}', 'usuario': sesion['id_usuario'], 'local': sesion['id_local'],
              'observacion': f'Cobro de Salón, mesa {mesa}'}).scalar_one()
         for identidad, cantidad in sorted(consumo.items()):
-            db.session.execute(text('''INSERT INTO movimiento_inventario_detalle
-                (id_movimiento_inventario,id_producto,cantidad) VALUES(:movimiento,:producto,:cantidad)'''),
+            db.session.execute(select(func.public.salon_detalle_movimiento(bindparam('movimiento'), bindparam('producto'), bindparam('cantidad'))),
                 {'movimiento': movimiento, 'producto': identidad, 'cantidad': cantidad})
-        cobro = db.session.execute(text('''INSERT INTO salon_cobro
-            (id_local,id_usuario,mesa,clave,solicitud_hash,tipo,metodo,documento,cliente,total,comprobante,id_movimiento)
-            VALUES(:local,:usuario,:mesa,CAST(:clave AS uuid),:hash,:tipo,:metodo,:documento,:cliente,:total,CAST(:snapshot AS jsonb),:movimiento)
-            RETURNING *'''), {**datos, 'local': sesion['id_local'], 'usuario': sesion['id_usuario'], 'mesa': mesa,
+        cobro = db.session.execute(select(func.public.salon_crear_cobro(
+            bindparam('local'), bindparam('usuario'), bindparam('mesa'), bindparam('clave'), bindparam('hash'), bindparam('tipo'), bindparam('metodo'), bindparam('documento'), bindparam('cliente'), bindparam('total'), bindparam('snapshot'), bindparam('movimiento'),
+        ).table_valued(
+            'id_cobro', 'id_local', 'id_usuario', 'mesa', 'clave', 'solicitud_hash', 'tipo', 'metodo',
+            'documento', 'cliente', 'total', 'comprobante', 'id_movimiento', 'creado_en', 'id_cliente',
+        )), {**datos, 'local': sesion['id_local'], 'usuario': sesion['id_usuario'], 'mesa': mesa,
                 'hash': solicitud_hash, 'total': total, 'snapshot': json.dumps(snapshot, ensure_ascii=False),
                 'movimiento': movimiento}).mappings().one()
         if cliente_id:
-            db.session.execute(text('UPDATE salon_cobro SET id_cliente=CAST(:cliente AS uuid) WHERE id_cobro=:id'), {'cliente':cliente_id,'id':cobro['id_cobro']})
+            db.session.execute(select(func.public.salon_cliente_cobro(bindparam('cliente'), bindparam('id'))), {'cliente':cliente_id,'id':cobro['id_cobro']})
         for p in pedidos:
-            db.session.execute(text('INSERT INTO salon_cobro_pedido(id_cobro,id_pedido) VALUES(:cobro,:pedido)'),
+            db.session.execute(select(func.public.salon_vincular_pedido(bindparam('cobro'), bindparam('pedido'))),
                                {'cobro': cobro['id_cobro'], 'pedido': p['id_pedido']})
         registrar_actividad(sesion['id_usuario'], 'SALON', 'COBRAR_MESA', cobro['id_cobro'],
             f"Cobró {mesa}: S/ {total:.2f}, {datos['metodo']}, comprobante interno INT-{cobro['id_cobro']:08d}",
@@ -307,7 +308,7 @@ def modificar_venta(identidad, accion):
     if accion not in ('anular', 'cambiar-tipo'):
         raise NotFound('Acción no encontrada')
     sesion = contexto()
-    if sesion['perfil'] not in (2, 3):
+    if not perfil_tiene_capacidad(sesion['perfil'], 'supervisar_salon'):
         raise Forbidden('Solo gerente y supervisor pueden modificar ventas.')
     datos = request.get_json(silent=True)
     if not isinstance(datos, dict): raise BadRequest('Datos inválidos.')
@@ -319,11 +320,11 @@ def modificar_venta(identidad, accion):
         raise BadRequest('Número de reemplazo inválido.')
     try:
         bloqueo(sesion['id_local'])
-        fila = db.session.execute(text('''SELECT c.*,j.fecha AS jornada_fecha,j.cerrado_en,
-            (clock_timestamp() AT TIME ZONE 'America/Lima')::date AS hoy,
-            (c.creado_en AT TIME ZONE 'America/Lima')::date AS fecha_venta
-            FROM salon_cobro c LEFT JOIN inventario_jornada j USING(id_jornada)
-            WHERE c.id_cobro=:id AND c.id_local=:local FOR UPDATE OF c'''),
+        fila = db.session.execute(select(func.public.salon_cambio_bloqueado(bindparam('id'), bindparam('local')).table_valued(
+            'id_cobro', 'id_local', 'id_usuario', 'mesa', 'clave', 'solicitud_hash', 'tipo', 'metodo',
+            'documento', 'cliente', 'total', 'comprobante', 'id_movimiento', 'creado_en', 'id_jornada',
+            'id_cliente', 'jornada_fecha', 'cerrado_en', 'hoy', 'fecha_venta',
+        )),
             {'id':identidad,'local':sesion['id_local']}).mappings().first()
         if not fila: raise NotFound('Venta no encontrada en este local.')
         verificar_dia(fila['fecha_venta'],fila['jornada_fecha'],fila['cerrado_en'],fila['hoy'])
@@ -332,7 +333,7 @@ def modificar_venta(identidad, accion):
         historial = list(recibo.get('historial', []))
         if datos.get('version') != len(historial): raise Conflict('La venta cambió. Recarga el detalle.')
         evento = dict(accion=accion,motivo=motivo.strip(),referencia=referencia.strip(),
-                      usuario=sesion['id_usuario'],fecha=db.session.execute(text('SELECT clock_timestamp()')).scalar().isoformat())
+                      usuario=sesion['id_usuario'],fecha=db.session.execute(select(func.public.salon_reloj())).scalar().isoformat())
         if accion == 'anular':
             if referencia.strip() == f'INT-{identidad:08d}': raise BadRequest('El reemplazo debe ser otro comprobante.')
             recibo['anulacion'] = evento
@@ -349,10 +350,12 @@ def modificar_venta(identidad, accion):
             evento['anterior']={k:recibo.get(k) for k in ('tipo','documento','cliente')}
             recibo.update(tipo=tipo,documento=documento,cliente=cliente.strip())
             evento['nuevo']={k:recibo[k] for k in ('tipo','documento','cliente')}
-            db.session.execute(text('UPDATE salon_cobro SET tipo=:tipo,documento=:doc,cliente=:cliente,id_cliente=NULL WHERE id_cobro=:id'),
+            db.session.execute(select(func.public.salon_actualizar_cliente(
+                bindparam('tipo'), bindparam('doc'), bindparam('cliente'), bindparam('id'),
+            )),
                 {'id':identidad,'tipo':tipo,'doc':documento,'cliente':cliente.strip()})
         historial.append(evento); recibo['historial']=historial
-        db.session.execute(text('UPDATE salon_cobro SET comprobante=CAST(:c AS jsonb) WHERE id_cobro=:id'), {'id':identidad,'c':json.dumps(recibo)})
+        db.session.execute(select(func.public.salon_guardar_comprobante(bindparam('c'), bindparam('id'))), {'id':identidad,'c':json.dumps(recibo)})
         from app.modules.facturacion.service import enqueue_source, invalidate_sale
         if accion=='anular':
             invalidate_sale(identidad,sesion['id_local'])

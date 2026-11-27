@@ -29,7 +29,7 @@ catalogos_bp = Blueprint("catalogos", __name__)
 
 
 @catalogos_bp.post('/proveedores/consultar-ruc')
-@requiere_permiso(6, 'consultar')
+@requiere_permiso('proveedores', 'consultar')
 def consultar_ruc_proveedor():
     from app.modules.clientes.identity import consultar
     from werkzeug.exceptions import HTTPException
@@ -52,7 +52,7 @@ def _usuario():
 
 
 @catalogos_bp.get("/unidades")
-@requiere_permiso(4, "consultar")
+@requiere_permiso('productos', "consultar")
 def consultar_unidades():
     contexto = request.args.get("contexto")
     try:
@@ -65,14 +65,14 @@ def consultar_unidades():
 
 
 @catalogos_bp.get("/productos")
-@requiere_permiso(4, "consultar")
+@requiere_permiso('productos', "consultar")
 def consultar_productos():
     respuesta, estado = obtener_catalogo_productos()
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.post("/productos")
-@requiere_permiso(4, "crear")
+@requiere_permiso('productos', "crear")
 def crear_producto():
     respuesta, estado = crear_producto_catalogo(
         _usuario(), request.get_json(silent=True) or {})
@@ -80,7 +80,7 @@ def crear_producto():
 
 
 @catalogos_bp.put("/productos/<int:id_producto>")
-@requiere_permiso(4, "editar")
+@requiere_permiso('productos', "editar")
 def editar_producto(id_producto):
     respuesta, estado = editar_producto_catalogo(
         id_producto, _usuario(), request.get_json(silent=True) or {})
@@ -88,14 +88,14 @@ def editar_producto(id_producto):
 
 
 @catalogos_bp.get("/productos/<int:id_producto>/dependencias")
-@requiere_permiso(4, "consultar")
+@requiere_permiso('productos', "consultar")
 def consultar_dependencias_producto(id_producto):
     respuesta, estado = obtener_dependencias_producto(id_producto)
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.patch("/productos/<int:id_producto>/desactivar")
-@requiere_permiso(4, "desactivar")
+@requiere_permiso('productos', "desactivar")
 def desactivar_producto(id_producto):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_producto(
@@ -104,7 +104,7 @@ def desactivar_producto(id_producto):
 
 
 @catalogos_bp.patch("/productos/<int:id_producto>/reactivar")
-@requiere_permiso(4, "reactivar")
+@requiere_permiso('productos', "reactivar")
 def reactivar_producto(id_producto):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_producto(
@@ -113,14 +113,14 @@ def reactivar_producto(id_producto):
 
 
 @catalogos_bp.get("/categorias-productos")
-@requiere_permiso(5, "consultar")
+@requiere_permiso('categorias_productos', "consultar")
 def consultar_categorias_producto():
     respuesta, estado = obtener_categorias_producto()
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.post("/categorias-productos")
-@requiere_permiso(5, "crear")
+@requiere_permiso('categorias_productos', "crear")
 def crear_categoria():
     respuesta, estado = crear_categoria_producto(
         _usuario(), request.get_json(silent=True) or {})
@@ -128,7 +128,7 @@ def crear_categoria():
 
 
 @catalogos_bp.put("/categorias-productos/<int:id_categoria>")
-@requiere_permiso(5, "editar")
+@requiere_permiso('categorias_productos', "editar")
 def editar_categoria(id_categoria):
     respuesta, estado = editar_categoria_producto(
         id_categoria, _usuario(), request.get_json(silent=True) or {})
@@ -136,14 +136,14 @@ def editar_categoria(id_categoria):
 
 
 @catalogos_bp.get("/categorias-productos/<int:id_categoria>/dependencias")
-@requiere_permiso(5, "consultar")
+@requiere_permiso('categorias_productos', "consultar")
 def consultar_dependencias_categoria(id_categoria):
     respuesta, estado = dependencias_categoria(id_categoria)
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.post("/categorias-productos/<int:id_categoria>/reasignar")
-@requiere_permiso(5, "configurar")
+@requiere_permiso('categorias_productos', "configurar")
 def reasignar_productos_categoria(id_categoria):
     respuesta, estado = reasignar_categoria(
         id_categoria, _usuario(), request.get_json(silent=True) or {})
@@ -151,7 +151,7 @@ def reasignar_productos_categoria(id_categoria):
 
 
 @catalogos_bp.patch("/categorias-productos/<int:id_categoria>/desactivar")
-@requiere_permiso(5, "desactivar")
+@requiere_permiso('categorias_productos', "desactivar")
 def desactivar_categoria(id_categoria):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_categoria(
@@ -160,7 +160,7 @@ def desactivar_categoria(id_categoria):
 
 
 @catalogos_bp.patch("/categorias-productos/<int:id_categoria>/reactivar")
-@requiere_permiso(5, "reactivar")
+@requiere_permiso('categorias_productos', "reactivar")
 def reactivar_categoria(id_categoria):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_categoria(
@@ -169,14 +169,14 @@ def reactivar_categoria(id_categoria):
 
 
 @catalogos_bp.get("/proveedores")
-@requiere_permiso(6, "consultar")
+@requiere_permiso('proveedores', "consultar")
 def consultar_proveedores():
     respuesta, estado = obtener_proveedores()
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.post("/proveedores")
-@requiere_permiso(6, "crear")
+@requiere_permiso('proveedores', "crear")
 def crear_proveedor():
     respuesta, estado = crear_proveedor_catalogo(
         _usuario(), request.get_json(silent=True) or {})
@@ -184,7 +184,7 @@ def crear_proveedor():
 
 
 @catalogos_bp.put("/proveedores/<int:id_proveedor>")
-@requiere_permiso(6, "editar")
+@requiere_permiso('proveedores', "editar")
 def editar_proveedor(id_proveedor):
     respuesta, estado = editar_proveedor_catalogo(
         id_proveedor, _usuario(), request.get_json(silent=True) or {})
@@ -192,14 +192,14 @@ def editar_proveedor(id_proveedor):
 
 
 @catalogos_bp.get("/proveedores/<int:id_proveedor>/dependencias")
-@requiere_permiso(6, "consultar")
+@requiere_permiso('proveedores', "consultar")
 def consultar_dependencias_proveedor(id_proveedor):
     respuesta, estado = dependencias_proveedor(id_proveedor)
     return jsonify(respuesta), estado
 
 
 @catalogos_bp.post("/proveedores/<int:id_proveedor>/reasignar")
-@requiere_permiso(6, "configurar")
+@requiere_permiso('proveedores', "configurar")
 def reasignar_productos_proveedor(id_proveedor):
     respuesta, estado = reasignar_proveedor(
         id_proveedor, _usuario(), request.get_json(silent=True) or {})
@@ -207,7 +207,7 @@ def reasignar_productos_proveedor(id_proveedor):
 
 
 @catalogos_bp.patch("/proveedores/<int:id_proveedor>/desactivar")
-@requiere_permiso(6, "desactivar")
+@requiere_permiso('proveedores', "desactivar")
 def desactivar_proveedor(id_proveedor):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_proveedor(
@@ -216,7 +216,7 @@ def desactivar_proveedor(id_proveedor):
 
 
 @catalogos_bp.patch("/proveedores/<int:id_proveedor>/reactivar")
-@requiere_permiso(6, "reactivar")
+@requiere_permiso('proveedores', "reactivar")
 def reactivar_proveedor(id_proveedor):
     datos = request.get_json(silent=True) or {}
     respuesta, estado = estado_proveedor(

@@ -3,7 +3,13 @@ from unittest.mock import patch
 from app.modules.catalogos import service
 
 
+from test_units import mock_unit_catalog
+
+
 class SupplierCategoryTests(unittest.TestCase):
+    def setUp(self):
+        mock_unit_catalog(self)
+
     def test_supplier_requires_categories(self):
         for ids in (None, [], [True], ["1"], [0]):
             result, status = service.crear_proveedor_catalogo(1, {"nombre": "Proveedor", "ids_categorias": ids})

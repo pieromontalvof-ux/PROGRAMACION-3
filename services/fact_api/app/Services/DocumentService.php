@@ -1444,49 +1444,8 @@ class DocumentService
                 $despatch->setAddDocs($relDocs);
             }
             
-            // USAR LA CONFIGURACIÓN DE LA CLASE UTIL DE GREENTER
-            $api = new \Greenter\Api([
-                'auth' => 'https://gre-test.nubefact.com/v1',
-                'cpe' => 'https://gre-test.nubefact.com/v1',
-            ]);
-            
-            // Configurar certificado
-            $certificadoContent = file_get_contents(storage_path('app/public/certificado/certificado.pem'));
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo cargar el certificado");
-            }
-            
-            // Obtener credenciales GRE de la configuración de la empresa
-            $company = $guide->company;
-            
-            if (!$company->hasGreCredentials()) {
-                throw new Exception("Las credenciales GRE no están configuradas para la empresa: {$company->razon_social}");
-            }
-            
-            $clientId = $company->getGreClientId();
-            $clientSecret = $company->getGreClientSecret();
-            $rucProveedor = $company->getGreRucProveedor();
-            $usuarioSol = $company->getGreUsuarioSol();
-            $claveSol = $company->getGreClaveSol();
-            
-            Log::info("Configurando credenciales GRE desde base de datos", [
-                'company_id' => $company->id,
-                'modo_produccion' => $company->modo_produccion,
-                'client_id' => $clientId ? '***' . substr($clientId, -4) : 'No configurado',
-                'ruc_proveedor' => $rucProveedor,
-                'usuario_sol' => $usuarioSol,
-            ]);
-            
-            $api->setBuilderOptions([
-                'strict_variables' => true,
-                'optimizations' => 0,
-                'debug' => true,
-                'cache' => false,
-            ])
-            ->setApiCredentials($clientId, $clientSecret)
-            ->setClaveSOL($rucProveedor, $usuarioSol, $claveSol)
-            ->setCertificate($certificadoContent);
-            
+            $api = GreenterService::createGuideApi($guide->company);
+
             Log::info("Enviando a SUNAT con credenciales configuradas...");
             $result = $api->send($despatch);
             
@@ -1579,28 +1538,8 @@ class DocumentService
                 'ticket' => $guide->ticket
             ]);
             
-            // USAR CONFIGURACIÓN DIRECTA COMO EN ENVÍO
-            $api = new \Greenter\Api([
-                'auth' => 'https://gre-test.nubefact.com/v1',
-                'cpe' => 'https://gre-test.nubefact.com/v1',
-            ]);
-            
-            // Configurar certificado
-            $certificadoContent = file_get_contents(storage_path('app/public/certificado/certificado.pem'));
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo cargar el certificado");
-            }
-            
-            $api->setBuilderOptions([
-                'strict_variables' => true,
-                'optimizations' => 0,
-                'debug' => true,
-                'cache' => false,
-            ])
-            ->setApiCredentials('test-85e5b0ae-255c-4891-a595-0b98c65c9854', 'test-Hty/M6QshYvPgItX2P0+Kw==')
-            ->setClaveSOL('20161515648', 'MODDATOS', 'MODDATOS')
-            ->setCertificate($certificadoContent);
-            
+            $api = GreenterService::createGuideApi($guide->company);
+
             Log::info("Consultando estado en SUNAT...");
             $result = $api->getStatus($guide->ticket);
             

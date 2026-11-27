@@ -3,6 +3,7 @@ import unittest
 from datetime import date
 from decimal import Decimal
 
+from flask import g
 from flask_jwt_extended import create_access_token, verify_jwt_in_request
 from sqlalchemy import text
 from werkzeug.exceptions import Forbidden, NotFound, Conflict
@@ -36,6 +37,26 @@ class LocalScopeIntegrationTests(unittest.TestCase):
         token = create_access_token(identity=str(user), additional_claims={
             'tipo_token': 'operativo', 'id_perfil': profile, 'id_local': local})
         return self.app.test_request_context(headers={'Authorization': 'Bearer ' + token})
+
+    def test_global_store_access_follows_active_profile_policy(self):
+        db.session.execute(text("UPDATE perfiles SET acceso_todos_locales = (id_perfil = 2)"))
+        self.assertEqual(len(listar_locales_usuario(2, 2)), 2)
+        with self.session(local=2, user=2, profile=2):
+            verify_jwt_in_request()
+            self.assertEqual(local_actual(), 2)
+            g.pop("local_operativo", None)
+
+        with self.session(local=2, user=1, profile=1):
+            verify_jwt_in_request()
+            with self.assertRaises(Forbidden):
+                local_actual()
+
+        db.session.execute(text("UPDATE usuario_perfiles SET estado_registro=0 WHERE id_usuario=2 AND id_perfil=2"))
+        self.assertEqual(listar_locales_usuario(2, 2), [])
+        with self.session(local=1, user=2, profile=2):
+            verify_jwt_in_request()
+            with self.assertRaises(Forbidden):
+                local_actual()
 
     def test_read_queries_and_locks(self):
         with self.session():
@@ -164,8 +185,10 @@ class AdminOperationalRestrictionsTests(unittest.TestCase):
         with app.app_context():
             token = create_access_token(identity='1', additional_claims={'tipo_token':'operativo','id_perfil':1,'id_local':1})
             with patch.object(db.session, 'execute') as execute:
+                execute.return_value.scalar.return_value = False
                 for path in ['/api/inventarios/stock','/api/inventarios/resumen','/api/inventarios/revisiones/9','/api/movimientos/formulario','/api/movimientos/seguimiento','/api/ordenes-compra/formulario','/api/recepciones/pendientes']:
                     result = app.test_client().get(path, headers={'Authorization':'Bearer '+token})
                     self.assertEqual(result.status_code,403,result.json)
-                execute.assert_not_called()
+                self.assertEqual(execute.call_count, 7)
+                self.assertTrue(all('auth_permiso_accion' in str(c.args[0]) for c in execute.call_args_list))
             self.assertEqual(cambiar_local_activo(1,{'tipo_token':'operativo','id_perfil':1},{'id_local':2})[1],403)

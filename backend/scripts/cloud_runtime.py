@@ -88,9 +88,20 @@ def migrate_application(url):
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('barbarito-cloud-fact-setup'))"))
             connection.exec_driver_sql('SET LOCAL search_path TO public')
             connection.exec_driver_sql('CREATE SCHEMA IF NOT EXISTS fact_api')
-            for name in ('20261118_clientes.sql','20261121_fact_api_queue.sql','20261121_fact_api_autoscale.sql','20261124_ai_quotas.sql'):
+            existe_catalogo = connection.execute(text("SELECT to_regclass('public.unidad_medida')")).scalar()
+            if not existe_catalogo or not connection.execute(text(
+                'SELECT EXISTS (SELECT 1 FROM public.unidad_medida)'
+            )).scalar():
+                migration = (ROOT/'database/migrations/20261010_unidades_unece.sql').read_text(encoding='utf-8')
+                connection.exec_driver_sql(migration.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
+            for name in ('20261118_clientes.sql','20261121_fact_api_queue.sql','20261121_fact_api_autoscale.sql','20261124_ai_quotas.sql', '20261126_motivos_recepcion.sql', '20261126_motivos_movimiento.sql', '20261126_estandar_unidades.sql', '20261126_unidades_menaje.sql', '20261127_acceso_perfil_locales.sql', '20261127_funciones_alcance_local.sql', '20261127_capacidades_perfil.sql', '20261127_configuracion_operativa.sql', '20261127_funciones_autenticacion.sql', '20261127_funciones_auditoria.sql', '20261127_acciones_permiso.sql', '20261127_funciones_stock_local.sql', '20261127_funcion_categorias_carta.sql', '20261127_funciones_medidas_menaje.sql', '20261127_funciones_editor_presentaciones.sql', '20261127_reglas_sesion_perfil.sql', '20261127_funciones_admin_categorias_carta.sql', '20261127_reglas_medidas_menaje.sql', '20261127_funciones_carta_restantes.sql', '20261127_funciones_catalogos_repositorio.sql', '20261127_funciones_catalogos_stock.sql', '20261127_funciones_catalogos_eliminacion.sql', '20261127_funciones_clientes.sql', '20261127_funciones_compras.sql', '20261127_funciones_facturacion.sql', '20261127_funcion_health.sql', '20261127_funciones_inventarios_consultas.sql', '20261127_funciones_inventarios.sql', '20261127_funciones_movimientos.sql', '20261127_funciones_produccion.sql', '20261127_funciones_promociones.sql', '20261127_funciones_recepciones.sql', '20261127_funciones_recetas.sql', '20261127_funciones_salon.sql', '20261127_funciones_usuarios.sql'):
                 migration=(ROOT/'database/migrations'/name).read_text(encoding='utf-8')
-                connection.exec_driver_sql(migration.replace('BEGIN;','').replace('COMMIT;',''))
+                connection.exec_driver_sql(migration.replace('BEGIN;','').replace('COMMIT;',''), execution_options={'no_parameters': True})
+            if not connection.execute(text("SELECT to_regclass('public.unidad_medida_catalogo_inicializado')")).scalar():
+                migration = (ROOT/'database/migrations/20261126_catalogo_unidades.sql').read_text(encoding='utf-8')
+                connection.exec_driver_sql(migration.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
+            funciones = (ROOT/'database/migrations/20261127_funciones_catalogos.sql').read_text(encoding='utf-8')
+            connection.exec_driver_sql(funciones.replace('BEGIN;', '').replace('COMMIT;', ''), execution_options={'no_parameters': True})
             connection.execute(text('''INSERT INTO fact_api_config
                 (id_local,activo,empresa,serie_factura,serie_boleta,tasa_igv)
                 SELECT id_local,true,CAST(:company AS jsonb),'F'||lpad(id_local::text,3,'0'),

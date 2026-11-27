@@ -1,3 +1,4 @@
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.multiagente.agents import activity
 """Explicit application capabilities; no arbitrary URLs, SQL or code from the model."""
 import json
@@ -46,7 +47,7 @@ def allowed(session, resource, action='consultar'):
     if resource in inventory.RESOURCES:return inventory.allowed(session,resource,action)
     if resource not in RESOURCES:
         return False
-    if action != 'consultar' and (resource == 'usuarios' or int(get_jwt().get('id_perfil', 0)) != 1):
+    if action != 'consultar' and (resource == 'usuarios' or not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente')):
         return False
     return any(m['id_opcion_menu'] == RESOURCES[resource][0] and
                m.get('permisos', {}).get(action, False) for m in session['menu'])

@@ -13,8 +13,12 @@ SUPPLIER = {'id_proveedor': 3, 'nombre': 'Proveedor real', 'activo': True, 'ids_
 OPTIONS = {'categorias': [CATEGORY], 'proveedores': [SUPPLIER], 'unidades_medida': []}
 
 
+from test_units import mock_unit_catalog
+
+
 class AssistantFormTests(unittest.TestCase):
     def setUp(self):
+        mock_unit_catalog(self)
         availability = patch('app.multiagente.api.quotas.ensure_enabled')
         availability.start(); self.addCleanup(availability.stop)
         self.app = create_app()

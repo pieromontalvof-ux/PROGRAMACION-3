@@ -36,6 +36,7 @@ class GlobalDemandTests(unittest.TestCase):
             with app.app_context():
                 token=create_access_token(identity='1',additional_claims={'tipo_token':'operativo','id_perfil':role,'id_local':4})
             with patch('app.core.extensions.db.session.execute') as execute, \
+                 patch('app.modules.inventarios.operativo.perfil_tiene_capacidad', return_value=role == 1), \
                  patch('app.modules.inventarios.demand_global.report',return_value={'alcance':'GLOBAL'}) as report:
                 execute.return_value.scalar.return_value=True
                 response=client.get(url,headers={'Authorization':'Bearer '+token})
@@ -51,10 +52,13 @@ class GlobalDemandTests(unittest.TestCase):
     def test_agent_global_capability_is_read_only_and_separate_from_local(self):
         from app.multiagente.api import global_demand,demand
         session={'menu':[{'id_opcion_menu':14,'permisos':{'consultar':True}}]}
-        with patch('app.multiagente.api.global_demand.get_jwt',return_value={'id_perfil':1}):
+        with patch.object(global_demand, 'get_jwt', return_value={'id_perfil':1}), \
+             patch.object(global_demand, 'perfil_tiene_capacidad', return_value=True):
             self.assertTrue(global_demand.allowed(session))
             self.assertFalse(global_demand.allowed(session,'crear'))
-        with patch('app.multiagente.api.global_demand.get_jwt',return_value={'id_perfil':2}):
+        with patch.object(global_demand, 'get_jwt', return_value={'id_perfil':2}), \
+             patch.object(global_demand, 'perfil_tiene_capacidad', return_value=False):
             self.assertFalse(global_demand.allowed(session))
-        with patch.object(demand,'get_jwt',return_value={'id_perfil':1}):
+        with patch.object(demand,'get_jwt',return_value={'id_perfil':1}), \
+             patch.object(demand, 'perfil_tiene_capacidad', return_value=False):
             self.assertFalse(demand.allowed(session))

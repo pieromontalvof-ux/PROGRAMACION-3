@@ -10,7 +10,7 @@ from app.core.extensions import db
 from app.modules.facturacion.worker import process_one
 from app.modules.facturacion.scaling import worker_loop
 from app.modules.facturacion.supervisor import acquire_worker_slot,release_worker_slot,owns_epoch
-from sqlalchemy import text
+from sqlalchemy import func, select
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
         try:
             with app.app_context():
                 if args.supervisor_id and not owns_epoch(str(args.supervisor_id)):return True
-                if slot and slot[0].execute(text('SELECT pg_backend_pid()')).scalar_one()!=slot[1]:return True
+                if slot and slot[0].execute(select(func.public.facturacion_pid_conexion())).scalar_one()!=slot[1]:return True
         except Exception:
             return True  # Fail closed if ownership cannot be verified.
         return False

@@ -10,7 +10,7 @@ from app import create_app
 from app.core.extensions import db
 from app.modules.facturacion.scaling import ScalingPolicy
 from app.modules.facturacion.supervisor import Supervisor,queue_stats,acquire_leadership,release_leadership
-from sqlalchemy import text
+from sqlalchemy import Uuid, bindparam, cast, func, select
 
 
 def main():
@@ -37,14 +37,14 @@ def main():
                 leader=acquire_leadership()
         if leader is None:
             print('Ya existe un supervisor fact_api en esta base.',flush=True);return 2
-        backend_pid=leader.execute(text('SELECT pg_backend_pid()')).scalar_one()
+        backend_pid=leader.execute(select(func.public.facturacion_pid_conexion())).scalar_one()
         manager=Supervisor(Path(app.instance_path)/'fact_api_workers',policy)
         print(f'Workers automáticos: mínimo {policy.minimum}, máximo {policy.maximum}.',flush=True)
         try:
             manager.heartbeat({'ready':0,'busy':0,'oldest':0,'blocked':False,'unhealthy':False},policy.minimum)
             while not stopping and not (args.stop_file and args.stop_file.exists()):
                 # A reconnected session no longer owns the original advisory lock.
-                if leader.execute(text('SELECT pg_backend_pid()')).scalar_one()!=backend_pid:
+                if leader.execute(select(func.public.facturacion_pid_conexion())).scalar_one()!=backend_pid:
                     raise RuntimeError('Se perdió la sesión de liderazgo.')
                 stats=queue_stats();desired=manager.tick(stats);manager.heartbeat(stats,desired)
                 if args.once:break
@@ -54,8 +54,7 @@ def main():
         finally:
             manager.wait_for_retirement()
             try:
-                db.session.execute(text('''UPDATE fact_api_escalado SET activos=0,objetivo=0,workers='[]',
-                    actualizado_en=now() WHERE supervisor=:id'''),{'id':manager.identity});db.session.commit()
+                db.session.execute(select(func.public.facturacion_retirar_supervisor(cast(bindparam('id'), Uuid))),{'id':manager.identity});db.session.commit()
             finally:
                 release_leadership(leader)
     return 0

@@ -6,7 +6,7 @@ from flask_jwt_extended import create_access_token, verify_jwt_in_request
 
 from app import create_app
 from app.core.extensions import db
-from app.core.stock_local import minimo_del_local
+from app.modules.inventarios.repository import consultar_stock_actual
 from app.modules.catalogos.service import crear_producto_catalogo, editar_producto_catalogo
 from app.modules.catalogos.stock_limits import validar_limites
 
@@ -18,6 +18,10 @@ class StockLimitsTests(unittest.TestCase):
         self.context = self.app.app_context()
         self.context.push()
         self.client = self.app.test_client()
+        politica = patch('app.modules.catalogos.stock_limits.perfil_administra_limites_stock',
+                         side_effect=lambda perfil: perfil == 2)
+        politica.start()
+        self.addCleanup(politica.stop)
 
     def tearDown(self):
         self.context.pop()
@@ -154,21 +158,17 @@ class StockLimitsTests(unittest.TestCase):
                 self.assertEqual(response.json['id_local'], local)
                 self.assertEqual(execute.call_args.args[1], {'local': local})
 
-    def test_minimo_operativo_usa_local_sesion(self):
-        for local in [1, 2]:
-            with self.app.test_request_context(headers=self.headers(2, local=local)), \
-                    patch.object(db.session, 'execute') as execute:
-                verify_jwt_in_request()
-                execute.return_value.scalar.return_value = True
-                expresion, parametros = minimo_del_local()
-                self.assertIn('producto_stock_local', expresion)
-                self.assertEqual(parametros, {'id_local_stock': local})
-
-    def test_consultas_compatibles_antes_de_migrar(self):
-        with self.app.test_request_context(headers=self.headers(2)), patch.object(db.session, 'execute') as execute:
-            verify_jwt_in_request()
-            execute.return_value.scalar.return_value = False
-            self.assertEqual(minimo_del_local(), ('p.stock_minimo', {}))
+    def test_stock_usa_local_autorizado_en_ambos_modelos(self):
+        for local, operativo in [(1, True), (2, False)]:
+            with self.subTest(local=local), patch(
+                'app.modules.inventarios.repository.local_actual', return_value=local
+            ), patch('app.modules.inventarios.repository.exigir_migracion_locales'), patch(
+                'app.modules.inventarios.operativo.instalado', return_value=operativo
+            ), patch.object(db.session, 'execute') as execute:
+                consultar_stock_actual()
+                consulta = execute.call_args.args[0].compile()
+                self.assertIn(local, consulta.params.values())
+                self.assertIn('operativo' if operativo else 'historico', str(consulta))
 
 
 if __name__ == '__main__':

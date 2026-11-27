@@ -8,6 +8,10 @@ from app.modules.salon.salon_payments import salon_payments_bp, filtros_diario
 
 class SalesJournalTests(unittest.TestCase):
     def setUp(self):
+        capacidad = patch('app.modules.salon.salon_payments.perfil_tiene_capacidad',
+                          side_effect=lambda perfil, permiso: perfil in (2, 3))
+        capacidad.start()
+        self.addCleanup(capacidad.stop)
         self.app=Flask(__name__)
         self.app.config['JWT_SECRET_KEY']='test-secret-key-at-least-thirty-two-characters'
         JWTManager(self.app)
@@ -32,8 +36,8 @@ class SalesJournalTests(unittest.TestCase):
             r=self.app.test_client().get('/api/salon/ventas?desde=2026-11-18&hasta=2026-11-18&metodo=EFECTIVO&pagina=2',headers={'Authorization':'Bearer '+self.token})
             self.assertEqual(r.status_code,200)
             sql,params=database.session.execute.call_args.args
-            self.assertIn('id_local=:local',str(sql))
-            self.assertIn('metodo=:metodo',str(sql))
+            self.assertIn('public.salon_diario',str(sql))
+            self.assertEqual(params['metodo'],'EFECTIVO')
             self.assertEqual(params['local'],3)
             self.assertEqual(params['offset'],20)
             self.assertEqual(r.json['ventas'][0]['numero'],'INT-00000081')

@@ -15,6 +15,10 @@ from flask_jwt_extended import JWTManager, create_access_token
 from app.modules.salon.salon_payments import salon_payments_bp
 class SaleChangeRoutes(unittest.TestCase):
  def setUp(self):
+  capacidad = patch('app.modules.salon.salon_payments.perfil_tiene_capacidad',
+                    side_effect=lambda perfil, permiso: perfil in (2, 3))
+  capacidad.start()
+  self.addCleanup(capacidad.stop)
   self.app=Flask(__name__);self.app.config['JWT_SECRET_KEY']='a-test-secret-of-more-than-thirty-two-characters';JWTManager(self.app)
   self.app.register_blueprint(salon_payments_bp,url_prefix='/api/salon')
   with self.app.app_context(): self.token=create_access_token(identity='1')
@@ -31,7 +35,7 @@ class SaleChangeRoutes(unittest.TestCase):
    database.session.execute.return_value.mappings.return_value.first.return_value=None
    self.assertEqual(self.post({'motivo':'Equivocación','version':0}).status_code,404)
    sql,params=database.session.execute.call_args.args
-   self.assertIn('c.id_local=:local',str(sql));self.assertEqual(params['local'],3)
+   self.assertIn('public.salon_cambio_bloqueado',str(sql));self.assertEqual(params['local'],3)
    database.session.rollback.assert_called_once()
  def test_closed_day_cannot_change(self):
   row=dict(fecha_venta=date(2026,11,19),jornada_fecha=date(2026,11,19),cerrado_en='closed',hoy=date(2026,11,19))

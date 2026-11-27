@@ -10,12 +10,17 @@ PRODUCTS = [
 PROVIDERS = [{'id_proveedor': 2, 'nombre': 'Distribuidora Central', 'activo': True}]
 
 
+from test_tableware_measurements import mock_capacity_catalog
+
+
 class SupplyReviewTests(unittest.TestCase):
     def setUp(self):
+        mock_capacity_catalog(self)
         self.ctx = Flask(__name__).test_request_context()
         self.ctx.push()
         self.addCleanup(self.ctx.pop)
         for target, kwargs in (
+            ('app.multiagente.agents.supply.perfil_tiene_capacidad', {'side_effect': lambda perfil, capacidad: perfil == 1}),
             ('app.multiagente.api.tools.allowed', {'return_value': True}),
             ('app.multiagente.api.tools.authorize', {}),
             ('app.multiagente.api.configuration.authorize', {}),

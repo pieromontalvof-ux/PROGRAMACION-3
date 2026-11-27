@@ -10,8 +10,12 @@ ROWS={
  'presentaciones':[{'id_presentacion_venta':10,'nombre':'Limonada clásica','id_categoria_carta':1,'id_menaje':5,'contenido':0.4,'unidad':'LTR','activo':True}],
 }
 
+from test_tableware_measurements import mock_capacity_catalog
+
+
 class PresentationAdviceTests(unittest.TestCase):
  def setUp(self):
+  mock_capacity_catalog(self)
   self.ctx=Flask(__name__).test_request_context();self.ctx.push();self.addCleanup(self.ctx.pop)
   for target,kwargs in [('app.multiagente.api.tools.allowed',{'return_value':True}),('app.multiagente.api.tools.authorize',{}),('app.multiagente.api.configuration.authorize',{}),('app.multiagente.api.configuration.authorize_owner',{}),('app.multiagente.api.configuration.owner_allows',{'return_value':True})]:
    p=patch(target,**kwargs);p.start();self.addCleanup(p.stop)

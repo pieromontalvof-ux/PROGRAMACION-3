@@ -17,7 +17,7 @@ produccion_bp = Blueprint(
 
 @produccion_bp.get("/subproductos")
 @requiere_permiso(
-    id_opcion_menu=12,
+    id_opcion_menu='subproductos',
     accion="consultar",
 )
 def consultar_subproductos():
@@ -27,21 +27,21 @@ def consultar_subproductos():
 
 
 @produccion_bp.get('/subproductos/formulario')
-@requiere_permiso(id_opcion_menu=12, accion='consultar')
+@requiere_permiso(id_opcion_menu='subproductos', accion='consultar')
 def consultar_formulario_subproducto():
     respuesta, estado = formulario_subproducto()
     return jsonify(respuesta), estado
 
 
 @produccion_bp.post('/subproductos')
-@requiere_permiso(id_opcion_menu=12, accion='crear')
+@requiere_permiso(id_opcion_menu='subproductos', accion='crear')
 def crear_subproducto():
     respuesta, estado = guardar_subproducto(int(get_jwt_identity()), request.get_json(silent=True))
     return jsonify(respuesta), estado
 
 
 @produccion_bp.put('/subproductos/<int:id_subproducto>')
-@requiere_permiso(id_opcion_menu=12, accion='editar')
+@requiere_permiso(id_opcion_menu='subproductos', accion='editar')
 def editar_subproducto(id_subproducto):
     respuesta, estado = guardar_subproducto(int(get_jwt_identity()), request.get_json(silent=True), id_subproducto)
     return jsonify(respuesta), estado
@@ -49,7 +49,7 @@ def editar_subproducto(id_subproducto):
 
 @produccion_bp.get("/grupos-salsa")
 @requiere_permiso(
-    id_opcion_menu=13,
+    id_opcion_menu='grupos_salsa',
     accion="consultar",
 )
 def consultar_grupos_salsa():

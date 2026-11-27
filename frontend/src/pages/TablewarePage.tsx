@@ -16,7 +16,7 @@ import {
 
 import { useAuth } from '../context/authState'
 import { obtenerMenajes, administrarMenaje, type AccionMenaje } from '../services/cartaService'
-import type { RespuestaMenajes, MenajeDetalle, UnidadCapacidad } from '../types/carta'
+import type { RespuestaMenajes, MenajeDetalle, OpcionCapacidad } from '../types/carta'
 import { CatalogDialog } from '../components/catalogs/CatalogDialog'
 import { permisosDe } from '../utils/permissionHelpers'
 
@@ -24,17 +24,11 @@ import './CartaCatalogPages.css'
 
 type EstadoFiltro = 'todos' | 'activos' | 'inactivos'
 
-const unidadesCapacidad: Record<UnidadCapacidad, { nombre: string; factor: number }> = {
-  MLT: { nombre: 'mL', factor: 1 },
-  LTR: { nombre: 'L', factor: 1000 },
-  FLOZ_US: { nombre: 'Onzas líquidas (oz)', factor: 29.5735295625 },
-  FLOZ_UK: { nombre: 'fl oz (imperiales)', factor: 28.4130625 },
-}
 const formatearMedida = (valor: number) => valor.toLocaleString('es-ES', { maximumFractionDigits: 2, useGrouping: false })
 
-function medidasTexto(item: MenajeDetalle) {
+function medidasTexto(item: MenajeDetalle, unidades: OpcionCapacidad[]) {
   const capacidad = item.capacidad != null && item.unidad_capacidad
-    ? `${formatearMedida(item.capacidad)} ${unidadesCapacidad[item.unidad_capacidad].nombre}` : null
+    ? `${formatearMedida(item.capacidad)} ${unidades.find(u => u.codigo === item.unidad_capacidad)?.nombre ?? item.unidad_capacidad}` : null
   const dimensiones = [item.diametro_cm != null ? `Ø ${formatearMedida(item.diametro_cm)} cm` : null,
     item.largo_cm != null ? `largo ${formatearMedida(item.largo_cm)} cm` : null,
     item.ancho_cm != null ? `ancho ${formatearMedida(item.ancho_cm)} cm` : null,
@@ -50,7 +44,7 @@ export function TablewarePage() {
   const [nombre, setNombre] = useState('')
   const [capacidad, setCapacidad] = useState('')
   const [capacidadEditada, setCapacidadEditada] = useState(false)
-  const [unidadCapacidad, setUnidadCapacidad] = useState<UnidadCapacidad>('MLT')
+  const [unidadCapacidad, setUnidadCapacidad] = useState('')
   const [diametro, setDiametro] = useState('')
   const [altura, setAltura] = useState('')
   const [largo, setLargo] = useState('')
@@ -62,14 +56,15 @@ export function TablewarePage() {
     setOperacion({ accion, item }); setNombre(item?.nombre ?? ''); setErrorModal(''); setMensaje('')
     setCapacidad(item?.capacidad?.toString() ?? '')
     setCapacidadEditada(false)
-    setUnidadCapacidad(item?.unidad_capacidad ?? 'MLT')
+    setUnidadCapacidad(item?.unidad_capacidad ?? unidadBase?.codigo ?? '')
     setDiametro(item?.diametro_cm?.toString() ?? '')
     setAltura(item?.altura_cm?.toString() ?? '')
     setLargo(item?.largo_cm?.toString() ?? '')
     setAncho(item?.ancho_cm?.toString() ?? '')
-    if (item?.unidad_capacidad === 'FLOZ_UK' && item.capacidad != null) {
-      setCapacidad((item.capacidad * unidadesCapacidad.FLOZ_UK.factor).toFixed(3))
-      setUnidadCapacidad('MLT')
+    const original = unidadesCapacidad.find(u => u.codigo === item?.unidad_capacidad)
+    if (original && !original.visible && item?.capacidad != null && unidadBase) {
+      setCapacidad((item.capacidad * original.factor / unidadBase.factor).toFixed(3))
+      setUnidadCapacidad(unidadBase.codigo)
     }
   }
   async function guardar() {
@@ -89,9 +84,9 @@ export function TablewarePage() {
         largo_cm: largo === '' ? null : Number(largo),
         ancho_cm: ancho === '' ? null : Number(ancho),
       } : undefined
-      if (medidas && !capacidadEditada && operacion.item?.unidad_capacidad === 'FLOZ_UK') {
+      if (medidas && !capacidadEditada && operacion.item?.unidad_capacidad) {
         medidas.capacidad = operacion.item.capacidad ?? null
-        medidas.unidad_capacidad = 'FLOZ_UK'
+        medidas.unidad_capacidad = operacion.item.unidad_capacidad
       }
       const respuesta = await administrarMenaje(token, operacion.accion, nombre, operacion.item?.id_menaje, medidas)
       setOperacion(null); setMensaje(respuesta.mensaje); setAbierto(null)
@@ -101,6 +96,9 @@ export function TablewarePage() {
   }
   const [datos, setDatos] =
     useState<RespuestaMenajes | null>(null)
+  const unidadesCapacidad = datos?.unidades_capacidad ?? []
+  const unidadBase = unidadesCapacidad.find(u => u.visible && u.factor === 1) ?? unidadesCapacidad.find(u => u.visible)
+  const unidadSeleccionada = unidadesCapacidad.find(u => u.codigo === unidadCapacidad)
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] =
     useState<EstadoFiltro>('todos')
@@ -274,7 +272,7 @@ export function TablewarePage() {
                           <Utensils />
                           <strong>{item.nombre}</strong>
                         </span>
-                        <div>{medidasTexto(item).length ? medidasTexto(item).map(medida => <div key={medida}><small>{medida}</small></div>) : <small>Sin registrar</small>}</div>
+                        <div>{medidasTexto(item, unidadesCapacidad).length ? medidasTexto(item, unidadesCapacidad).map(medida => <div key={medida}><small>{medida}</small></div>) : <small>Sin registrar</small>}</div>
                         {item.origen_medidas === 'DEMO' && <small>Medidas de ejemplo</small>}
                       </td>
                       <td>{item.total_items}</td>
@@ -346,11 +344,11 @@ export function TablewarePage() {
         {operacion?.accion === 'crear' || operacion?.accion === 'editar' ? <>
           <label>Nombre del menaje<input required maxLength={100} value={nombre} onChange={e => setNombre(e.target.value)} /></label>
           <label>Capacidad (opcional)<input type="number" min="0" step="any" value={capacidad} onChange={e => { setCapacidad(e.target.value); setCapacidadEditada(true) }} aria-describedby="menaje-capacidad-ayuda" /></label>
-          <label>Unidad de capacidad<select value={unidadCapacidad} onChange={e => { setUnidadCapacidad(e.target.value as UnidadCapacidad); setCapacidadEditada(true) }}>
-            {Object.entries(unidadesCapacidad).filter(([codigo]) => codigo !== 'FLOZ_UK').map(([codigo, unidad]) => <option key={codigo} value={codigo}>{unidad.nombre}</option>)}
+          <label>Unidad de capacidad<select value={unidadCapacidad} onChange={e => { setUnidadCapacidad(e.target.value); setCapacidadEditada(true) }}>
+            {unidadesCapacidad.filter(unidad => unidad.visible).map(unidad => <option key={unidad.codigo} value={unidad.codigo}>{unidad.nombre}</option>)}
           </select></label>
           <p id="menaje-capacidad-ayuda">{capacidad !== '' && Number.isFinite(Number(capacidad)) && Number(capacidad) > 0
-            ? `Equivalencia: ${formatearMedida(Number(capacidad) * unidadesCapacidad[unidadCapacidad].factor)} mL. ` : ''}fl oz indica volumen, no onzas de peso.</p>
+            ? `Equivalencia: ${formatearMedida(Number(capacidad) * (unidadSeleccionada?.factor ?? 1))} mL. ` : ''}fl oz indica volumen, no onzas de peso.</p>
           <label>Diámetro en cm (opcional)<input type="number" min="0" step="any" value={diametro} onChange={e => setDiametro(e.target.value)} /></label>
           <label>Altura en cm (opcional)<input type="number" min="0" step="any" value={altura} onChange={e => setAltura(e.target.value)} /></label>
           <label>Largo en cm (opcional)<input type="number" min="0" step="any" value={largo} onChange={e => setLargo(e.target.value)} /></label>

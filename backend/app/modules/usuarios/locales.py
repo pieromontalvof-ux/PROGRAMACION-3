@@ -2,14 +2,16 @@
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.core.permissions import requiere_permiso
 from app.modules.auditoria.service import registrar_actividad
 
 locales_bp = Blueprint('locales', __name__)
+COLUMNAS_LOCAL = ('id_local', 'codigo', 'nombre', 'direccion', 'estado_registro')
 
 
 def validar(datos):
@@ -25,31 +27,24 @@ def validar(datos):
 
 def siguiente_codigo():
     # El bloqueo se mantiene hasta commit, también frente a eliminaciones concurrentes.
-    db.session.execute(text('LOCK TABLE local IN SHARE ROW EXCLUSIVE MODE'))
-    numero = db.session.execute(text('''WITH usados AS (
-        SELECT substring(codigo from 5)::bigint AS numero FROM local
-        WHERE codigo ~ '^TDA-[0-9]+$'
-    ), candidatos AS (
-        SELECT 1::bigint AS numero UNION SELECT numero+1 FROM usados
-    ) SELECT min(c.numero) FROM candidatos c
-      WHERE NOT EXISTS(SELECT 1 FROM usados u WHERE u.numero=c.numero)''')).scalar_one()
-    return f'TDA-{numero:03d}'
+    db.session.execute(select(func.public.usuarios_bloquear_locales()))
+    return db.session.execute(select(func.public.usuarios_siguiente_codigo_local())).scalar_one()
 
 
 @locales_bp.get('')
-@requiere_permiso(id_opcion_menu=2, accion='consultar')
+@requiere_permiso(id_opcion_menu='usuarios', accion='consultar')
 def listar():
-    if int(get_jwt()['id_perfil']) != 1:
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
         return jsonify(mensaje='Solo el Administrador puede gestionar tiendas.'), 403
-    rows = db.session.execute(text('''SELECT id_local,codigo,nombre,direccion,estado_registro
-                                     FROM local ORDER BY length(codigo),codigo''')).mappings().all()
+    locales = func.public.usuarios_listar_locales().table_valued(*COLUMNAS_LOCAL)
+    rows = db.session.execute(select(locales)).mappings().all()
     return jsonify(locales=[dict(r) for r in rows])
 
 
 @locales_bp.post('')
-@requiere_permiso(id_opcion_menu=2, accion='crear')
+@requiere_permiso(id_opcion_menu='usuarios', accion='crear')
 def crear():
-    if int(get_jwt()['id_perfil']) != 1:
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
         return jsonify(mensaje='Solo el Administrador puede crear tiendas.'), 403
     try:
         datos = validar(request.get_json(silent=True))
@@ -58,10 +53,10 @@ def crear():
     try:
         datos['codigo'] = siguiente_codigo()
         usuario = int(get_jwt_identity())
-        local = db.session.execute(text('''INSERT INTO local(codigo,nombre,direccion,usuario_creacion)
-            VALUES(:codigo,:nombre,:direccion,:usuario)
-            RETURNING id_local,codigo,nombre,direccion,estado_registro'''),
-            {**datos, 'usuario': usuario}).mappings().one()
+        creado = func.public.usuarios_crear_local(
+            datos['codigo'], datos['nombre'], datos['direccion'], usuario,
+        ).table_valued(*COLUMNAS_LOCAL)
+        local = db.session.execute(select(creado)).mappings().one()
         registrar_actividad(usuario, 'LOCALES', 'CREAR', local['id_local'],
                             'Creó la tienda ' + local['nombre'])
         db.session.commit()
@@ -75,7 +70,7 @@ def crear():
 
 
 def modificar(identidad, accion):
-    if int(get_jwt()['id_perfil']) != 1:
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
         return jsonify(mensaje='Solo el Administrador puede gestionar tiendas.'), 403
     try:
         datos = validar(request.get_json(silent=True)) if accion == 'EDITAR' else {}
@@ -87,13 +82,16 @@ def modificar(identidad, accion):
     except ValueError as error:
         return jsonify(mensaje=str(error)), 400
     try:
-        db.session.execute(text('LOCK TABLE local IN SHARE ROW EXCLUSIVE MODE'))
-        anterior = db.session.execute(text('SELECT * FROM local WHERE id_local=:id FOR UPDATE'), {'id': identidad}).mappings().first()
+        db.session.execute(select(func.public.usuarios_bloquear_locales()))
+        bloqueado = func.public.usuarios_bloquear_local(identidad).table_valued(
+            *COLUMNAS_LOCAL, 'fecha_creacion', 'usuario_creacion', 'fecha_modificacion', 'usuario_modificacion',
+        )
+        anterior = db.session.execute(select(bloqueado)).mappings().first()
         if anterior is None:
             db.session.rollback()
             return jsonify(mensaje='La tienda ya no existe.'), 404
         if accion == 'ELIMINAR' or (accion == 'ESTADO' and datos['estado_registro'] == 0):
-            if anterior['estado_registro'] == 1 and db.session.execute(text('SELECT count(*) FROM local WHERE estado_registro=1')).scalar() <= 1:
+            if anterior['estado_registro'] == 1 and db.session.execute(select(func.public.usuarios_total_locales_activos())).scalar_one() <= 1:
                 db.session.rollback()
                 return jsonify(mensaje='Debes conservar al menos una tienda activa.'), 409
             if get_jwt().get('id_local') == identidad:
@@ -101,26 +99,19 @@ def modificar(identidad, accion):
                 return jsonify(mensaje='Cambia el local activo antes de desactivar o eliminar esta tienda.'), 409
         if accion == 'ELIMINAR':
             # Revisa incluso relaciones CASCADE: nunca elimina datos asociados.
-            relaciones = db.session.execute(text('''SELECT ns.nspname AS esquema, cl.relname AS tabla,
-                a.attname AS columna, cardinality(c.conkey) AS columnas
-                FROM pg_constraint c JOIN pg_class cl ON cl.oid=c.conrelid
-                JOIN pg_namespace ns ON ns.oid=cl.relnamespace
-                JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=c.conkey[1]
-                WHERE c.contype='f' AND c.confrelid='public.local'::regclass''')).mappings().all()
-            quote = db.engine.dialect.identifier_preparer.quote
-            for r in relaciones:
-                if r['columnas'] != 1 or db.session.execute(text(
-                    f'SELECT EXISTS(SELECT 1 FROM {quote(r["esquema"])}.{quote(r["tabla"])} WHERE {quote(r["columna"])}=:id)'), {'id': identidad}).scalar():
-                    db.session.rollback()
-                    return jsonify(mensaje='Esta tienda tiene usuarios, configuraciones o historial asociado. Puedes desactivarla para conservar sus datos.'), 409
-            db.session.execute(text('DELETE FROM local WHERE id_local=:id'), {'id': identidad})
+            tiene_datos = db.session.execute(select(func.public.usuarios_local_tiene_datos(identidad))).scalar_one()
+            if tiene_datos:
+                db.session.rollback()
+                return jsonify(mensaje='Esta tienda tiene usuarios, configuraciones o historial asociado. Puedes desactivarla para conservar sus datos.'), 409
+            db.session.execute(select(func.public.usuarios_eliminar_local(identidad)))
             resultado = None
         else:
-            campos = 'nombre=:nombre,direccion=:direccion' if accion == 'EDITAR' else 'estado_registro=:estado_registro'
-            resultado = dict(db.session.execute(text(f'''UPDATE local SET {campos},
-                usuario_modificacion=:usuario,fecha_modificacion=CURRENT_TIMESTAMP WHERE id_local=:id
-                RETURNING id_local,codigo,nombre,direccion,estado_registro'''),
-                {**datos, 'usuario': int(get_jwt_identity()), 'id': identidad}).mappings().one())
+            usuario = int(get_jwt_identity())
+            if accion == 'EDITAR':
+                actualizado = func.public.usuarios_editar_local(identidad, datos['nombre'], datos['direccion'], usuario)
+            else:
+                actualizado = func.public.usuarios_estado_local(identidad, datos['estado_registro'], usuario)
+            resultado = dict(db.session.execute(select(actualizado.table_valued(*COLUMNAS_LOCAL))).mappings().one())
         from app.modules.auditoria.service import registrar_cambio
         usuario = int(get_jwt_identity())
         registrar_cambio(usuario, 'LOCALES', accion, 'local', identidad, dict(anterior), resultado)
@@ -136,18 +127,18 @@ def modificar(identidad, accion):
 
 
 @locales_bp.put('/<int:identidad>')
-@requiere_permiso(id_opcion_menu=2, accion='editar')
+@requiere_permiso(id_opcion_menu='usuarios', accion='editar')
 def editar(identidad):
     return modificar(identidad, 'EDITAR')
 
 
 @locales_bp.patch('/<int:identidad>/estado')
-@requiere_permiso(id_opcion_menu=2, accion='editar')
+@requiere_permiso(id_opcion_menu='usuarios', accion='editar')
 def estado(identidad):
     return modificar(identidad, 'ESTADO')
 
 
 @locales_bp.delete('/<int:identidad>')
-@requiere_permiso(id_opcion_menu=2, accion='eliminar')
+@requiere_permiso(id_opcion_menu='usuarios', accion='eliminar')
 def eliminar(identidad):
     return modificar(identidad, 'ELIMINAR')

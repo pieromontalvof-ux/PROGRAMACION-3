@@ -1,7 +1,5 @@
+import { API_BASE_URL } from '../config'
 import type { FormularioReceta, RecetaEntrada, RespuestaRecetas } from '../types/recipe'
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api'
 
 export async function obtenerRecetas(
   token: string,

@@ -4,7 +4,7 @@ import {ReviewDetails} from './ReviewDetails'
 
 afterEach(cleanup)
 describe('compact purchase review',()=>{
-  const product={producto:'Gin',unidad:'LTR',cantidad_final:1.8,presentacion_compra:0.6,
+  const product={producto:'Gin',unidad:'LTR',unidad_medida:{simbolo:'L',factor_a_base:'1'},unidad_fraccion:{simbolo:'mL',factor_a_base:'0.001'},cantidad_final:1.8,presentacion_compra:0.6,
     porcentaje_general:10,porcentaje_adicional:0,base_sugerida:1.8,antes_de_redondear:1.8}
   it('shows product first, percentage and purchase presentations without technical fields',()=>{
     render(<ReviewDetails resource="ordenes_compra" value={{advertencia:'Texto técnico extenso',eventos_cercanos:null,productos:[product]}} />)
@@ -18,7 +18,7 @@ describe('compact purchase review',()=>{
     expect(screen.queryByText('Sin asignar')).toBeNull()
   })
   it('keeps extra separate, handles units and lets the user show remaining products',()=>{
-    const rows=Array.from({length:8},(_,i)=>({...product,producto:`Insumo ${i}`,unidad:'C62',presentacion_compra:12,cantidad_final:36,porcentaje_adicional:20}))
+    const rows=Array.from({length:8},(_,i)=>({...product,producto:`Insumo ${i}`,unidad:'C62',unidad_medida:{simbolo:'unidad',simbolo_plural:'unidades',factor_a_base:'1'},unidad_fraccion:undefined,presentacion_compra:12,cantidad_final:36,porcentaje_adicional:20}))
     render(<ReviewDetails resource="ordenes_compra" value={{productos:rows}} />)
     expect(screen.getAllByText('10% + 20% extra')).toHaveLength(5)
     expect(screen.getAllByText('12 unidades')).toHaveLength(5)

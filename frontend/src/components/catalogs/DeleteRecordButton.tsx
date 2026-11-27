@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../../config'
 import { useState } from 'react'
 import { CatalogDialog } from './CatalogDialog'
 
@@ -11,7 +12,7 @@ export function DeleteRecordButton({ token, entidad, id, nombre, eliminado }: {
     if (!token || ocupado) return
     setOcupado(true); setError('')
     try {
-      const respuesta = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'}/eliminaciones/${entidad}/${id}`, {
+      const respuesta = await fetch(`${API_BASE_URL}/eliminaciones/${entidad}/${id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       })
       const datos = await respuesta.json()

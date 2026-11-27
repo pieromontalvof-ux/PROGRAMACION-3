@@ -54,7 +54,7 @@ export function ProductsPage() {
     nombre: '',
     id_categoria: '',
     id_proveedor: '',
-    unidad: 'KGM' as UnidadProducto,
+    unidad: '' as UnidadProducto,
     presentacion: '1',
   })
 
@@ -149,7 +149,7 @@ export function ProductsPage() {
             nombre: '',
             id_categoria: '',
             id_proveedor: '',
-            unidad: 'KGM',
+            unidad: datos?.unidades_medida.find((unidad) => unidad.codigo === unidad.codigo_base)?.codigo ?? '',
             presentacion: '1',
           },
     )
@@ -479,13 +479,13 @@ export function ProductsPage() {
                     </span>
                   </td>
 
-                  <td>{formatearUnidad(producto.unidad)}</td>
+                  <td>{formatearUnidad(producto)}</td>
 
                   <td>
                     {formatearNumero(
                       producto.presentacion,
                     )}{' '}
-                    {formatearUnidad(producto.unidad)}
+                    {formatearUnidad(producto)}
                   </td>
 
                   <td>
@@ -642,6 +642,7 @@ export function ProductsPage() {
         <label>
           Unidad de medida
           <select
+            required
             disabled={!!editando}
             value={formulario.unidad}
             onChange={(evento) =>
@@ -651,6 +652,7 @@ export function ProductsPage() {
               })
             }
           >
+            <option value="">Selecciona una unidad</option>
             {datos.unidades_medida.filter((u) => u.codigo === u.codigo_base).map((u) => (
               <option key={u.codigo} value={u.valor}>
                 {u.nombre.toLocaleLowerCase('es') === u.simbolo ? u.nombre : `${u.nombre} (${u.simbolo})`}
@@ -660,7 +662,7 @@ export function ProductsPage() {
         </label>
 
         <label>
-          Contenido por envase o paquete ({formatearUnidad(formulario.unidad)})
+          Contenido por envase o paquete ({datos.unidades_medida.find((u) => u.codigo === formulario.unidad)?.simbolo ?? formulario.unidad})
           <input
             type="number"
             min="0.001"
@@ -675,7 +677,7 @@ export function ProductsPage() {
           />
         </label>
         <p className="products-form-note">
-          El contenido de compra se expresa en {formatearUnidad(formulario.unidad)}.
+          El contenido de compra se expresa en {datos.unidades_medida.find((u) => u.codigo === formulario.unidad)?.simbolo ?? formulario.unidad}.
           Por ejemplo, un barril de 30 L contiene 30; una botella de 750 mL contiene
           0,750 si la unidad del producto es L.
           {editando && ' La unidad se conserva para mantener correctas las cantidades registradas.'}

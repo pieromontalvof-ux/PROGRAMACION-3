@@ -3,6 +3,8 @@
 Recipes identify dependencies only. Consumption rates come from paid sales of
 the whole menu, never from pretending an ingredient is exclusive to one drink.
 """
+
+from sqlalchemy import bindparam, func, select
 from datetime import datetime, timedelta, timezone
 
 
@@ -138,24 +140,19 @@ def report(local,start,end):
     historical=demand.report(local,start,end)
     # Verify the selected window, not only the latest twenty days. A closed
     # zero-sales day is observed; an absent day remains unknown.
-    coverage=filas("""WITH receipts AS (
-        SELECT (creado_en AT TIME ZONE 'America/Lima')::date fecha,count(*) cobros,
-          count(*) FILTER (WHERE EXISTS (SELECT 1 FROM movimiento_inventario m
-            WHERE m.id_movimiento_inventario=c.id_movimiento AND m.id_local=c.id_local)) vinculados
-        FROM salon_cobro c WHERE id_local=:local
-          AND (creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta GROUP BY 1
-        ), closures AS (SELECT fecha FROM inventario_jornada WHERE id_local=:local
-          AND cerrado_en IS NOT NULL AND fecha BETWEEN :desde AND :hasta)
-        SELECT coalesce(r.fecha,j.fecha) fecha FROM receipts r FULL JOIN closures j USING(fecha)
-        WHERE (coalesce(r.cobros,0)>0 OR j.fecha IS NOT NULL)
-          AND coalesce(r.cobros,0)=coalesce(r.vinculados,0)""",{'local':local,'desde':start,'hasta':end})
+    coverage=filas(select(func.public.inv_product_outlook_report_1(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'fecha'
+    )),{'local':local,'desde':start,'hasta':end})
     observed={r['fecha'].isoformat() if hasattr(r['fecha'],'isoformat') else str(r['fecha']) for r in coverage}
     historical['fechas_sin_registro']=[(start+timedelta(days=i)).isoformat()
         for i in range((end-start).days+1) if (start+timedelta(days=i)).isoformat() not in observed]
     weeks=weekly.report(local,today=anchor)
-    known=filas('''SELECT id_producto FROM inventario_saldo_inicial WHERE id_local=:local
-                  UNION SELECT id_producto FROM inventario_evento WHERE id_local=:local''',{'local':local})
+    known=filas(select(func.public.inv_product_outlook_report_2(bindparam('local')).table_valued(
+        'id_producto'
+    )),{'local':local})
     outlook=calculate(historical,weeks,listar_recetas_detalladas(),listar_subproductos_detallados(),
                       {r['id_producto'] for r in known},start)
-    store=filas('SELECT nombre FROM local WHERE id_local=:local',{'local':local})
+    store=filas(select(func.public.inv_product_outlook_report_3(bindparam('local')).table_valued(
+        'nombre'
+    )),{'local':local})
     return serial({**historical,'id_local':local,'local':store[0]['nombre'] if store else None,'analisis_productos':outlook})

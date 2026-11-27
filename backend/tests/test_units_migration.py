@@ -30,8 +30,10 @@ class StandardUnitMigrationTests(unittest.TestCase):
             db.session.commit()
             before = db.session.execute(text('SELECT id_producto,presentacion,stock_minimo FROM producto ORDER BY id_producto')).all()
             sql = (Path(__file__).resolve().parents[2] / 'database/migrations/20261010_unidades_unece.sql').read_text(encoding='utf-8')
+            catalogo = (Path(__file__).resolve().parents[2] / "database/migrations/20261126_catalogo_unidades.sql").read_text(encoding="utf-8")
             for _ in range(2):
                 db.session.execute(text(sql))
+                db.session.execute(text(catalogo))
                 db.session.commit()
             self.assertEqual(db.session.execute(text('SELECT id_producto,presentacion,stock_minimo FROM producto ORDER BY id_producto')).all(), before)
             self.assertEqual(db.session.execute(text('SELECT unidad FROM producto WHERE id_producto=9701')).scalar(), 'KGM')

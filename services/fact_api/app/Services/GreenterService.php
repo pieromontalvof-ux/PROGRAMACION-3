@@ -44,7 +44,6 @@ class GreenterService
     {
         $this->company = $company;
         $this->see = $this->initializeSee();
-        $this->seeApi = $this->initializeSeeApi();
     }
 
     protected function initializeSee(): See
@@ -56,27 +55,8 @@ class GreenterService
         
         $see->setService($endpoint);
         
-        // Configurar certificado cargando desde archivo
-        try {
-            $certificadoPath = storage_path('app/public/certificado/certificado.pem');
-            
-            if (!file_exists($certificadoPath)) {
-                throw new Exception("Archivo de certificado no encontrado: " . $certificadoPath);
-            }
-            
-            $certificadoContent = file_get_contents($certificadoPath);
-            
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo leer el archivo de certificado");
-            }
-            
-            $see->setCertificate($certificadoContent);
-            Log::info("Certificado cargado desde archivo: " . $certificadoPath);
-        } catch (Exception $e) {
-            Log::error("Error al configurar certificado: " . $e->getMessage());
-            throw new Exception("Error al configurar certificado: " . $e->getMessage());
-        }
-        
+        $see->setCertificate(self::readCompanyCertificate($this->company));
+
         // Configurar credenciales SOL
         $see->setClaveSOL(
             $this->company->ruc,
@@ -94,65 +74,51 @@ class GreenterService
         return $see;
     }
 
-    /**
-     * Inicializar API específica para guías de remisión
-     */
-    protected function initializeSeeApi()
+    public static function createGuideApi(Company $company): \Greenter\Api
     {
-        // Usar configuraciones de la base de datos para GRE
-        $guideConfig = $this->company->getSunatServiceConfig('guias_remision');
-        $endpoint = $guideConfig['api_endpoint'] ?? $this->company->getGuideApiEndpoint();
-        
-        $api = new \Greenter\Api([
-            'auth' => $endpoint,
-            'cpe' => $endpoint,
-        ]);
-        
-        // Configurar certificado
-        try {
-            $certificadoPath = storage_path('app/public/certificado/certificado.pem');
-            
-            if (!file_exists($certificadoPath)) {
-                throw new Exception("Archivo de certificado no encontrado para GRE: " . $certificadoPath);
+        $credentials = $company->getGreCredentials();
+        foreach (['client_id', 'client_secret', 'ruc_proveedor', 'usuario_sol', 'clave_sol'] as $field) {
+            if (trim((string) ($credentials[$field] ?? '')) === '') {
+                throw new Exception('Falta configurar las credenciales GRE de la empresa para el ambiente activo.');
             }
-            
-            $certificadoContent = file_get_contents($certificadoPath);
-            
-            if ($certificadoContent === false) {
-                throw new Exception("No se pudo leer el archivo de certificado para GRE");
-            }
-            
-            $api->setCertificate($certificadoContent);
-            Log::info("Certificado GRE cargado desde archivo: " . $certificadoPath);
-        } catch (Exception $e) {
-            Log::error("Error al configurar certificado para GRE: " . $e->getMessage());
-            throw new Exception("Error al configurar certificado para GRE: " . $e->getMessage());
         }
-        
-        // Configurar credenciales SOL para API GRE
-        try {
-            $solUser = $this->company->ruc . $this->company->usuario_sol;
-            
-            // Verificar si el método setCredentials existe
-            if (method_exists($api, 'setCredentials')) {
-                $api->setCredentials($solUser, $this->company->clave_sol);
-            } else {
-                // Método alternativo para configurar credenciales
-                $api->setClaveSOL($this->company->ruc, $this->company->usuario_sol, $this->company->clave_sol);
-            }
-            
-        } catch (Exception $e) {
-            Log::warning("No se pudieron configurar credenciales para GRE API: " . $e->getMessage());
-            // Continúa sin error fatal para permitir facturas normales
+
+        $config = $company->getSunatServiceConfig('guias_remision');
+        $endpoint = $config['endpoint'] ?? null;
+        $apiEndpoint = $config['api_endpoint'] ?? null;
+        if ($company->modo_produccion) {
+            $auth = $config['auth_endpoint'] ?? 'https://api-seguridad.sunat.gob.pe/v1';
+            $cpe = $apiEndpoint ?: ($endpoint ?: 'https://api-cpe.sunat.gob.pe/v1');
+        } else {
+            $betaEndpoint = $endpoint ?: ($apiEndpoint ?: 'https://gre-test.nubefact.com/v1');
+            $auth = $config['auth_endpoint'] ?? $betaEndpoint;
+            $cpe = $betaEndpoint;
         }
-        
-        Log::info("API de GRE configurada", [
-            'endpoint' => $endpoint,
-            'modo' => $this->company->modo_produccion ? 'PRODUCCIÓN' : 'BETA',
-            'ruc' => $this->company->ruc
-        ]);
-        
-        return $api;
+        $api = new \Greenter\Api(['auth' => rtrim($auth, '/'), 'cpe' => rtrim($cpe, '/')]);
+
+        return $api->setApiCredentials($credentials['client_id'], $credentials['client_secret'])
+            ->setClaveSOL($credentials['ruc_proveedor'], $credentials['usuario_sol'], $credentials['clave_sol'])
+            ->setCertificate(self::readCompanyCertificate($company));
+    }
+
+    public static function readCompanyCertificate(Company $company): string
+    {
+        $certificate = trim((string) $company->certificado_pem);
+        if (str_starts_with($certificate, '-----BEGIN ')) {
+            return $certificate;
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk(
+            str_starts_with($certificate, 'certificados/') ? 'local' : 'public'
+        );
+        if ($certificate !== '' && $disk->exists($certificate)) {
+            $contents = $disk->get($certificate);
+            if (is_string($contents) && trim($contents) !== '') {
+                return $contents;
+            }
+        }
+
+        throw new Exception('El certificado de facturación de la empresa no está configurado o no se puede leer.');
     }
 
     public function getGreenterCompany(): GreenterCompany
@@ -1267,11 +1233,7 @@ class GreenterService
 
     protected function getSeeApi()
     {
-        Log::info("Retornando seeApi", [
-            'seeApi_exists' => $this->seeApi !== null,
-            'seeApi_class' => $this->seeApi ? get_class($this->seeApi) : 'NULL'
-        ]);
-        return $this->seeApi;
+        return $this->seeApi ??= self::createGuideApi($this->company);
     }
 
     /**

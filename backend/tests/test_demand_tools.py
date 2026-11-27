@@ -43,12 +43,14 @@ class DemandToolsTests(unittest.TestCase):
 
     def test_permission_needs_stock_and_sales_and_operational_profile(self):
         session = {'menu': [{'id_opcion_menu': m, 'permisos': {'consultar': True}} for m in (15, 37)]}
-        with patch.object(demand, 'get_jwt', return_value={'id_perfil': 2}):
+        with patch.object(demand, 'get_jwt', return_value={'id_perfil': 2}), \
+             patch.object(demand, 'perfil_tiene_capacidad', return_value=True):
             self.assertTrue(demand.allowed(session))
             self.assertFalse(demand.allowed(session, 'crear'))
             self.assertFalse(demand.allowed({'menu': session['menu'][:1]}))
         for role in (1, 4):
-            with patch.object(demand, 'get_jwt', return_value={'id_perfil': role}):
+            with patch.object(demand, 'get_jwt', return_value={'id_perfil': role}), \
+                 patch.object(demand, 'perfil_tiene_capacidad', return_value=False):
                 self.assertFalse(demand.allowed(session))
 
     def test_invalid_filters_cannot_override_local_or_expand_query(self):

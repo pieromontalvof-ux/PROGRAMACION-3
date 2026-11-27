@@ -1,10 +1,14 @@
 import type { UnidadMedida } from '../types/units'
 
-// El catálogo y los códigos de intercambio proceden del backend.
-// Este formato mantiene legibles las respuestas históricas y las sesiones abiertas.
-export function formatearUnidad(valor: unknown): string {
-  const unidad = typeof valor === 'string' ? valor : ''
-  return ({ KGM: 'kg', LTR: 'L', C62: 'unidad', GRM: 'g', MLT: 'mL', Kg: 'kg', UNI: 'unidad', 'PORCIÓN': 'porción', PORCION: 'porción' } as Record<string, string>)[unidad] ?? unidad
+export function formatearUnidad(valor: unknown, campo: 'unidad' | 'unidad_presentacion' = 'unidad'): string {
+  if (typeof valor === 'string') return valor
+  if (!valor || typeof valor !== 'object') return ''
+  const fila = valor as Record<string, unknown> & {
+    unidad_medida?: UnidadMedida
+    unidad_presentacion_medida?: UnidadMedida
+  }
+  const simbolo = fila[`${campo}_medida`]?.simbolo
+  return simbolo || (typeof fila[campo] === 'string' ? fila[campo] : '')
 }
 
 export function unidadesCompatibles(unidades: UnidadMedida[], valor: string): UnidadMedida[] {

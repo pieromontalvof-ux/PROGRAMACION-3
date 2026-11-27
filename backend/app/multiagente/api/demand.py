@@ -1,3 +1,4 @@
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.multiagente.agents import activity
 """Bounded, local-only demand capability shared by demand and purchasing agents."""
 from datetime import date, datetime, timedelta, timezone
@@ -9,7 +10,7 @@ RESOURCE = ('demanda_rotacion', (37, '/inventario-operativo/demanda', 'productos
 
 
 def allowed(session, action='consultar'):
-    return action == 'consultar' and get_jwt().get('id_perfil') in (2, 3) and all(
+    return action == 'consultar' and perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'gestionar_inventario') and all(
         any(m['id_opcion_menu'] == menu and m.get('permisos', {}).get('consultar')
             for m in session['menu']) for menu in (15, 37))
 

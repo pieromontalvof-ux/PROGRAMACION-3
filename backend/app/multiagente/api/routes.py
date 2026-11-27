@@ -7,6 +7,7 @@ from uuid import UUID
 from flask import Blueprint, jsonify, request, send_file, current_app
 from io import BytesIO
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.core.extensions import db
 from app.modules.auth.service import obtener_sesion_actual
 from . import agent, drafts, provider, tools, forms
@@ -159,7 +160,7 @@ def estado(sesion):
 @asistente_ia_bp.get('/agentes')
 @secured
 def agentes(sesion):
-    if int(get_jwt().get('id_perfil', 0)) != 1:
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
         raise AssistantError('Solo el Administrador del sistema puede ver los agentes.', 403)
     from app.multiagente.agents.manifest import catalog
     from . import configuration
@@ -167,7 +168,7 @@ def agentes(sesion):
 
 
 def require_agent_admin():
-    if int(get_jwt().get('id_perfil', 0)) != 1:
+    if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
         raise AssistantError('Solo el Administrador del sistema puede administrar agentes.', 403)
 
 

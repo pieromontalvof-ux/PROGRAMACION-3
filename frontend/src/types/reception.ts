@@ -1,3 +1,5 @@
+import type { MedidaConUnidad } from './units'
+
 export interface ProductoPendienteRecepcion {
   id_producto: number
   codigo: string
@@ -70,6 +72,7 @@ export interface DetalleRecepcionHistorial {
 }
 
 export interface RespuestaDetalleRecepcion {
+  motivos_correccion: { codigo: string; etiqueta: string }[]
   recepcion: {
     factura?: FacturaProveedor | null
     entregas?: EntregaProveedor[]
@@ -86,7 +89,7 @@ export interface RespuestaDetalleRecepcion {
   }
 }
 
-export interface LineaFacturaProveedor {
+export interface LineaFacturaProveedor extends MedidaConUnidad {
   costo_total?: number
   id_producto: number
   cantidad_facturada: number
@@ -120,13 +123,7 @@ export interface EntregaProveedor {
 export interface DatosCorregirRecepcion {
   numero_factura: string
   fecha_recepcion: string
-  motivo_correccion:
-    | 'ERROR_DIGITACION'
-    | 'MAL_CONTADO'
-    | 'PRODUCTO_DANADO'
-    | 'PRODUCTO_RECHAZADO'
-    | 'ERROR_FACTURA'
-    | 'OTRO'
+  motivo_correccion: string
   observacion: string
   detalles: Array<{
     id_factura_recepcion_detalle: number

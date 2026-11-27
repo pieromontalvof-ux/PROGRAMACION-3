@@ -8,7 +8,12 @@ vi.mock('../services/cartaService', () => ({ obtenerMenajes: vi.fn(), administra
 beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.open = true } })
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.open = false } })
-  vi.mocked(obtenerMenajes).mockResolvedValue({ menajes: [{ id_menaje: 1, nombre: 'Vaso 12 oz', activo: true, total_presentaciones: 0, presentaciones_activas: 0, presentaciones_inactivas: 0, total_items: 0, items: [] }], resumen: { total_menajes: 1, menajes_activos: 1, menajes_inactivos: 0, total_presentaciones: 0 } })
+  vi.mocked(obtenerMenajes).mockResolvedValue({ unidades_capacidad: [
+    { codigo: 'MLT', nombre: 'mL', factor: 1, visible: true },
+    { codigo: 'LTR', nombre: 'L', factor: 1000, visible: true },
+    { codigo: 'FLOZ_US', nombre: 'Onzas líquidas (oz)', factor: 29.5735295625, visible: true },
+    { codigo: 'FLOZ_UK', nombre: 'fl oz (imperiales)', factor: 28.4130625, visible: false },
+  ], menajes: [{ id_menaje: 1, nombre: 'Vaso 12 oz', activo: true, total_presentaciones: 0, presentaciones_activas: 0, presentaciones_inactivas: 0, total_items: 0, items: [] }], resumen: { total_menajes: 1, menajes_activos: 1, menajes_inactivos: 0, total_presentaciones: 0 } })
   vi.mocked(administrarMenaje).mockResolvedValue({ mensaje: 'Guardado' })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })

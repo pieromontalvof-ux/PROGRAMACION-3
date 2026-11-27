@@ -1520,7 +1520,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 2|sunat_beta_nssgIjrjpbRlcCr7COMwik0xLf5MdZUjs3jVmhl875670cb4",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -1607,7 +1607,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 2|sunat_beta_g2PXpDwobhYDoarrm1H5HfhehoIPuAdwz557o2Iwcc77977f",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -1698,7 +1698,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 2|sunat_beta_g2PXpDwobhYDoarrm1H5HfhehoIPuAdwz557o2Iwcc77977f",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -1785,7 +1785,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 2|sunat_beta_KmzEWP9DT60myHefMsFmFXyVZ1lV3The4cyRcURR1dff1624",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							},
 							{
@@ -1829,7 +1829,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 2|sunat_beta_KmzEWP9DT60myHefMsFmFXyVZ1lV3The4cyRcURR1dff1624",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2080,7 +2080,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2128,7 +2128,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2176,7 +2176,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2224,7 +2224,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2272,7 +2272,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2320,7 +2320,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2366,7 +2366,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],
@@ -2414,7 +2414,7 @@
 							},
 							{
 								"key": "Authorization",
-								"value": "Bearer 4|sunat_beta_5g4rYfVCB1sqKzCzTUgGi7cTFbaSL9pz4yDAj39w6b16880c",
+								"value": "Bearer {{access_token}}",
 								"type": "text"
 							}
 						],

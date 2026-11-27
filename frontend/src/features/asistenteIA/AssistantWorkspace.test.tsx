@@ -108,7 +108,7 @@ describe('assistant confirmed workflow continuation', () => {
       return {respuesta:'Revisa el pedido',consultas:[],flujo_compra:'signed-flow',borrador:{
         id_borrador:id,recurso:'ordenes_compra',accion:'crear',id:null,anterior:null,
         datos:{accion:'ENVIAR',detalles:[{id_producto:7,cantidad_solicitada:total}]},
-        vista:{productos:[{producto:'Gin',unidad:'LTR',presentacion_compra:0.6,cantidad_final:total,
+        vista:{productos:[{producto:'Gin',unidad:'LTR',unidad_medida:{simbolo:'L',factor_a_base:'1'},unidad_fraccion:{simbolo:'mL',factor_a_base:'0.001'},presentacion_compra:0.6,cantidad_final:total,
           porcentaje_general:10,porcentaje_adicional:0}]},
       }}
     }

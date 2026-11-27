@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Services\GreenterService;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -183,7 +184,7 @@ class SetupController extends Controller
                 'companies_count' => Company::count(),
                 'users_count' => User::count(),
                 'storage_writable' => is_writable(storage_path()),
-                'certificates_directory' => $this->checkCertificatesDirectory(),
+                'certificates_directory' => $this->checkCertificatesDirectory($company),
                 'app_environment' => config('app.env'),
                 'company_environment' => $company ? ($company->modo_produccion ? 'produccion' : 'beta') : null,
                 'debug' => config('app.debug'),
@@ -246,7 +247,7 @@ class SetupController extends Controller
             // Configurar certificado si se proporciona
             if ($request->hasFile('certificate_file')) {
                 $certificateFile = $request->file('certificate_file');
-                $path = $certificateFile->storeAs('certificado', 'certificado.pem', 'public');
+                $path = $certificateFile->store('certificados', 'local');
                 
                 $company->update([
                     'certificado_pem' => $path,
@@ -345,7 +346,7 @@ class SetupController extends Controller
         // Procesar certificado PEM si se subió un archivo
         if ($request->hasFile('certificado_pem')) {
             $certificateFile = $request->file('certificado_pem');
-            $path = $certificateFile->storeAs('certificado', 'certificado.pem', 'public');
+            $path = $certificateFile->store('certificados', 'local');
             $companyData['certificado_pem'] = $path;
             $companyData['certificado_password'] = $request->certificado_password;
         }
@@ -440,20 +441,23 @@ class SetupController extends Controller
     /**
      * Verificar directorio de certificados
      */
-    private function checkCertificatesDirectory(): array
+    private function checkCertificatesDirectory(?Company $company): array
     {
-        // Verificar directorios donde realmente se guardan los archivos
-        $certificadoExists = Storage::disk('public')->exists('certificado');
-        $logoExists = Storage::disk('public')->exists('logo');
-        
-        // Crear directorios si no existen
-        if (!$certificadoExists) Storage::disk('public')->makeDirectory('certificado');
-        if (!$logoExists) Storage::disk('public')->makeDirectory('logo');
-        
+        $certificateExists = false;
+        if ($company !== null) {
+            try {
+                GreenterService::readCompanyCertificate($company);
+                $certificateExists = true;
+            } catch (\Exception $exception) {
+                report($exception);
+            }
+        }
+
         return [
-            'certificado_directory' => $certificadoExists,
-            'logo_directory' => $logoExists,
-            'certificado_file_exists' => Storage::disk('public')->exists('certificado/certificado.pem'),
+            'certificado_directory' => Storage::disk('local')->exists('certificados')
+                || Storage::disk('public')->exists('certificado'),
+            'logo_directory' => Storage::disk('public')->exists('logo'),
+            'certificado_file_exists' => $certificateExists,
             'storage_link_exists' => is_link(public_path('storage'))
         ];
     }

@@ -2,7 +2,7 @@
 import hashlib
 from uuid import uuid4
 from xml.etree import ElementTree
-from sqlalchemy import text
+from sqlalchemy import Uuid, bindparam, cast, func, select
 from app.core.extensions import db
 from .worker import storage_root
 
@@ -32,11 +32,7 @@ def save_original(local,source,data,kind):
     path=storage_root()/relative
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_bytes(data)
-    result=db.session.execute(text('''INSERT INTO fact_api_adjunto
-        (id_adjunto,id_local,id_factura_recepcion,formato,ruta,sha256,bytes)
-        VALUES(:id,:local,:source,:kind,:path,:hash,:size)
-        ON CONFLICT(id_local,id_factura_recepcion,sha256) DO UPDATE SET sha256=EXCLUDED.sha256
-        RETURNING id_adjunto'''),{'id':identity,'local':local,'source':source,'kind':kind,
+    result=db.session.execute(select(func.public.facturacion_guardar_adjunto(cast(bindparam('id'), Uuid), bindparam('local'), bindparam('source'), bindparam('kind'), bindparam('path'), bindparam('hash'), bindparam('size'))),{'id':identity,'local':local,'source':source,'kind':kind,
                                  'path':relative,'hash':digest,'size':len(data)}).scalar_one()
     if str(result)!=identity:path.unlink(missing_ok=True)
     return str(result)

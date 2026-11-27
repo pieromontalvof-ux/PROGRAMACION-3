@@ -1,6 +1,7 @@
 from flask import has_request_context
 from flask_jwt_extended import get_jwt
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.modules.auditoria.repository import (
     consultar_actividades,
     insertar_actividad,
@@ -52,7 +53,7 @@ def registrar_actividad(
     if id_puesto_laboral is None:
         id_puesto_laboral = puesto_token
     if id_local is None:
-        id_local = local_token if perfil_token != 1 else None
+        id_local = None if local_token is not None and perfil_tiene_capacidad(perfil_token, 'administrar_globalmente') else local_token
 
     return insertar_actividad(
         id_usuario=id_usuario,
@@ -111,7 +112,7 @@ def registrar_cambio(
     if id_puesto_laboral is None:
         id_puesto_laboral = puesto_token
     if id_local is None:
-        id_local = local_token if perfil_token != 1 else None
+        id_local = None if local_token is not None and perfil_tiene_capacidad(perfil_token, 'administrar_globalmente') else local_token
 
     return insertar_auditoria_cambio(
         id_usuario=id_usuario,

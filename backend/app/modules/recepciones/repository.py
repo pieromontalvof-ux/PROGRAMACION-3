@@ -1,85 +1,23 @@
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 
 from app.core.local_scope import ejecutar_local, exigir_registro_local
 
 
 def listar_pendientes_recepcion():
-    consulta = text("""
-        WITH recibido AS (
-            SELECT
-                fr.id_orden_compra,
-                fr.id_proveedor,
-                frd.id_producto,
-                SUM(frd.cantidad_recibida) AS cantidad_recibida
-            FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-            JOIN factura_recepcion_detalle frd
-                ON frd.id_factura_recepcion = fr.id_factura_recepcion
-            GROUP BY
-                fr.id_orden_compra,
-                fr.id_proveedor,
-                frd.id_producto
-        )
-        SELECT
-            oc.id_orden_compra,
-            oc.codigo AS codigo_orden,
-            oc.estado_orden_compra,
-            oc.fecha_registro,
-            pr.id_proveedor,
-            pr.nombre AS proveedor,
-            pr.datos_comerciales,
-            p.id_producto,
-            p.codigo AS codigo_producto,
-            p.nombre AS producto,
-            cp.nombre AS categoria,
-            p.unidad,
-            p.presentacion,
-            ocd.cantidad_solicitada,
-            COALESCE(r.cantidad_recibida, 0) AS cantidad_recibida,
-            GREATEST(
-                ocd.cantidad_solicitada
-                - COALESCE(r.cantidad_recibida, 0),
-                0
-            ) AS cantidad_pendiente
-        FROM (SELECT * FROM orden_compra WHERE id_local=:id_local_actual) oc
-        JOIN orden_compra_detalle ocd
-            ON ocd.id_orden_compra = oc.id_orden_compra
-        JOIN producto p
-            ON p.id_producto = ocd.id_producto
-        JOIN categoria_producto cp
-            ON cp.id_categoria = p.id_categoria
-        JOIN proveedor pr
-            ON pr.id_proveedor = ocd.id_proveedor
-        LEFT JOIN recibido r
-            ON r.id_orden_compra = oc.id_orden_compra
-           AND r.id_proveedor = pr.id_proveedor
-           AND r.id_producto = p.id_producto
-        WHERE oc.estado_orden_compra IN (
-            'ENVIADA',
-            'RECEPCION_PARCIAL'
-        )
-          AND ocd.cantidad_solicitada
-              > COALESCE(r.cantidad_recibida, 0)
-        ORDER BY
-            oc.fecha_registro,
-            oc.codigo,
-            pr.nombre,
-            p.nombre
-    """)
+    consulta = select(func.public.recep_pendientes(bindparam("id_local_actual")).table_valued(
+        'id_orden_compra', 'codigo_orden', 'estado_orden_compra', 'fecha_registro', 'id_proveedor',
+        'proveedor', 'datos_comerciales', 'id_producto', 'codigo_producto', 'producto', 'categoria',
+        'unidad', 'presentacion', 'cantidad_solicitada', 'cantidad_recibida', 'cantidad_pendiente',
+    ))
 
     return ejecutar_local(consulta).mappings().all()
 
 
 def bloquear_orden(id_orden):
     exigir_registro_local("orden", id_orden)
-    consulta = text("""
-        SELECT
-            id_orden_compra,
-            codigo,
-            estado_orden_compra
-        FROM (SELECT * FROM orden_compra WHERE id_local=:id_local_actual) orden_compra
-        WHERE id_orden_compra = :id_orden
-        FOR UPDATE
-    """)
+    consulta = select(func.public.recep_bloquear_orden(bindparam("id_orden"), bindparam("id_local_actual")).table_valued(
+        'id_orden_compra', 'codigo', 'estado_orden_compra',
+    ))
     return ejecutar_local(
         consulta,
         {"id_orden": id_orden},
@@ -92,32 +30,9 @@ def obtener_producto_pendiente(
     id_producto,
 ):
     exigir_registro_local("orden", id_orden)
-    consulta = text("""
-        SELECT
-            p.id_producto,
-            p.codigo,
-            p.nombre,
-            p.unidad,
-            ocd.cantidad_solicitada,
-            COALESCE((
-                SELECT SUM(frd.cantidad_recibida)
-                FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-                JOIN factura_recepcion_detalle frd
-                    ON frd.id_factura_recepcion = fr.id_factura_recepcion
-                WHERE fr.id_orden_compra = oc.id_orden_compra
-                  AND fr.id_proveedor = :id_proveedor
-                  AND frd.id_producto = p.id_producto
-            ), 0) AS cantidad_recibida
-        FROM (SELECT * FROM orden_compra WHERE id_local=:id_local_actual) oc
-        JOIN orden_compra_detalle ocd
-            ON ocd.id_orden_compra = oc.id_orden_compra
-        JOIN producto p
-            ON p.id_producto = ocd.id_producto
-        WHERE oc.id_orden_compra = :id_orden
-          AND p.id_producto = :id_producto
-          AND ocd.id_proveedor = :id_proveedor
-        FOR UPDATE OF ocd
-    """)
+    consulta = select(func.public.recep_producto_pendiente(bindparam("id_orden"), bindparam("id_proveedor"), bindparam("id_producto"), bindparam("id_local_actual")).table_valued(
+        'id_producto', 'codigo', 'nombre', 'unidad', 'cantidad_solicitada', 'cantidad_recibida',
+    ))
     return ejecutar_local(
         consulta,
         {
@@ -129,14 +44,7 @@ def obtener_producto_pendiente(
 
 
 def factura_duplicada(id_proveedor, numero_factura):
-    consulta = text("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM factura_recepcion
-            WHERE id_proveedor = :id_proveedor
-              AND UPPER(numero_factura) = UPPER(:numero_factura)
-        )
-    """)
+    consulta = select(func.public.recep_factura_duplicada(bindparam("id_proveedor"), bindparam("numero_factura")))
     return bool(ejecutar_local(
         consulta,
         {
@@ -154,22 +62,7 @@ def crear_factura_recepcion(
     id_usuario,
 ):
     exigir_registro_local("orden", id_orden)
-    consulta = text("""
-        INSERT INTO factura_recepcion (
-            id_orden_compra,
-            id_proveedor,
-            numero_factura,
-            fecha_recepcion,
-            usuario_recepcion
-        ) VALUES (
-            :id_orden,
-            :id_proveedor,
-            :numero_factura,
-            :fecha_recepcion,
-            :id_usuario
-        )
-        RETURNING id_factura_recepcion
-    """)
+    consulta = select(func.public.recep_crear_factura(bindparam("id_orden"), bindparam("id_proveedor"), bindparam("numero_factura"), bindparam("fecha_recepcion"), bindparam("id_usuario")))
     return ejecutar_local(
         consulta,
         {
@@ -189,17 +82,7 @@ def crear_detalle_recepcion(
 ):
     exigir_registro_local("factura", id_factura)
     ejecutar_local(
-        text("""
-            INSERT INTO factura_recepcion_detalle (
-                id_factura_recepcion,
-                id_producto,
-                cantidad_recibida
-            ) VALUES (
-                :id_factura,
-                :id_producto,
-                :cantidad
-            )
-        """),
+        select(func.public.recep_crear_detalle(bindparam("id_factura"), bindparam("id_producto"), bindparam("cantidad"))),
         {
             "id_factura": id_factura,
             "id_producto": id_producto,
@@ -210,24 +93,7 @@ def crear_detalle_recepcion(
 
 def orden_tiene_cantidades_pendientes(id_orden):
     exigir_registro_local("orden", id_orden)
-    consulta = text("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM orden_compra_detalle ocd
-            JOIN producto p
-                ON p.id_producto = ocd.id_producto
-            WHERE ocd.id_orden_compra = :id_orden
-              AND ocd.cantidad_solicitada > COALESCE((
-                  SELECT SUM(frd.cantidad_recibida)
-                  FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-                  JOIN factura_recepcion_detalle frd
-                      ON frd.id_factura_recepcion = fr.id_factura_recepcion
-                  WHERE fr.id_orden_compra = ocd.id_orden_compra
-                    AND fr.id_proveedor = ocd.id_proveedor
-                    AND frd.id_producto = ocd.id_producto
-              ), 0)
-        )
-    """)
+    consulta = select(func.public.recep_orden_pendiente(bindparam("id_orden"), bindparam("id_local_actual")))
     return bool(ejecutar_local(
         consulta,
         {"id_orden": id_orden},
@@ -237,11 +103,7 @@ def orden_tiene_cantidades_pendientes(id_orden):
 def actualizar_estado_orden(id_orden, estado):
     exigir_registro_local("orden", id_orden)
     ejecutar_local(
-        text("""
-            UPDATE orden_compra
-            SET estado_orden_compra = :estado
-            WHERE id_orden_compra = :id_orden
-        """),
+        select(func.public.recep_actualizar_estado(bindparam("id_orden"), bindparam("estado"))),
         {"id_orden": id_orden, "estado": estado},
     )
 
@@ -251,58 +113,11 @@ def listar_historial_recepciones(
     fecha_hasta=None,
     id_proveedor=None,
 ):
-    consulta = text("""
-        SELECT
-            fr.id_factura_recepcion,
-            fr.id_orden_compra,
-            oc.codigo AS codigo_orden,
-            oc.estado_orden_compra,
-            fr.datos_factura->>'total' AS total_factura,
-            fr.datos_factura->>'moneda' AS moneda,
-            fr.numero_factura,
-            fr.fecha_recepcion,
-            fr.id_proveedor,
-            pr.nombre AS proveedor,
-            CONCAT_WS(
-                ' ',
-                u.nombres,
-                u.apellido_paterno,
-                u.apellido_materno
-            ) AS recibido_por,
-            COUNT(frd.id_factura_recepcion_detalle)
-                AS productos_recibidos,
-            COALESCE(SUM(frd.cantidad_recibida), 0)
-                AS cantidad_total
-        FROM factura_recepcion fr
-        JOIN orden_compra oc
-            ON oc.id_orden_compra = fr.id_orden_compra
-        JOIN proveedor pr
-            ON pr.id_proveedor = fr.id_proveedor
-        JOIN usuario u
-            ON u.id_usuario = fr.usuario_recepcion
-        JOIN factura_recepcion_detalle frd
-            ON frd.id_factura_recepcion = fr.id_factura_recepcion
-        WHERE oc.id_local=:id_local_actual AND (
-            CAST(:fecha_desde AS DATE) IS NULL
-            OR fr.fecha_recepcion >= CAST(:fecha_desde AS DATE)
-        )
-          AND (
-            CAST(:fecha_hasta AS DATE) IS NULL
-            OR fr.fecha_recepcion <= CAST(:fecha_hasta AS DATE)
-          )
-          AND (
-            CAST(:id_proveedor AS INTEGER) IS NULL
-            OR fr.id_proveedor = CAST(:id_proveedor AS INTEGER)
-          )
-        GROUP BY
-            fr.id_factura_recepcion,
-            oc.id_orden_compra,
-            pr.id_proveedor,
-            u.id_usuario
-        ORDER BY
-            fr.fecha_recepcion DESC,
-            fr.id_factura_recepcion DESC
-    """)
+    consulta = select(func.public.recep_historial(bindparam("id_local_actual"), bindparam("fecha_desde"), bindparam("fecha_hasta"), bindparam("id_proveedor")).table_valued(
+        'id_factura_recepcion', 'id_orden_compra', 'codigo_orden', 'estado_orden_compra',
+        'total_factura', 'moneda', 'numero_factura', 'fecha_recepcion', 'id_proveedor', 'proveedor',
+        'recibido_por', 'productos_recibidos', 'cantidad_total',
+    ))
     return ejecutar_local(
         consulta,
         {
@@ -316,35 +131,16 @@ def listar_historial_recepciones(
 def obtener_factura_recepcion(id_factura, bloquear=False):
     exigir_registro_local("factura", id_factura)
     if bloquear:
-        orden = ejecutar_local(text("SELECT id_orden_compra FROM factura_recepcion WHERE id_factura_recepcion=:id"), {"id": id_factura}).scalar_one()
+        orden = ejecutar_local(select(func.public.recep_orden_de_factura(bindparam("id"))), {"id": id_factura}).scalar_one()
         bloquear_orden(orden)
-    bloqueo = "FOR UPDATE OF fr" if bloquear else ""
-    consulta = text(f"""
-        SELECT
-            fr.id_factura_recepcion,
-            fr.id_orden_compra,
-            oc.codigo AS codigo_orden,
-            oc.estado_orden_compra,
-            fr.id_proveedor,
-            pr.nombre AS proveedor,
-            fr.numero_factura,
-            fr.fecha_recepcion,
-            CONCAT_WS(
-                ' ',
-                u.nombres,
-                u.apellido_paterno,
-                u.apellido_materno
-            ) AS recibido_por
-        FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-        JOIN (SELECT * FROM orden_compra WHERE id_local=:id_local_actual) oc
-            ON oc.id_orden_compra = fr.id_orden_compra
-        JOIN proveedor pr
-            ON pr.id_proveedor = fr.id_proveedor
-        JOIN usuario u
-            ON u.id_usuario = fr.usuario_recepcion
-        WHERE fr.id_factura_recepcion = :id_factura
-        {bloqueo}
-    """)
+        ejecutar_local(
+            select(func.public.recep_bloquear_factura(bindparam("id_factura"), bindparam("id_local_actual"))),
+            {"id_factura": id_factura},
+        )
+    consulta = select(func.public.recep_obtener_factura(bindparam("id_factura"), bindparam("id_local_actual")).table_valued(
+        'id_factura_recepcion', 'id_orden_compra', 'codigo_orden', 'estado_orden_compra',
+        'id_proveedor', 'proveedor', 'numero_factura', 'fecha_recepcion', 'recibido_por',
+    ))
     return ejecutar_local(
         consulta,
         {"id_factura": id_factura},
@@ -353,37 +149,10 @@ def obtener_factura_recepcion(id_factura, bloquear=False):
 
 def listar_detalles_factura(id_factura):
     exigir_registro_local("factura", id_factura)
-    consulta = text("""
-        SELECT
-            frd.id_factura_recepcion_detalle,
-            frd.id_producto,
-            p.codigo,
-            p.nombre,
-            p.unidad,
-            frd.cantidad_recibida,
-            ocd.cantidad_solicitada,
-            COALESCE((
-                SELECT SUM(otra.cantidad_recibida)
-                FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) otra_fr
-                JOIN factura_recepcion_detalle otra
-                    ON otra.id_factura_recepcion =
-                       otra_fr.id_factura_recepcion
-                WHERE otra_fr.id_orden_compra = fr.id_orden_compra
-                  AND otra.id_producto = frd.id_producto
-                  AND otra_fr.id_factura_recepcion <>
-                      fr.id_factura_recepcion
-            ), 0) AS recibido_otras_facturas
-        FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-        JOIN factura_recepcion_detalle frd
-            ON frd.id_factura_recepcion = fr.id_factura_recepcion
-        JOIN producto p
-            ON p.id_producto = frd.id_producto
-        JOIN orden_compra_detalle ocd
-            ON ocd.id_orden_compra = fr.id_orden_compra
-           AND ocd.id_producto = frd.id_producto
-        WHERE fr.id_factura_recepcion = :id_factura
-        ORDER BY p.nombre
-    """)
+    consulta = select(func.public.recep_detalles_factura(bindparam("id_factura"), bindparam("id_local_actual")).table_valued(
+        'id_factura_recepcion_detalle', 'id_producto', 'codigo', 'nombre', 'unidad',
+        'cantidad_recibida', 'cantidad_solicitada', 'recibido_otras_facturas',
+    ))
     return ejecutar_local(
         consulta,
         {"id_factura": id_factura},
@@ -396,15 +165,7 @@ def factura_duplicada_excepto(
     id_factura,
 ):
     exigir_registro_local("factura", id_factura)
-    consulta = text("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM factura_recepcion
-            WHERE id_proveedor = :id_proveedor
-              AND UPPER(numero_factura) = UPPER(:numero_factura)
-              AND id_factura_recepcion <> :id_factura
-        )
-    """)
+    consulta = select(func.public.recep_factura_duplicada_excepto(bindparam("id_proveedor"), bindparam("numero_factura"), bindparam("id_factura")))
     return bool(ejecutar_local(
         consulta,
         {
@@ -422,12 +183,7 @@ def actualizar_factura_recepcion(
 ):
     exigir_registro_local("factura", id_factura)
     ejecutar_local(
-        text("""
-            UPDATE factura_recepcion
-            SET numero_factura = :numero_factura,
-                fecha_recepcion = :fecha_recepcion
-            WHERE id_factura_recepcion = :id_factura
-        """),
+        select(func.public.recep_actualizar_factura(bindparam("id_factura"), bindparam("numero_factura"), bindparam("fecha_recepcion"))),
         {
             "id_factura": id_factura,
             "numero_factura": numero_factura,
@@ -439,11 +195,7 @@ def actualizar_factura_recepcion(
 def actualizar_cantidad_recepcion(id_detalle, cantidad):
     exigir_registro_local("detalle_recepcion", id_detalle)
     ejecutar_local(
-        text("""
-            UPDATE factura_recepcion_detalle
-            SET cantidad_recibida = :cantidad
-            WHERE id_factura_recepcion_detalle = :id_detalle
-        """),
+        select(func.public.recep_actualizar_cantidad(bindparam("id_detalle"), bindparam("cantidad"))),
         {
             "id_detalle": id_detalle,
             "cantidad": cantidad,
@@ -462,28 +214,7 @@ def crear_historial_factura(
     observacion,
 ):
     exigir_registro_local("factura", id_factura)
-    consulta = text("""
-        INSERT INTO factura_recepcion_historial (
-            id_factura_recepcion,
-            numero_factura_anterior,
-            numero_factura_nuevo,
-            fecha_recepcion_anterior,
-            fecha_recepcion_nueva,
-            usuario_correccion,
-            motivo_correccion,
-            observacion
-        ) VALUES (
-            :id_factura,
-            :numero_anterior,
-            :numero_nuevo,
-            :fecha_anterior,
-            :fecha_nueva,
-            :id_usuario,
-            :motivo,
-            :observacion
-        )
-        RETURNING id_factura_recepcion_historial
-    """)
+    consulta = select(func.public.recep_crear_historial(bindparam("id_factura"), bindparam("numero_anterior"), bindparam("numero_nuevo"), bindparam("fecha_anterior"), bindparam("fecha_nueva"), bindparam("id_usuario"), bindparam("motivo"), bindparam("observacion")))
     return ejecutar_local(
         consulta,
         {
@@ -507,19 +238,7 @@ def crear_historial_detalle(
 ):
     exigir_registro_local("historial_factura", id_historial)
     ejecutar_local(
-        text("""
-            INSERT INTO factura_recepcion_detalle_historial (
-                id_factura_recepcion_historial,
-                id_producto,
-                cantidad_anterior,
-                cantidad_nueva
-            ) VALUES (
-                :id_historial,
-                :id_producto,
-                :cantidad_anterior,
-                :cantidad_nueva
-            )
-        """),
+        select(func.public.recep_crear_historial_detalle(bindparam("id_historial"), bindparam("id_producto"), bindparam("cantidad_anterior"), bindparam("cantidad_nueva"))),
         {
             "id_historial": id_historial,
             "id_producto": id_producto,
@@ -531,22 +250,9 @@ def crear_historial_detalle(
 
 def calcular_totales_orden(id_orden):
     exigir_registro_local("orden", id_orden)
-    consulta = text("""
-        SELECT
-            COALESCE((
-                SELECT SUM(cantidad_solicitada)
-                FROM orden_compra_detalle
-                WHERE id_orden_compra = :id_orden
-            ), 0) AS total_solicitado,
-            COALESCE((
-                SELECT SUM(frd.cantidad_recibida)
-                FROM (SELECT f_local.* FROM factura_recepcion f_local JOIN orden_compra o_local USING(id_orden_compra) WHERE o_local.id_local=:id_local_actual) fr
-                JOIN factura_recepcion_detalle frd
-                    ON frd.id_factura_recepcion =
-                       fr.id_factura_recepcion
-                WHERE fr.id_orden_compra = :id_orden
-            ), 0) AS total_recibido
-    """)
+    consulta = select(func.public.recep_totales_orden(bindparam("id_orden"), bindparam("id_local_actual")).table_valued(
+        'total_solicitado', 'total_recibido',
+    ))
     return ejecutar_local(
         consulta,
         {"id_orden": id_orden},

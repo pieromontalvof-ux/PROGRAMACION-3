@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config'
 import { scheduleEffect } from '../utils/scheduleEffect'
 import { Fragment, useEffect, useState } from 'react'
 import { useAuth } from '../context/authState'
@@ -31,7 +32,7 @@ export function ActivityPage() {
     const controller=new AbortController()
     setCargando(true);setError('');setAbierto('')
     const params=new URLSearchParams({...consulta,pagina:String(pagina)})
-    fetch(`${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'}/actividades/historial?${params}`, {
+    fetch(`${API_BASE_URL}/actividades/historial?${params}`, {
       headers:{Authorization:`Bearer ${token}`},signal:controller.signal,
     }).then(async r => {const d=await r.json();if(!r.ok) throw new Error(d.mensaje ?? 'No se pudo cargar la actividad');return d})
       .then(d => {setDatos(d);setCargando(false)})

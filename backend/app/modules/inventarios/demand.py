@@ -1,4 +1,6 @@
 """Read-only demand based on paid receipts and their recorded inventory consumption."""
+
+from sqlalchemy import bindparam, func, select
 from decimal import Decimal
 
 
@@ -39,47 +41,12 @@ def calculate(start, end, items, products):
 def report(local, start, end):
     from .operativo import filas, serial
     params = dict(local=local, desde=start, hasta=end)
-    items = filas('''WITH lineas AS (
-        SELECT c.creado_en,linea
-        FROM salon_cobro c CROSS JOIN LATERAL jsonb_array_elements(c.comprobante->'lineas') linea
-        WHERE c.comprobante->'anulacion' IS NULL AND c.id_local=:local AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-      ), demanda AS (
-        SELECT creado_en,(linea->>'id_presentacion')::int id_presentacion,
-          (linea->>'id_promocion')::int id_promocion,linea->>'nombre' nombre,
-          (linea->>'cantidad')::numeric cantidad,
-          (linea->>'cantidad')::numeric*(linea->>'precio')::numeric total,
-          0::numeric cantidad_en_promociones FROM lineas
-        UNION ALL
-        SELECT creado_en,(opcion->>'id_presentacion')::int,NULL,opcion->>'nombre',
-          (linea->>'cantidad')::numeric,0::numeric,(linea->>'cantidad')::numeric
-          FROM lineas CROSS JOIN LATERAL jsonb_array_elements(coalesce(linea->'selecciones_promocion','[]'::jsonb)) opcion
-          WHERE (linea->>'id_promocion') IS NOT NULL
-      ) SELECT d.id_presentacion,d.id_promocion,
-        (array_agg(d.nombre ORDER BY d.creado_en DESC))[1] nombre,
-        pv.id_item_carta,cc.nombre categoria,sum(d.cantidad) cantidad,
-        sum(d.total) total,sum(d.cantidad_en_promociones) cantidad_en_promociones
-        FROM demanda d
-        LEFT JOIN presentacion_venta pv ON pv.id_presentacion_venta=d.id_presentacion
-        LEFT JOIN item_carta ic ON ic.id_item_carta=pv.id_item_carta
-        LEFT JOIN categoria_carta cc ON cc.id_categoria_carta=ic.id_categoria_carta
-        GROUP BY d.id_presentacion,d.id_promocion,pv.id_item_carta,cc.nombre''', params)
-    products = filas('''WITH consumo AS (
-        SELECT d.id_producto,sum(d.cantidad) consumo_ventas
-        FROM salon_cobro c
-        JOIN movimiento_inventario m ON m.id_movimiento_inventario=c.id_movimiento AND m.id_local=c.id_local
-        JOIN movimiento_inventario_detalle d USING(id_movimiento_inventario)
-        WHERE c.id_local=:local AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-        GROUP BY d.id_producto
-      ), entradas AS (
-        SELECT id_producto,sum(greatest(cantidad,0)) entradas FROM inventario_evento
-        WHERE id_local=:local AND (registrado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-        GROUP BY id_producto
-      ) SELECT p.id_producto,p.codigo,p.nombre,p.unidad,cat.nombre categoria,
-        coalesce(s.stock_actual,0) stock_actual,coalesce(c.consumo_ventas,0) consumo_ventas,
-        coalesce(e.entradas,0) entradas
-      FROM producto p LEFT JOIN categoria_producto cat ON cat.id_categoria=p.id_categoria
-      LEFT JOIN inventario_stock_teorico s ON s.id_producto=p.id_producto AND s.id_local=:local
-      LEFT JOIN consumo c ON c.id_producto=p.id_producto
-      LEFT JOIN entradas e ON e.id_producto=p.id_producto
-      WHERE p.activo OR c.id_producto IS NOT NULL OR coalesce(s.stock_actual,0)<>0''', params)
+    items = filas(select(func.public.inv_demand_report_1(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'id_presentacion', 'id_promocion', 'nombre', 'id_item_carta', 'categoria', 'cantidad',
+        'total', 'cantidad_en_promociones'
+    )), params)
+    products = filas(select(func.public.inv_demand_report_2(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'id_producto', 'codigo', 'nombre', 'unidad', 'categoria', 'stock_actual',
+        'consumo_ventas', 'entradas'
+    )), params)
     return serial(calculate(start, end, items, products))

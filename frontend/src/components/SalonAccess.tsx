@@ -1,8 +1,9 @@
+import { API_BASE_URL } from '../config'
 import { scheduleEffect } from '../utils/scheduleEffect'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const api=import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+const api=API_BASE_URL
 export function SalonAccess() {
   const navigate=useNavigate()
   const [local,setLocal]=useState('')

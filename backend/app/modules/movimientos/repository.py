@@ -1,24 +1,10 @@
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 
 from app.core.local_scope import ejecutar_local, exigir_registro_local
 
 
 def listar_productos_activos_movimiento():
-    consulta = text("""
-        SELECT
-            p.id_producto,
-            p.codigo,
-            p.nombre,
-            p.unidad,
-            p.id_categoria,
-            cp.nombre AS categoria
-        FROM producto p
-        JOIN categoria_producto cp
-            ON cp.id_categoria = p.id_categoria
-        WHERE p.activo = TRUE
-          AND cp.activo = TRUE
-        ORDER BY cp.nombre, p.nombre
-    """)
+    consulta = select(func.public.mov_productos_activos().table_valued("id_producto", "codigo", "nombre", "unidad", "id_categoria", "categoria"))
 
     return ejecutar_local(
         consulta
@@ -26,12 +12,7 @@ def listar_productos_activos_movimiento():
 
 
 def listar_proveedores_activos_movimiento():
-    consulta = text("""
-        SELECT id_proveedor, nombre
-        FROM proveedor
-        WHERE activo = TRUE
-        ORDER BY nombre
-    """)
+    consulta = select(func.public.mov_proveedores_activos().table_valued("id_proveedor", "nombre"))
 
     return ejecutar_local(
         consulta
@@ -39,12 +20,7 @@ def listar_proveedores_activos_movimiento():
 
 
 def buscar_producto_activo_movimiento(id_producto):
-    consulta = text("""
-        SELECT id_producto, codigo, nombre, unidad
-        FROM producto
-        WHERE id_producto = :id_producto
-          AND activo = TRUE
-    """)
+    consulta = select(func.public.mov_producto_activo(bindparam("id_producto")).table_valued("id_producto", "codigo", "nombre", "unidad"))
 
     return ejecutar_local(
         consulta,
@@ -53,14 +29,7 @@ def buscar_producto_activo_movimiento(id_producto):
 
 
 def proveedor_activo_movimiento_existe(id_proveedor):
-    consulta = text("""
-        SELECT EXISTS (
-            SELECT 1
-            FROM proveedor
-            WHERE id_proveedor = :id_proveedor
-              AND activo = TRUE
-        )
-    """)
+    consulta = select(func.public.mov_proveedor_activo(bindparam("id_proveedor")))
 
     return bool(
         ejecutar_local(
@@ -72,28 +41,10 @@ def proveedor_activo_movimiento_existe(id_proveedor):
 
 def generar_codigo_movimiento():
     ejecutar_local(
-        text("""
-            SELECT pg_advisory_xact_lock(
-                hashtext('movimiento_inventario_codigo')
-            )
-        """)
+        select(func.public.mov_bloquear_codigo())
     )
 
-    consulta = text("""
-        SELECT COALESCE(
-            MAX(
-                CASE
-                    WHEN codigo ~ '^MI-[0-9]+$'
-                    THEN SUBSTRING(
-                        codigo FROM 4
-                    )::INTEGER
-                    ELSE 0
-                END
-            ),
-            0
-        ) + 1
-        FROM movimiento_inventario
-    """)
+    consulta = select(func.public.mov_siguiente_numero())
 
     siguiente_numero = int(
         ejecutar_local(consulta).scalar() or 1
@@ -112,31 +63,7 @@ def crear_cabecera_movimiento(
     id_proveedor,
     observacion,
 ):
-    consulta = text("""
-        INSERT INTO movimiento_inventario (
-            id_local,
-            codigo,
-            tipo_movimiento,
-            motivo_movimiento,
-            fecha_movimiento,
-            usuario_registro,
-            local_relacionado,
-            id_proveedor,
-            observacion
-        )
-        VALUES (
-            :id_local_actual,
-            :codigo,
-            :tipo_movimiento,
-            :motivo_movimiento,
-            :fecha_movimiento,
-            :id_usuario,
-            :local_relacionado,
-            :id_proveedor,
-            :observacion
-        )
-        RETURNING id_movimiento_inventario
-    """)
+    consulta = select(func.public.mov_crear_cabecera(bindparam("id_local_actual"), bindparam("codigo"), bindparam("tipo_movimiento"), bindparam("motivo_movimiento"), bindparam("fecha_movimiento"), bindparam("id_usuario"), bindparam("local_relacionado"), bindparam("id_proveedor"), bindparam("observacion")))
 
     return ejecutar_local(
         consulta,
@@ -159,18 +86,7 @@ def crear_detalle_movimiento(
     cantidad,
 ):
     exigir_registro_local("movimiento", id_movimiento)
-    consulta = text("""
-        INSERT INTO movimiento_inventario_detalle (
-            id_movimiento_inventario,
-            id_producto,
-            cantidad
-        )
-        VALUES (
-            :id_movimiento,
-            :id_producto,
-            :cantidad
-        )
-    """)
+    consulta = select(func.public.mov_crear_detalle(bindparam("id_movimiento"), bindparam("id_producto"), bindparam("cantidad")))
 
     ejecutar_local(
         consulta,
@@ -184,30 +100,7 @@ def crear_detalle_movimiento(
 
 def buscar_movimiento_creado(id_movimiento):
     exigir_registro_local("movimiento", id_movimiento)
-    consulta = text("""
-        SELECT
-            mi.id_movimiento_inventario,
-            mi.codigo,
-            mi.tipo_movimiento,
-            mi.motivo_movimiento,
-            mi.fecha_movimiento,
-            mi.local_relacionado,
-            mi.id_proveedor,
-            pr.nombre AS proveedor,
-            mi.observacion,
-            CONCAT_WS(
-                ' ',
-                u.nombres,
-                u.apellido_paterno,
-                u.apellido_materno
-            ) AS registrado_por
-        FROM (SELECT * FROM movimiento_inventario WHERE id_local=:id_local_actual) mi
-        JOIN usuario u
-            ON u.id_usuario = mi.usuario_registro
-        LEFT JOIN proveedor pr
-            ON pr.id_proveedor = mi.id_proveedor
-        WHERE mi.id_movimiento_inventario = :id_movimiento
-    """)
+    consulta = select(func.public.mov_buscar_cabecera(bindparam("id_local_actual"), bindparam("id_movimiento")).table_valued("id_movimiento_inventario", "codigo", "tipo_movimiento", "motivo_movimiento", "fecha_movimiento", "local_relacionado", "id_proveedor", "proveedor", "observacion", "registrado_por"))
 
     return ejecutar_local(
         consulta,
@@ -217,19 +110,7 @@ def buscar_movimiento_creado(id_movimiento):
 
 def listar_detalles_movimiento_creado(id_movimiento):
     exigir_registro_local("movimiento", id_movimiento)
-    consulta = text("""
-        SELECT
-            p.id_producto,
-            p.codigo,
-            p.nombre,
-            p.unidad,
-            mid.cantidad
-        FROM movimiento_inventario_detalle mid
-        JOIN producto p
-            ON p.id_producto = mid.id_producto
-        WHERE mid.id_movimiento_inventario = :id_movimiento
-        ORDER BY p.nombre
-    """)
+    consulta = select(func.public.mov_listar_detalles(bindparam("id_movimiento")).table_valued("id_producto", "codigo", "nombre", "unidad", "cantidad"))
 
     return ejecutar_local(
         consulta,

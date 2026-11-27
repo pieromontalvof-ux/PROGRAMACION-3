@@ -129,18 +129,9 @@ class UpdateGreCredentialsRequest extends FormRequest
 
             // Validar que las credenciales de beta no se usen en producción
             if ($this->input('modo') === 'produccion') {
-                $defaultBetaCredentials = [
-                    'test-85e5b0ae-255c-4891-a595-0b98c65c9854',
-                    'test-Hty/M6QshYvPgItX2P0+Kw==',
-                    '20161515648',
-                    'MODDATOS'
-                ];
-
-                if (in_array($this->input('client_id'), $defaultBetaCredentials) ||
-                    in_array($this->input('client_secret'), $defaultBetaCredentials) ||
-                    in_array($this->input('ruc_proveedor'), $defaultBetaCredentials) ||
-                    in_array($this->input('usuario_sol'), $defaultBetaCredentials)) {
-                    
+                if (str_starts_with((string) $this->input('client_id'), 'test-') ||
+                    str_starts_with((string) $this->input('client_secret'), 'test-') ||
+                    strtoupper((string) $this->input('usuario_sol')) === 'MODDATOS') {
                     $validator->errors()->add('modo', 'No se pueden usar credenciales de prueba en ambiente de producción.');
                 }
             }

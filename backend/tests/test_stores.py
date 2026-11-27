@@ -13,6 +13,10 @@ class StoreTests(unittest.TestCase):
         self.app = create_app()
         self.app.config.update(TESTING=True, JWT_SECRET_KEY='stores-test-secret-at-least-32-characters')
         self.client = self.app.test_client()
+        capacidad = patch('app.modules.usuarios.locales.perfil_tiene_capacidad')
+        self.perfil_tiene_capacidad = capacidad.start()
+        self.perfil_tiene_capacidad.side_effect = lambda perfil, capacidad: perfil == 1
+        self.addCleanup(capacidad.stop)
         self.data = {'nombre': 'Nueva tienda', 'direccion': 'Calle 123, Lima'}
 
     def headers(self, perfil=1):
@@ -44,17 +48,17 @@ class StoreTests(unittest.TestCase):
                 validar({**self.data, **changes})
         self.assertEqual(validar({**self.data, 'nombre': ' Nueva '})['nombre'], 'Nueva')
 
-    def test_codes_are_automatic_and_zero_padded(self):
-        for number, expected in ((1, 'TDA-001'), (2, 'TDA-002'), (1000, 'TDA-1000')):
-            with patch('app.modules.usuarios.locales.db.session.execute') as execute:
-                execute.return_value.scalar_one.return_value = number
-                self.assertEqual(siguiente_codigo(), expected)
-                self.assertIn('LOCK TABLE', str(execute.call_args_list[0].args[0]))
+    def test_code_is_allocated_under_database_lock(self):
+        with patch('app.modules.usuarios.locales.db.session.execute') as execute:
+            execute.return_value.scalar_one.return_value = 'TDA-001'
+            self.assertEqual(siguiente_codigo(), 'TDA-001')
+            self.assertIn('usuarios_bloquear_locales', str(execute.call_args_list[0].args[0]))
+            self.assertIn('usuarios_siguiente_codigo_local', str(execute.call_args_list[1].args[0]))
 
     def test_creation_is_audited_and_committed(self):
         auth, lock, number, insert = MagicMock(), MagicMock(), MagicMock(), MagicMock()
         auth.scalar.return_value = True
-        number.scalar_one.return_value = 5
+        number.scalar_one.return_value = 'TDA-005'
         insert.mappings.return_value.one.return_value = {**self.data, 'id_local': 9, 'estado_registro': 1}
         with patch('app.core.permissions.db.session.execute', side_effect=[auth, lock, number, insert]), \
              patch('app.modules.usuarios.locales.registrar_actividad') as audit, \
@@ -68,7 +72,7 @@ class StoreTests(unittest.TestCase):
     def test_concurrent_duplicate_rolls_back(self):
         auth, lock, number = MagicMock(), MagicMock(), MagicMock()
         auth.scalar.return_value = True
-        number.scalar_one.return_value = 5
+        number.scalar_one.return_value = 'TDA-005'
         with patch('app.core.permissions.db.session.execute', side_effect=[
                 auth, lock, number, IntegrityError('insert', {}, Exception('duplicate'))]), \
              patch('app.modules.usuarios.locales.db.session.rollback') as rollback:
@@ -79,7 +83,7 @@ class StoreTests(unittest.TestCase):
     def test_audit_failure_rolls_back_store(self):
         auth, lock, number, insert = MagicMock(), MagicMock(), MagicMock(), MagicMock()
         auth.scalar.return_value = True
-        number.scalar_one.return_value = 5
+        number.scalar_one.return_value = 'TDA-005'
         insert.mappings.return_value.one.return_value = {**self.data, 'id_local': 9, 'estado_registro': 1}
         with patch('app.core.permissions.db.session.execute', side_effect=[auth, lock, number, insert]), \
              patch('app.modules.usuarios.locales.registrar_actividad', side_effect=RuntimeError('audit')), \
@@ -102,7 +106,7 @@ class StoreTests(unittest.TestCase):
         result = MagicMock()
         result.mappings.return_value.first.return_value = value
         result.mappings.return_value.one.return_value = value
-        result.scalar.return_value = value
+        result.scalar_one.return_value = value
         return result
 
     def test_edit_updates_existing_store(self):
@@ -140,20 +144,14 @@ class StoreTests(unittest.TestCase):
         self.assertFalse(committed)
 
     def test_associated_store_cannot_be_deleted(self):
-        relations = MagicMock()
-        relations.mappings.return_value.all.return_value = [
-            {'esquema': 'public', 'tabla': 'usuario_local', 'columna': 'id_local', 'columnas': 1}]
-        with self.app.app_context():
-            response, committed = self.mutation('delete', '/api/locales/9', [
-                self.row({**self.data, 'estado_registro': 0}), relations, self.row(True)])
+        response, committed = self.mutation('delete', '/api/locales/9', [
+            self.row({**self.data, 'estado_registro': 0}), self.row(True)])
         self.assertEqual(response.status_code, 409)
         self.assertFalse(committed)
 
     def test_unused_store_can_be_deleted(self):
-        relations = MagicMock(); relations.mappings.return_value.all.return_value = []
-        with self.app.app_context():
-            response, committed = self.mutation('delete', '/api/locales/9', [
-                self.row({**self.data, 'estado_registro': 0}), relations, self.row(None)])
+        response, committed = self.mutation('delete', '/api/locales/9', [
+            self.row({**self.data, 'estado_registro': 0}), self.row(False), self.row(None)])
         self.assertEqual(response.status_code, 200)
         self.assertTrue(committed)
 

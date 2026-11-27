@@ -34,13 +34,13 @@ export function PurchaseOrderReview({rows,purchase}:{rows:Record<string,unknown>
           const invalid=!/^\d+$/.test(value) || Number(value)<1 || Number(value)>1000000
           return <tr key={index}>
             <th scope="row">{String(row.producto??'—')}</th><td>{percentage(row)}</td>
-            <td>{numeric(row.presentacion_compra)?quantity(row.presentacion_compra,row.unidad):'—'}</td>
+            <td>{numeric(row.presentacion_compra)?quantity(row.presentacion_compra,row):'—'}</td>
             <td>{editable?<input type="number" min="1" max="1000000" step="1" className="assistant-purchase-total"
               aria-label={`Cantidad de presentaciones de ${String(row.producto??'producto')}`} aria-invalid={invalid}
               disabled={purchase?.disabled} value={value} onChange={event=>change(index,event.target.value)} />:
               <span>{count===null?'—':number(count)}</span>}</td>
             <td aria-live="polite">{!invalid && numeric(row.presentacion_compra)
-              ?quantity(Number(value)*row.presentacion_compra,row.unidad):'—'}</td>
+              ?quantity(Number(value)*row.presentacion_compra,row):'—'}</td>
           </tr>
         })}</tbody>
       </table>

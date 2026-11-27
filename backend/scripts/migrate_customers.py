@@ -16,7 +16,7 @@ def main():
     engine=create_engine(url)
     try:
         with engine.begin() as connection:
-            for filename in ('20261118_clientes.sql',):
+            for filename in ('20261118_clientes.sql', '20261127_funciones_clientes.sql'):
                 sql=(root.parent/'database'/'migrations'/filename).read_text(encoding='utf-8')
                 # Keep both migrations in one transaction.
                 sql=sql.replace('BEGIN;','').replace('COMMIT;','')

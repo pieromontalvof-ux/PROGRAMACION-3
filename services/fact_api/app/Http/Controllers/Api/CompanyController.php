@@ -256,7 +256,7 @@ class CompanyController extends Controller
 
         // Procesar archivos
         if ($request->hasFile('certificado_pem')) {
-            $validatedData['certificado_pem'] = $this->storeFile($request->file('certificado_pem'), 'certificado', 'certificado.pem');
+            $validatedData['certificado_pem'] = $request->file('certificado_pem')->store('certificados', 'local');
         }
 
         if ($request->hasFile('logo_path')) {

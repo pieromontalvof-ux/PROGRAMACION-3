@@ -1,4 +1,6 @@
 """Read-only cross-store promotion evidence, separate from store operations."""
+
+from sqlalchemy import bindparam, func, select
 from decimal import Decimal
 from .demand import report as local_report
 
@@ -49,23 +51,19 @@ def combine(start,end,stores):
 
 def report(start,end):
     from .operativo import filas,serial
-    stores=filas('''SELECT l.id_local,l.nombre,count(c.id_cobro) cobros,
-        count(m.id_movimiento_inventario) cobros_con_inventario,
-        count(DISTINCT (c.creado_en AT TIME ZONE 'America/Lima')::date) dias_con_ventas
-        FROM local l LEFT JOIN salon_cobro c ON c.id_local=l.id_local AND c.comprobante->'anulacion' IS NULL
-        AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-        LEFT JOIN movimiento_inventario m ON m.id_movimiento_inventario=c.id_movimiento AND m.id_local=l.id_local
-        WHERE l.estado_registro=1 GROUP BY l.id_local,l.nombre ORDER BY l.id_local''',dict(desde=start,hasta=end))
-    registered=filas('''SELECT id_local,id_producto FROM inventario_saldo_inicial
-                        UNION SELECT id_local,id_producto FROM inventario_evento''')
+    stores=filas(select(func.public.inv_demand_global_report_1(bindparam('desde'), bindparam('hasta')).table_valued(
+        'id_local', 'nombre', 'cobros', 'cobros_con_inventario', 'dias_con_ventas'
+    )),dict(desde=start,hasta=end))
+    registered=filas(select(func.public.inv_demand_global_report_2().table_valued(
+        'id_local', 'id_producto'
+    )))
     for store in stores:
         store['productos_con_stock']=[r['id_producto'] for r in registered if r['id_local']==store['id_local']]
         store['reporte']=local_report(store['id_local'],start,end) if store['cobros'] or store['productos_con_stock'] else {}
     result=combine(start,end,stores)
-    presentations=filas('''SELECT pv.id_presentacion_venta id_presentacion,ic.nombre,ic.tipo,
-        pv.contenido,pv.unidad,pv.precio,pv.activo,m.nombre menaje
-        FROM presentacion_venta pv JOIN item_carta ic USING(id_item_carta)
-        JOIN menaje m USING(id_menaje)''')
+    presentations=filas(select(func.public.inv_demand_global_report_3().table_valued(
+        'id_presentacion', 'nombre', 'tipo', 'contenido', 'unidad', 'precio', 'activo', 'menaje'
+    )))
     by_id={row['id_presentacion']:row for row in presentations}
     for article in result['articulos']:
         article['presentacion']=by_id.get(article.get('id_presentacion'))

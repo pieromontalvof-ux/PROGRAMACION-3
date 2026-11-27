@@ -6,7 +6,7 @@ import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app import create_app
 from app.core.extensions import db
-from sqlalchemy import text
+from sqlalchemy import func, select
 from app.modules.facturacion.service import enqueue_source
 from app.modules.facturacion.transport import call
 
@@ -16,16 +16,12 @@ def main():
     print('Servicio:',call('health'))
     with create_app().app_context():
         if args.examples:
-            sources=db.session.execute(text('''SELECT 'VENTA' AS origin,id_local,max(id_cobro) AS source
-                FROM salon_cobro WHERE NOT(comprobante ? 'anulacion') GROUP BY id_local
-                UNION ALL SELECT 'COMPRA',o.id_local,max(f.id_factura_recepcion)
-                FROM factura_recepcion f JOIN orden_compra o USING(id_orden_compra)
-                WHERE datos_factura IS NOT NULL GROUP BY o.id_local''')).mappings().all()
+            sources=db.session.execute(select(func.public.facturacion_fuentes_ejemplo().table_valued('origin', 'id_local', 'source'))).mappings().all()
             for row in sources:
                 identity=enqueue_source(row['origin'],row['source'],row['id_local'])
                 print('Encolada:',row['origin'],'local',row['id_local'],'operación',identity)
             db.session.commit()
-        rows=db.session.execute(text('SELECT id_local,origen,estado,count(*) AS cantidad FROM fact_api_operacion GROUP BY id_local,origen,estado ORDER BY 1,2')).mappings().all()
+        rows=db.session.execute(select(func.public.facturacion_conteo_estados().table_valued('id_local', 'origen', 'estado', 'cantidad'))).mappings().all()
         for row in rows:print(dict(row))
 
 

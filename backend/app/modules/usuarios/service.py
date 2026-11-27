@@ -1,7 +1,11 @@
 import re
 
+from sqlalchemy import func, select
+
+from app.core.config import CORPORATE_EMAIL_DOMAIN
 from app.core.extensions import db
 from app.core.local_scope import local_actual
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.modules.auditoria.service import registrar_actividad
 from app.modules.usuarios.repository import (
     actualizar_usuario,
@@ -23,9 +27,6 @@ from app.modules.usuarios.repository import (
 )
 
 
-ID_PERFIL_ADMINISTRADOR = 1
-ID_PERFIL_MIEMBRO_EQUIPO = 4
-DOMINIO_CORPORATIVO = "barbarian.pe"
 
 def _normalizar_correo_corporativo(valor):
     correo = str(valor or "").strip().lower()
@@ -36,7 +37,7 @@ def _normalizar_correo_corporativo(valor):
     # El frontend puede enviar "crodriguez"
     # o el correo corporativo completo.
     if "@" not in correo:
-        correo = f"{correo}@{DOMINIO_CORPORATIVO}"
+        correo = f"{correo}@{CORPORATE_EMAIL_DOMAIN}"
 
     partes = correo.split("@")
 
@@ -45,7 +46,7 @@ def _normalizar_correo_corporativo(valor):
 
     nombre_usuario, dominio = partes
 
-    if dominio != DOMINIO_CORPORATIVO:
+    if dominio != CORPORATE_EMAIL_DOMAIN:
         return None
 
     if not re.fullmatch(
@@ -154,7 +155,7 @@ def _validar_datos(datos, editando=False):
             None,
             (
                 "Ingresa un usuario corporativo válido. "
-                f"El dominio permitido es @{DOMINIO_CORPORATIVO}"
+                f"El dominio permitido es @{CORPORATE_EMAIL_DOMAIN}"
             ),
         )
 
@@ -180,17 +181,18 @@ def _validar_datos(datos, editando=False):
     if ids_puestos_laborales is None:
         return None, "Los puestos laborales seleccionados no son válidos"
 
-    if (
-        ID_PERFIL_MIEMBRO_EQUIPO in ids_perfiles
-        and not ids_puestos_laborales
-    ):
+    requiere_puesto = any(
+        db.session.execute(select(func.public.auth_perfil_requiere_puesto(perfil))).scalar()
+        for perfil in ids_perfiles
+    )
+    if requiere_puesto and not ids_puestos_laborales:
         return (
             None,
             "Selecciona el puesto laboral del miembro de equipo",
         )
 
     # El puesto solo aplica cuando se asigna Miembro de equipo.
-    if ID_PERFIL_MIEMBRO_EQUIPO not in ids_perfiles:
+    if not requiere_puesto:
         ids_puestos_laborales = []
 
     if (
@@ -241,7 +243,7 @@ def _validar_locales_asignables(
     id_perfil = _perfil_gestor(jwt)
     id_local = _local_activo(jwt)
 
-    if id_perfil == ID_PERFIL_ADMINISTRADOR:
+    if perfil_tiene_capacidad(id_perfil, 'administrar_globalmente'):
         return True
 
     return id_local is not None and ids_locales == [id_local]
@@ -471,7 +473,7 @@ def editar_usuario(
 
     if (
         id_usuario == id_gestor
-        and id_perfil_gestor != 1
+        and not perfil_tiene_capacidad(id_perfil_gestor, 'administrar_globalmente')
         and id_local not in validado["ids_locales"]
     ):
         return {

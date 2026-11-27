@@ -1,39 +1,22 @@
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 
 from app.core.extensions import db
 
 
 def listar_perfiles_permitidos(id_perfil_gestor: int):
     return db.session.execute(
-        text("""
-            SELECT
-                p.id_perfil,
-                p.nombre,
-                pgu.puede_crear,
-                pgu.puede_editar
-            FROM perfil_gestion_usuario pgu
-            INNER JOIN perfiles p
-                ON p.id_perfil = pgu.id_perfil_objetivo
-               AND p.estado_registro = 1
-            WHERE pgu.id_perfil_gestor = :id_perfil_gestor
-              AND pgu.estado_registro = 1
-            ORDER BY p.id_perfil
-        """),
+        select(func.public.usuarios_perfiles_permitidos(bindparam('id_perfil_gestor')).table_valued(
+            'id_perfil', 'nombre', 'puede_crear', 'puede_editar',
+        )),
         {"id_perfil_gestor": id_perfil_gestor},
     ).mappings().all()
 
 
 def listar_puestos_laborales():
     return db.session.execute(
-        text("""
-            SELECT
-                id_puesto_laboral,
-                nombre,
-                descripcion
-            FROM puesto_laboral
-            WHERE estado_registro = 1
-            ORDER BY nombre
-        """),
+        select(func.public.usuarios_puestos().table_valued(
+            'id_puesto_laboral', 'nombre', 'descripcion',
+        )),
     ).mappings().all()
 
 
@@ -46,143 +29,11 @@ def listar_usuarios_permitidos(id_perfil_gestor, id_local):
     ejemplo, Gerente y Supervisor simultáneamente.
     """
     return db.session.execute(
-        text("""
-            SELECT
-                u.id_usuario,
-                u.dni,
-                u.nombres,
-                u.apellido_paterno,
-                u.apellido_materno,
-                u.celular,
-                u.correo_electronico,
-                u.estado_registro,
-                u.fecha_creacion,
-                COALESCE(
-                    (
-                        SELECT ARRAY_AGG(
-                            upl.id_puesto_laboral
-                            ORDER BY upl.id_puesto_laboral
-                        )
-                        FROM usuario_puestos_laborales upl
-                        WHERE upl.id_usuario = u.id_usuario
-                          AND upl.estado_registro = 1
-                    ),
-                    ARRAY[]::INTEGER[]
-                ) AS ids_puestos_laborales,
-                COALESCE(
-                    (
-                        SELECT JSONB_AGG(
-                            JSONB_BUILD_OBJECT(
-                                'id_puesto_laboral', pl.id_puesto_laboral,
-                                'nombre', pl.nombre
-                            )
-                            ORDER BY pl.nombre
-                        )
-                        FROM usuario_puestos_laborales upl
-                        INNER JOIN puesto_laboral pl
-                            ON pl.id_puesto_laboral = upl.id_puesto_laboral
-                           AND pl.estado_registro = 1
-                        WHERE upl.id_usuario = u.id_usuario
-                          AND upl.estado_registro = 1
-                    ),
-                    '[]'::JSONB
-                ) AS puestos_laborales,
-                COALESCE(
-                    (
-                        SELECT ARRAY_AGG(
-                            up.id_perfil
-                            ORDER BY up.id_perfil
-                        )
-                        FROM usuario_perfiles up
-                        WHERE up.id_usuario = u.id_usuario
-                          AND up.estado_registro = 1
-                    ),
-                    ARRAY[]::INTEGER[]
-                ) AS ids_perfiles,
-                COALESCE(
-                    (
-                        SELECT JSONB_AGG(
-                            JSONB_BUILD_OBJECT(
-                                'id_perfil', p.id_perfil,
-                                'nombre', p.nombre
-                            )
-                            ORDER BY p.id_perfil
-                        )
-                        FROM usuario_perfiles up
-                        INNER JOIN perfiles p
-                            ON p.id_perfil = up.id_perfil
-                           AND p.estado_registro = 1
-                        WHERE up.id_usuario = u.id_usuario
-                          AND up.estado_registro = 1
-                    ),
-                    '[]'::JSONB
-                ) AS perfiles,
-                COALESCE(
-                    (
-                        SELECT ARRAY_AGG(
-                            ul2.id_local
-                            ORDER BY ul2.id_local
-                        )
-                        FROM usuario_local ul2
-                        WHERE ul2.id_usuario = u.id_usuario
-                          AND ul2.estado_registro = 1
-                    ),
-                    ARRAY[]::INTEGER[]
-                ) AS ids_locales,
-                COALESCE(
-                    (
-                        SELECT JSONB_AGG(
-                            JSONB_BUILD_OBJECT(
-                                'id_local', l2.id_local,
-                                'codigo', l2.codigo,
-                                'nombre', l2.nombre
-                            )
-                            ORDER BY l2.nombre
-                        )
-                        FROM usuario_local ul2
-                        INNER JOIN local l2
-                            ON l2.id_local = ul2.id_local
-                           AND l2.estado_registro = 1
-                        WHERE ul2.id_usuario = u.id_usuario
-                          AND ul2.estado_registro = 1
-                    ),
-                    '[]'::JSONB
-                ) AS locales
-            FROM usuario u
-            WHERE (:id_perfil_gestor=1 OR EXISTS (
-                SELECT 1 FROM usuario_local ul_filtro
-                WHERE ul_filtro.id_usuario=u.id_usuario
-                  AND ul_filtro.id_local=:id_local AND ul_filtro.estado_registro=1
-            )) AND EXISTS (
-                SELECT 1
-                FROM usuario_perfiles up
-                INNER JOIN perfil_gestion_usuario pgu
-                    ON pgu.id_perfil_objetivo = up.id_perfil
-                   AND pgu.id_perfil_gestor = :id_perfil_gestor
-                   AND pgu.estado_registro = 1
-                WHERE up.id_usuario = u.id_usuario
-                  AND up.estado_registro = 1
-            )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM usuario_perfiles up_no_permitido
-                WHERE up_no_permitido.id_usuario = u.id_usuario
-                  AND up_no_permitido.estado_registro = 1
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM perfil_gestion_usuario pgu_permitido
-                      WHERE pgu_permitido.id_perfil_gestor = :id_perfil_gestor
-                        AND pgu_permitido.id_perfil_objetivo =
-                            up_no_permitido.id_perfil
-                        AND pgu_permitido.puede_editar = TRUE
-                        AND pgu_permitido.estado_registro = 1
-                  )
-              )
-            ORDER BY
-                u.nombres,
-                u.apellido_paterno,
-                u.id_usuario
-        """),
+        select(func.public.usuarios_listar(bindparam('id_perfil_gestor'), bindparam('id_local')).table_valued(
+            'id_usuario', 'dni', 'nombres', 'apellido_paterno', 'apellido_materno', 'celular',
+            'correo_electronico', 'estado_registro', 'fecha_creacion', 'ids_puestos_laborales',
+            'puestos_laborales', 'ids_perfiles', 'perfiles', 'ids_locales', 'locales',
+        )),
         {
             "id_perfil_gestor": id_perfil_gestor,
             "id_local": id_local,
@@ -195,22 +46,7 @@ def perfil_puede_gestionarse(
     id_perfil_objetivo: int,
     accion: str,
 ) -> bool:
-    columna = (
-        "puede_crear"
-        if accion == "crear"
-        else "puede_editar"
-    )
-
-    consulta = text(f"""
-        SELECT EXISTS (
-            SELECT 1
-            FROM perfil_gestion_usuario
-            WHERE id_perfil_gestor = :id_perfil_gestor
-              AND id_perfil_objetivo = :id_perfil_objetivo
-              AND {columna} = TRUE
-              AND estado_registro = 1
-        )
-    """)
+    consulta = select(func.public.usuarios_perfil_gestionable(bindparam('id_perfil_gestor'), bindparam('id_perfil_objetivo'), (accion == "crear")))
 
     return bool(
         db.session.execute(
@@ -233,53 +69,9 @@ def buscar_usuario_gestionable(
     activos pueden ser editados por el gestor.
     """
     return db.session.execute(
-        text("""
-            SELECT
-                u.id_usuario,
-                u.id_usuario AS id,
-                COALESCE(
-                    ARRAY_AGG(
-                        up.id_perfil
-                        ORDER BY up.id_perfil
-                    ) FILTER (
-                        WHERE up.estado_registro = 1
-                    ),
-                    ARRAY[]::INTEGER[]
-                ) AS ids_perfiles
-            FROM usuario u
-            INNER JOIN usuario_perfiles up
-                ON up.id_usuario = u.id_usuario
-            WHERE u.id_usuario = :id_usuario
-              AND (:id_perfil_gestor=1 OR EXISTS (
-                  SELECT 1
-                  FROM usuario_local ul
-                  WHERE ul.id_usuario = u.id_usuario
-                    AND ul.id_local = :id_local
-                    AND ul.estado_registro = 1
-              ))
-              AND EXISTS (
-                  SELECT 1
-                  FROM usuario_perfiles up_existente
-                  WHERE up_existente.id_usuario = u.id_usuario
-                    AND up_existente.estado_registro = 1
-              )
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM usuario_perfiles up_no_permitido
-                  WHERE up_no_permitido.id_usuario = u.id_usuario
-                    AND up_no_permitido.estado_registro = 1
-                    AND NOT EXISTS (
-                        SELECT 1
-                        FROM perfil_gestion_usuario pgu
-                        WHERE pgu.id_perfil_gestor = :id_perfil_gestor
-                          AND pgu.id_perfil_objetivo =
-                              up_no_permitido.id_perfil
-                          AND pgu.puede_editar = TRUE
-                          AND pgu.estado_registro = 1
-                    )
-              )
-            GROUP BY u.id_usuario
-        """),
+        select(func.public.usuarios_buscar(bindparam('id_usuario'), bindparam('id_perfil_gestor'), bindparam('id_local')).table_valued(
+            'id_usuario', 'id', 'ids_perfiles',
+        )),
         {
             "id_usuario": id_usuario,
             "id_perfil_gestor": id_perfil_gestor,
@@ -293,12 +85,7 @@ def puestos_laborales_existen(ids_puestos_laborales: list[int]) -> bool:
         return True
     return bool(
         db.session.execute(
-            text("""
-                SELECT COUNT(*) = :cantidad
-                FROM puesto_laboral
-                WHERE id_puesto_laboral = ANY(:ids_puestos_laborales)
-                  AND estado_registro = 1
-            """),
+            select(func.public.usuarios_puestos_existen(bindparam('cantidad'), bindparam('ids_puestos_laborales'))),
             {
                 "ids_puestos_laborales": ids_puestos_laborales,
                 "cantidad": len(ids_puestos_laborales),
@@ -310,17 +97,7 @@ def puestos_laborales_existen(ids_puestos_laborales: list[int]) -> bool:
 def existe_dni(dni: str, excluir_id: int | None = None) -> bool:
     return bool(
         db.session.execute(
-            text("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM usuario
-                    WHERE dni = :dni
-                      AND (
-                          :excluir_id IS NULL
-                          OR id_usuario <> :excluir_id
-                      )
-                )
-            """),
+            select(func.public.usuarios_dni_existe(bindparam('dni'), bindparam('excluir_id'))),
             {
                 "dni": dni,
                 "excluir_id": excluir_id,
@@ -335,17 +112,7 @@ def existe_correo(
 ) -> bool:
     return bool(
         db.session.execute(
-            text("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM usuario
-                    WHERE LOWER(correo_electronico) = LOWER(:correo)
-                      AND (
-                          :excluir_id IS NULL
-                          OR id_usuario <> :excluir_id
-                      )
-                )
-            """),
+            select(func.public.usuarios_correo_existe(bindparam('correo'), bindparam('excluir_id'))),
             {
                 "correo": correo,
                 "excluir_id": excluir_id,
@@ -360,30 +127,11 @@ def crear_usuario(
     id_gestor: int,
 ):
     return db.session.execute(
-        text("""
-            INSERT INTO usuario (
-                dni,
-                nombres,
-                apellido_paterno,
-                apellido_materno,
-                celular,
-                correo_electronico,
-                clave,
-                usuario_creacion,
-                estado_registro
-            ) VALUES (
-                :dni,
-                :nombres,
-                :apellido_paterno,
-                :apellido_materno,
-                :celular,
-                :correo,
-                crypt(:clave, gen_salt('bf')),
-                :id_gestor,
-                1
-            )
-            RETURNING id_usuario
-        """),
+        select(func.public.usuarios_crear(
+            bindparam('dni'), bindparam('nombres'), bindparam('apellido_paterno'),
+            bindparam('apellido_materno'), bindparam('celular'), bindparam('correo'),
+            bindparam('clave'), bindparam('id_gestor'),
+        )),
         {
             **datos,
             "clave": clave_hash,
@@ -398,24 +146,7 @@ def asignar_perfil(
     id_gestor: int,
 ):
     db.session.execute(
-        text("""
-            INSERT INTO usuario_perfiles (
-                id_usuario,
-                id_perfil,
-                usuario_asignacion,
-                estado_registro
-            ) VALUES (
-                :id_usuario,
-                :id_perfil,
-                :id_gestor,
-                1
-            )
-            ON CONFLICT (id_usuario, id_perfil)
-            DO UPDATE SET
-                estado_registro = 1,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_DATE
-        """),
+        select(func.public.usuarios_asignar_perfil(bindparam('id_usuario'), bindparam('id_perfil'), bindparam('id_gestor'))),
         {
             "id_usuario": id_usuario,
             "id_perfil": id_perfil,
@@ -434,15 +165,7 @@ def sincronizar_perfiles(
     seleccionadas. No elimina registros históricos.
     """
     db.session.execute(
-        text("""
-            UPDATE usuario_perfiles
-            SET
-                estado_registro = 0,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_DATE
-            WHERE id_usuario = :id_usuario
-              AND estado_registro = 1
-        """),
+        select(func.public.usuarios_desactivar_perfiles(bindparam('id_gestor'), bindparam('id_usuario'))),
         {
             "id_usuario": id_usuario,
             "id_gestor": id_gestor,
@@ -463,37 +186,13 @@ def sincronizar_puestos_laborales(
     id_gestor: int,
 ):
     db.session.execute(
-        text("""
-            UPDATE usuario_puestos_laborales
-            SET estado_registro = 0,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_DATE
-            WHERE id_usuario = :id_usuario
-              AND estado_registro = 1
-        """),
+        select(func.public.usuarios_desactivar_puestos(bindparam('id_gestor'), bindparam('id_usuario'))),
         {"id_usuario": id_usuario, "id_gestor": id_gestor},
     )
 
     for id_puesto in ids_puestos_laborales:
         db.session.execute(
-            text("""
-                INSERT INTO usuario_puestos_laborales (
-                    id_usuario,
-                    id_puesto_laboral,
-                    usuario_asignacion,
-                    estado_registro
-                ) VALUES (
-                    :id_usuario,
-                    :id_puesto_laboral,
-                    :id_gestor,
-                    1
-                )
-                ON CONFLICT (id_usuario, id_puesto_laboral)
-                DO UPDATE SET
-                    estado_registro = 1,
-                    usuario_modificacion = :id_gestor,
-                    fecha_modificacion = CURRENT_DATE
-            """),
+            select(func.public.usuarios_asignar_puesto(bindparam('id_usuario'), bindparam('id_puesto_laboral'), bindparam('id_gestor'))),
             {
                 "id_usuario": id_usuario,
                 "id_puesto_laboral": id_puesto,
@@ -509,23 +208,11 @@ def actualizar_usuario(
     clave_hash: str | None = None,
 ):
     db.session.execute(
-        text("""
-            UPDATE usuario
-            SET
-                dni = :dni,
-                nombres = :nombres,
-                apellido_paterno = :apellido_paterno,
-                apellido_materno = :apellido_materno,
-                celular = :celular,
-                correo_electronico = :correo,
-                clave = CASE
-                    WHEN :clave IS NULL THEN clave
-                    ELSE crypt(:clave, gen_salt('bf'))
-                END,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_DATE
-            WHERE id_usuario = :id_usuario
-        """),
+        select(func.public.usuarios_actualizar(
+            bindparam('dni'), bindparam('nombres'), bindparam('apellido_paterno'),
+            bindparam('apellido_materno'), bindparam('celular'), bindparam('correo'),
+            bindparam('clave'), bindparam('id_gestor'), bindparam('id_usuario'),
+        )),
         {
             **datos,
             "id_usuario": id_usuario,
@@ -541,14 +228,7 @@ def cambiar_estado_usuario(
     id_gestor: int,
 ):
     db.session.execute(
-        text("""
-            UPDATE usuario
-            SET
-                estado_registro = :estado,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_DATE
-            WHERE id_usuario = :id_usuario
-        """),
+        select(func.public.usuarios_cambiar_estado(bindparam('estado'), bindparam('id_gestor'), bindparam('id_usuario'))),
         {
             "id_usuario": id_usuario,
             "estado": estado,
@@ -558,12 +238,9 @@ def cambiar_estado_usuario(
 
 def listar_locales_activos():
     return db.session.execute(
-        text("""
-            SELECT id_local, codigo, nombre, direccion
-            FROM local
-            WHERE estado_registro = 1
-            ORDER BY nombre
-        """)
+        select(func.public.usuarios_locales_activos().table_valued(
+            'id_local', 'codigo', 'nombre', 'direccion',
+        ))
     ).mappings().all()
 
 
@@ -572,12 +249,7 @@ def locales_activos_validos(ids_locales: list[int]) -> bool:
         return False
 
     cantidad = db.session.execute(
-        text("""
-            SELECT COUNT(*)
-            FROM local
-            WHERE id_local = ANY(:ids_locales)
-              AND estado_registro = 1
-        """),
+        select(func.public.usuarios_contar_locales(bindparam('ids_locales'))),
         {"ids_locales": ids_locales},
     ).scalar_one()
 
@@ -591,15 +263,7 @@ def sincronizar_locales_usuario(
 ):
     """Desactiva locales anteriores y activa los seleccionados."""
     db.session.execute(
-        text("""
-            UPDATE usuario_local
-            SET
-                estado_registro = 0,
-                usuario_modificacion = :id_gestor,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id_usuario = :id_usuario
-              AND estado_registro = 1
-        """),
+        select(func.public.usuarios_desactivar_locales(bindparam('id_gestor'), bindparam('id_usuario'))),
         {
             "id_usuario": id_usuario,
             "id_gestor": id_gestor,
@@ -608,24 +272,7 @@ def sincronizar_locales_usuario(
 
     for id_local in ids_locales:
         db.session.execute(
-            text("""
-                INSERT INTO usuario_local (
-                    id_usuario,
-                    id_local,
-                    usuario_asignacion,
-                    estado_registro
-                ) VALUES (
-                    :id_usuario,
-                    :id_local,
-                    :id_gestor,
-                    1
-                )
-                ON CONFLICT (id_usuario, id_local)
-                DO UPDATE SET
-                    estado_registro = 1,
-                    usuario_modificacion = :id_gestor,
-                    fecha_modificacion = CURRENT_TIMESTAMP
-            """),
+            select(func.public.usuarios_asignar_local(bindparam('id_usuario'), bindparam('id_local'), bindparam('id_gestor'))),
             {
                 "id_usuario": id_usuario,
                 "id_local": id_local,

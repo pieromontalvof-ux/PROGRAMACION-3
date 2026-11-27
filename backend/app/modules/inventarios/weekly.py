@@ -1,4 +1,6 @@
 """Read-only weekly purchasing capacity. Sales consumption only; no agent dependencies."""
+
+from sqlalchemy import bindparam, func, select
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_CEILING
 
@@ -140,39 +142,18 @@ def report(local, today=None, porcentaje=0, dias=7):
     today = today or datetime.now(timezone(timedelta(hours=-5))).date()
     monday = today-timedelta(days=today.weekday())
     params = dict(local=local, desde=min(today-timedelta(days=28),monday-timedelta(days=28)), hasta=today-timedelta(days=1))
-    coverage = filas('''WITH cobros AS (SELECT (creado_en AT TIME ZONE 'America/Lima')::date fecha,count(*) cobros,
-        count(*) FILTER (WHERE EXISTS (SELECT 1 FROM movimiento_inventario m
-            WHERE m.id_movimiento_inventario=c.id_movimiento AND m.id_local=c.id_local)) cobros_con_inventario
-        FROM salon_cobro c WHERE id_local=:local
-        AND (creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta GROUP BY 1),
-        cierres AS (SELECT fecha FROM inventario_jornada WHERE id_local=:local AND cerrado_en IS NOT NULL
-            AND fecha BETWEEN :desde AND :hasta)
-        SELECT coalesce(c.fecha,j.fecha) fecha,coalesce(c.cobros,0) cobros,
-            coalesce(c.cobros_con_inventario,0) cobros_con_inventario,j.fecha IS NOT NULL jornada_cerrada
-        FROM cobros c FULL JOIN cierres j USING(fecha)''',params)
-    items = filas('''WITH lineas AS (
-        SELECT (creado_en AT TIME ZONE 'America/Lima')::date fecha,linea FROM salon_cobro c
-        CROSS JOIN LATERAL jsonb_array_elements(c.comprobante->'lineas') linea
-        WHERE c.comprobante->'anulacion' IS NULL AND id_local=:local AND (creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-      ), demanda AS (
-        SELECT fecha,(linea->>'id_presentacion')::int id_presentacion,(linea->>'id_promocion')::int id_promocion,
-          linea->>'nombre' nombre,(linea->>'cantidad')::numeric cantidad FROM lineas
-        UNION ALL SELECT fecha,(opcion->>'id_presentacion')::int,NULL,opcion->>'nombre',(linea->>'cantidad')::numeric
-          FROM lineas CROSS JOIN LATERAL jsonb_array_elements(coalesce(linea->'selecciones_promocion','[]'::jsonb)) opcion
-          WHERE linea->>'id_promocion' IS NOT NULL)
-        SELECT fecha,id_presentacion,id_promocion,max(nombre) nombre,sum(cantidad) cantidad
-        FROM demanda GROUP BY fecha,id_presentacion,id_promocion''', params)
-    consumption = filas('''SELECT (c.creado_en AT TIME ZONE 'America/Lima')::date fecha,d.id_producto,sum(d.cantidad) cantidad
-        FROM salon_cobro c JOIN movimiento_inventario m ON m.id_movimiento_inventario=c.id_movimiento AND m.id_local=c.id_local
-        JOIN movimiento_inventario_detalle d USING(id_movimiento_inventario)
-        WHERE c.id_local=:local AND (c.creado_en AT TIME ZONE 'America/Lima')::date BETWEEN :desde AND :hasta
-        GROUP BY 1,d.id_producto''',params)
-    products = filas('''SELECT p.id_producto,p.codigo,p.nombre,p.unidad,p.presentacion,p.id_categoria,cat.nombre categoria,
-        p.id_proveedor,pr.nombre proveedor,s.stock_actual,
-        coalesce(p.activo AND cat.activo AND pr.activo,false) compra_habilitada,
-        coalesce(sl.stock_minimo,0) stock_minimo,sl.stock_maximo
-        FROM producto p LEFT JOIN categoria_producto cat USING(id_categoria) LEFT JOIN proveedor pr USING(id_proveedor)
-        LEFT JOIN inventario_stock_teorico s ON s.id_producto=p.id_producto AND s.id_local=:local
-        LEFT JOIN producto_stock_local sl ON sl.id_producto=p.id_producto AND sl.id_local=:local
-        WHERE p.activo OR coalesce(s.stock_actual,0)<>0 ORDER BY p.nombre''',params)
+    coverage = filas(select(func.public.inv_weekly_report_1(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'fecha', 'cobros', 'cobros_con_inventario', 'jornada_cerrada'
+    )),params)
+    items = filas(select(func.public.inv_weekly_report_2(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'fecha', 'id_presentacion', 'id_promocion', 'nombre', 'cantidad'
+    )), params)
+    consumption = filas(select(func.public.inv_weekly_report_3(bindparam('local'), bindparam('desde'), bindparam('hasta')).table_valued(
+        'fecha', 'id_producto', 'cantidad'
+    )),params)
+    products = filas(select(func.public.inv_weekly_report_4(bindparam('local')).table_valued(
+        'id_producto', 'codigo', 'nombre', 'unidad', 'presentacion', 'id_categoria',
+        'categoria', 'id_proveedor', 'proveedor', 'stock_actual', 'compra_habilitada',
+        'stock_minimo', 'stock_maximo'
+    )),params)
     return serial(calculate(today,items,consumption,products,coverage,porcentaje,dias))

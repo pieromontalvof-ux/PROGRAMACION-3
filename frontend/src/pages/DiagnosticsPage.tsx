@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/authState'
@@ -16,7 +17,7 @@ export function DiagnosticsPage() {
   useEffect(() => {
     if (!allowed || !token) return
     const controller = new AbortController()
-    fetch(`${import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'}/diagnostico`, {
+    fetch(`${API_BASE_URL}/diagnostico`, {
       headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
     }).then(async response => {
       const data = await response.json()

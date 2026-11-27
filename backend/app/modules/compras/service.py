@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
 from app.modules.compras.repository import (
+    estado_orden_valido,
     crear_cabecera_orden,
     crear_detalle_orden,
     generar_codigo_orden,
@@ -241,16 +242,6 @@ def registrar_orden(id_usuario, datos):
         db.session.rollback()
         raise
 
-ESTADOS_ORDEN = {
-    "BORRADOR",
-    "ENVIADA",
-    "RECEPCION_PARCIAL",
-    "RECEPCIONADA",
-    "CERRADA_INCOMPLETA",
-    "CANCELADA",
-}
-
-
 def _leer_fecha_filtro(valor):
     if valor in (None, ""):
         return None
@@ -280,7 +271,7 @@ def obtener_historial_ordenes(
         }, 400
 
     estado_limpio = str(estado or "").strip().upper() or None
-    if estado_limpio and estado_limpio not in ESTADOS_ORDEN:
+    if estado_limpio and not estado_orden_valido(estado_limpio):
         return {"mensaje": "El estado de orden no es válido"}, 400
 
     filas = listar_historial_ordenes(

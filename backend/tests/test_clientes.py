@@ -33,6 +33,10 @@ class ClienteRouteTests(unittest.TestCase):
         JWTManager(self.app)
         self.app.register_blueprint(clientes_bp,url_prefix='/api/v1/clientes')
         self.client=self.app.test_client()
+        permiso = patch('app.modules.clientes.routes.perfil_autorizado',
+                        side_effect=lambda perfil, salon=False: perfil in ((2, 3) if salon else (1, 2, 3)))
+        permiso.start()
+        self.addCleanup(permiso.stop)
 
     def headers(self,perfil=2,local=7):
         with self.app.app_context():
@@ -78,36 +82,34 @@ class ClienteRouteTests(unittest.TestCase):
             self.assertEqual(app.test_client().get('/api/salon/clientes',headers=headers).status_code,403)
 
 class ClientePersistenceTests(unittest.TestCase):
-    def setUp(self):
-        from sqlalchemy import create_engine, text
-        from sqlalchemy.orm import Session
-        from types import SimpleNamespace
-        self.engine=create_engine('sqlite://')
-        self.session=Session(self.engine)
-        self.session.execute(text("ATTACH DATABASE ':memory:' AS public"))
-        self.session.execute(text('''CREATE TABLE public.cliente_comercial (
-            id_cliente TEXT PRIMARY KEY,id_local INTEGER,tipo_persona TEXT,tipo_documento TEXT,
-            numero_documento TEXT,nombre TEXT,direccion TEXT,email TEXT,telefono TEXT)'''))
-        self.mock=patch('app.modules.clientes.service.db',SimpleNamespace(session=self.session))
-        self.mock.start()
-
-    def tearDown(self):
-        self.mock.stop()
-        self.session.close()
-        self.engine.dispose()
-
-    def test_creation_uses_uuid_and_lookup_cannot_cross_local(self):
+    @patch('app.modules.clientes.service.db')
+    def test_creation_uses_uuid_and_calls_the_stored_function(self, database):
         from uuid import UUID
-        from app.modules.clientes.service import crear, obtener
-        customer=crear(7,{'nombre':'Ana','tipo_documento':'DNI','numero_documento':'00123456'})
-        self.assertEqual(str(UUID(customer['id_cliente'])),customer['id_cliente'])
-        self.assertNotEqual(customer['id_cliente'],'00123456')
-        self.assertEqual(obtener(7,customer['id_cliente'])['numero_documento'],'00123456')
-        self.assertIsNone(obtener(8,customer['id_cliente']))
+        from app.modules.clientes.service import crear
 
-    def test_invalid_input_never_creates_customer(self):
-        from sqlalchemy import text
+        customer = crear(7, {'nombre': 'Ana', 'tipo_documento': 'DNI', 'numero_documento': '00123456'})
+        self.assertEqual(str(UUID(customer['id_cliente'])), customer['id_cliente'])
+        consulta = database.session.execute.call_args.args[0].compile()
+        self.assertIn('clientes_crear', str(consulta))
+        self.assertEqual(
+            list(consulta.params.values())[:5], [customer['id_cliente'], 7, 'NATURAL', 'DNI', '00123456']
+        )
+        database.session.commit.assert_called_once()
+
+    @patch('app.modules.clientes.service.db')
+    def test_lookup_passes_the_selected_local_as_a_bound_argument(self, database):
+        from app.modules.clientes.service import obtener
+
+        customer = 'f56f07c8-7348-4bc3-ae69-d633f0e26984'
+        database.session.execute.return_value.mappings.return_value.first.return_value = None
+        self.assertIsNone(obtener(8, customer))
+        consulta = database.session.execute.call_args.args[0].compile()
+        self.assertIn('clientes_obtener', str(consulta))
+        self.assertEqual(list(consulta.params.values()), [8, customer])
+
+    @patch('app.modules.clientes.service.db')
+    def test_invalid_input_never_creates_customer(self, database):
         from app.modules.clientes.service import crear
         with self.assertRaises(BadRequest):
-            crear(7,{'nombre':'Ana','tipo_documento':'DNI','numero_documento':12345678})
-        self.assertEqual(self.session.execute(text('SELECT count(*) FROM public.cliente_comercial')).scalar(),0)
+            crear(7, {'nombre': 'Ana', 'tipo_documento': 'DNI', 'numero_documento': 12345678})
+        database.session.execute.assert_not_called()

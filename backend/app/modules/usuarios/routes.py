@@ -14,14 +14,14 @@ usuarios_bp = Blueprint("usuarios", __name__)
 
 
 @usuarios_bp.get("")
-@requiere_permiso(id_opcion_menu=2, accion="consultar")
+@requiere_permiso(id_opcion_menu='usuarios', accion="consultar")
 def consultar_usuarios():
     respuesta, estado = obtener_usuarios(get_jwt())
     return jsonify(respuesta), estado
 
 
 @usuarios_bp.post("")
-@requiere_permiso(id_opcion_menu=2, accion="crear")
+@requiere_permiso(id_opcion_menu='usuarios', accion="crear")
 def crear_usuario():
     respuesta, estado = registrar_usuario(
         int(get_jwt_identity()),
@@ -32,7 +32,7 @@ def crear_usuario():
 
 
 @usuarios_bp.put("/<int:id_usuario>")
-@requiere_permiso(id_opcion_menu=2, accion="editar")
+@requiere_permiso(id_opcion_menu='usuarios', accion="editar")
 def actualizar_usuario(id_usuario):
     respuesta, estado = editar_usuario(
         id_usuario,
@@ -44,7 +44,7 @@ def actualizar_usuario(id_usuario):
 
 
 @usuarios_bp.patch("/<int:id_usuario>/estado")
-@requiere_permiso(id_opcion_menu=2, accion="editar")
+@requiere_permiso(id_opcion_menu='usuarios', accion="editar")
 def cambiar_estado(id_usuario):
     respuesta, estado = actualizar_estado(
         id_usuario,

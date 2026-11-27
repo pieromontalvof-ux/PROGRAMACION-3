@@ -3,15 +3,20 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 
-COMERCIAL = {'ruc': 11, 'razon_social': 200, 'nombre_comercial': 200,
-             'direccion': 250, 'telefono': 40, 'email': 200, 'contacto': 200}
+from sqlalchemy import func, select
+
+from app.core.extensions import db
+
+
+def limites_comerciales():
+    return db.session.execute(select(func.public.proveedor_limites_comerciales())).scalar_one()
 
 
 def validar_comercial(datos):
     if not isinstance(datos, dict):
         raise ValueError('Completa los datos comerciales del proveedor.')
     resultado = {}
-    for campo, limite in COMERCIAL.items():
+    for campo, limite in limites_comerciales().items():
         valor = datos.get(campo, '')
         if not isinstance(valor, str) or len(valor.strip()) > limite:
             raise ValueError(f'Revisa el campo {campo}.')

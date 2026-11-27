@@ -1,7 +1,8 @@
+import { API_BASE_URL } from '../../config'
 import {useEffect,useState} from 'react'
 
 export async function opApi<T>(token:string,path:string,body?:unknown,method='POST',signal?:AbortSignal):Promise<T>{
-  const r=await fetch(`${import.meta.env.VITE_API_URL??'http://127.0.0.1:5000/api'}/inventario-operativo/${path}`,{
+  const r=await fetch(`${API_BASE_URL}/inventario-operativo/${path}`,{
     method:body===undefined?'GET':method,signal,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})
   const data=await r.json();if(!r.ok)throw new Error(data.mensaje??'No se pudo completar la operación');return data
 }

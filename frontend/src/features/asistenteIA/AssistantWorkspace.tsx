@@ -137,7 +137,7 @@ function ScopedAssistantWorkspace() {
     void action(async signal => {
       const data = await solicitar<{ formulario: import('./service').FormularioCatalogo }>(token!, 'formulario', { recurso: draft.recurso }, signal)
       if (!alive.current) return
-      setCatalogForm(data.formulario); setWorkflow({ frames: [{ form: data.formulario, values: valuesFromProposal(draft.datos), version: 0 }],
+      setCatalogForm(data.formulario); setWorkflow({ frames: [{ form: data.formulario, values: valuesFromProposal(draft.datos, data.formulario.unidades_medida), version: 0 }],
         proposal: null, dirty: false, saved: null, draftId: null })
       setFormVersion(v => v + 1); setFormPanelOpen(true)
     })

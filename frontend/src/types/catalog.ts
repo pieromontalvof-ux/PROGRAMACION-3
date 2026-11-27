@@ -1,6 +1,6 @@
 import type { UnidadMedida, MedidaConUnidad } from './units'
 
-export type UnidadProducto = 'KGM' | 'LTR' | 'C62'
+export type UnidadProducto = string
 
 export interface ProductoCatalogo extends MedidaConUnidad {
   id_producto: number

@@ -24,6 +24,11 @@ class QueueTests(unittest.TestCase):
         db.session.execute(text(migration.read_text(encoding='utf-8').replace('BEGIN;','').replace('COMMIT;','')))
         migration=migration.with_name('20261121_fact_api_autoscale.sql')
         db.session.execute(text(migration.read_text(encoding='utf-8').replace('BEGIN;','').replace('COMMIT;','')))
+        funciones = migration.with_name('20261127_funciones_facturacion.sql')
+        db.session.connection().exec_driver_sql(
+            funciones.read_text(encoding='utf-8').replace('BEGIN;', '').replace('COMMIT;', ''),
+            execution_options={'no_parameters': True},
+        )
         db.session.commit()
         db.session.execute(text('DELETE FROM fact_api_adjunto; DELETE FROM fact_api_archivo; DELETE FROM fact_api_documento; DELETE FROM fact_api_intento; DELETE FROM fact_api_operacion; UPDATE fact_api_circuito SET fallos=0,abierto_hasta=NULL'))
         db.session.commit()

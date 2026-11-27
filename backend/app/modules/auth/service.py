@@ -2,6 +2,7 @@ import re
 
 from flask_jwt_extended import create_access_token
 
+from app.core.config import CORPORATE_EMAIL_DOMAIN
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
 from app.modules.auth.repository import (
@@ -14,11 +15,9 @@ from app.modules.auth.repository import (
     obtener_menu,
     obtener_perfil_usuario,
     obtener_puesto_usuario,
+    perfil_puede_cambiar_local,
+    perfil_requiere_puesto_activo,
 )
-
-
-ID_PERFIL_MIEMBRO_EQUIPO = 4
-DOMINIO_CORPORATIVO = "barbarian.pe"
 
 
 def _normalizar_correo_login(valor):
@@ -28,7 +27,7 @@ def _normalizar_correo_login(valor):
         return None
 
     if "@" not in correo:
-        correo = f"{correo}@{DOMINIO_CORPORATIVO}"
+        correo = f"{correo}@{CORPORATE_EMAIL_DOMAIN}"
 
     partes = correo.split("@")
 
@@ -37,7 +36,7 @@ def _normalizar_correo_login(valor):
 
     nombre_usuario, dominio = partes
 
-    if dominio != DOMINIO_CORPORATIVO:
+    if dominio != CORPORATE_EMAIL_DOMAIN:
         return None
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", nombre_usuario):
@@ -227,11 +226,11 @@ def _leer_id_puesto(datos):
 
 
 def _resolver_puesto(id_usuario, perfil, puestos, datos=None):
-    if perfil["id_perfil"] != ID_PERFIL_MIEMBRO_EQUIPO:
+    if not perfil_requiere_puesto_activo(perfil["id_perfil"]):
         return None, None
 
     if not puestos:
-        return None, "El miembro de equipo no tiene puestos asignados"
+        return None, "El perfil requiere un puesto y el usuario no tiene ninguno asignado"
 
     id_puesto = _leer_id_puesto(datos)
 
@@ -247,11 +246,11 @@ def _resolver_puesto(id_usuario, perfil, puestos, datos=None):
 
 
 def _obtener_puesto_desde_jwt(id_usuario, perfil, puestos, jwt):
-    if perfil["id_perfil"] != ID_PERFIL_MIEMBRO_EQUIPO:
+    if not perfil_requiere_puesto_activo(perfil["id_perfil"]):
         return None, None
 
     if not puestos:
-        return None, "El miembro de equipo no tiene puestos asignados"
+        return None, "El perfil requiere un puesto y el usuario no tiene ninguno asignado"
 
     try:
         id_puesto = int(jwt.get("id_puesto_laboral"))
@@ -275,7 +274,7 @@ def iniciar_sesion(datos: dict):
         return {
             "mensaje": (
                 "Ingresa un usuario corporativo válido. "
-                f"Ejemplo: crodriguez@{DOMINIO_CORPORATIVO}"
+                f"Ejemplo: crodriguez@{CORPORATE_EMAIL_DOMAIN}"
             )
         }, 400
 
@@ -425,9 +424,9 @@ def cambiar_puesto_activo(id_usuario: int, jwt: dict, datos: dict):
     except (TypeError, ValueError):
         return {"mensaje": "La sesión no es válida"}, 401
 
-    if id_perfil != ID_PERFIL_MIEMBRO_EQUIPO:
+    if not perfil_requiere_puesto_activo(id_perfil):
         return {
-            "mensaje": "Solo Miembro de equipo utiliza un puesto activo"
+            "mensaje": "El perfil activo no permite cambiar de puesto"
         }, 403
 
     id_puesto = _leer_id_puesto(datos)
@@ -492,8 +491,8 @@ def cambiar_local_activo(id_usuario: int, jwt: dict, datos: dict):
     except (TypeError, ValueError):
         return {"mensaje": "Selecciona un local válido"}, 400
 
-    if id_perfil not in (2, 3, 4):
-        return {"mensaje": "Selecciona Gerente, Supervisor o Miembro para cambiar de local"}, 403
+    if not perfil_puede_cambiar_local(id_perfil):
+        return {"mensaje": "El perfil activo no permite cambiar de local"}, 403
 
     usuario = buscar_usuario_por_id(id_usuario)
 

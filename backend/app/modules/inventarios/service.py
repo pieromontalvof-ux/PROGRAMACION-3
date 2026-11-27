@@ -1,5 +1,7 @@
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+
+from sqlalchemy import func, select
 
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
@@ -36,10 +38,8 @@ ZONA_HORARIA_LIMA = timezone(
     timedelta(hours=-5)
 )
 
-HORA_LIMITE_BORRADOR = time(
-    hour=9,
-    minute=0,
-)
+def hora_limite_borrador():
+    return db.session.execute(select(func.public.hora_limite_borrador_inventario())).scalar_one()
 
 
 def obtener_fecha_hora_lima():
@@ -55,7 +55,7 @@ def obtener_fechas_disponibles():
 
     limite_ayer = datetime.combine(
         hoy,
-        HORA_LIMITE_BORRADOR,
+        hora_limite_borrador(),
         tzinfo=ZONA_HORARIA_LIMA,
     )
 
@@ -87,7 +87,7 @@ def limpiar_borrador_vencido():
 
     fecha_limite = datetime.combine(
         fecha_inventario + timedelta(days=1),
-        HORA_LIMITE_BORRADOR,
+        hora_limite_borrador(),
         tzinfo=ZONA_HORARIA_LIMA,
     )
 

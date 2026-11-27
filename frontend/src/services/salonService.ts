@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config'
 export async function salonApi<Respuesta = any>(
   ruta: string,
   datos?: unknown,
@@ -7,7 +8,7 @@ export async function salonApi<Respuesta = any>(
   const token = sessionStorage.getItem('salon_token')
   if (!token) throw new Error('Inicia sesión en Salón para continuar.')
 
-  const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const api = API_BASE_URL
   const respuesta = await fetch(`${api}/salon/${ruta}`, {
     method: datos ? metodo : 'GET',
     signal,

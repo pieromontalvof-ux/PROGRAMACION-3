@@ -65,9 +65,9 @@ export function AnswerContent({ text, queries = [] }: { text: string; queries?: 
             <tbody>{products.filter(p => String(p.categoria ?? 'Productos') === category).map(p => {
               const deficit = typeof p.stock_actual === 'number' && typeof p.stock_minimo === 'number' ? Math.max(0, p.stock_minimo - p.stock_actual) : null
               return <tr key={String(p.id_producto)}><th scope="row">{String(p.nombre ?? p.producto ?? 'Producto')}</th>
-                <td>{number(p.stock_actual)} <small>{formatearUnidad(p.unidad)}</small></td>
-                <td>{number(p.stock_minimo)} <small>{formatearUnidad(p.unidad)}</small></td>
-                <td><span className={deficit && deficit > 0 ? 'assistant-stock-low' : 'assistant-stock-ok'}>{number(deficit)} <small>{formatearUnidad(p.unidad)}</small></span></td></tr>
+                <td>{number(p.stock_actual)} <small>{formatearUnidad(p)}</small></td>
+                <td>{number(p.stock_minimo)} <small>{formatearUnidad(p)}</small></td>
+                <td><span className={deficit && deficit > 0 ? 'assistant-stock-low' : 'assistant-stock-ok'}>{number(deficit)} <small>{formatearUnidad(p)}</small></span></td></tr>
             })}</tbody></table>
         </div>
       </section>)}

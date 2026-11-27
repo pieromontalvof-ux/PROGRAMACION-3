@@ -106,7 +106,7 @@ function StockLimitsContent() {
       {cargando ? <p role="status">Cargando límites…</p> : <div className="stock-limits__table">
         <table><thead><tr><th>Código</th><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Mínimo</th><th>Máximo</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>{filtrados.map((p) => <tr key={p.id_producto}>
-            <td>{p.codigo}</td><td><strong>{p.nombre}</strong></td><td>{p.categoria}</td><td>{formatearUnidad(p.unidad)}</td>
+            <td>{p.codigo}</td><td><strong>{p.nombre}</strong></td><td>{p.categoria}</td><td>{formatearUnidad(p)}</td>
             <td>{p.stock_minimo}</td><td>{p.stock_maximo ?? 'Sin definir'}</td><td>{p.activo ? 'Activo' : 'Inactivo'}</td>
             <td>{permiso?.configurar && <button type="button" onClick={(e) => abrir(p, e.currentTarget)}>Configurar</button>}</td>
           </tr>)}{!filtrados.length && <tr><td colSpan={8}>No se encontraron productos.</td></tr>}</tbody>
@@ -117,7 +117,7 @@ function StockLimitsContent() {
       onCancel={(e) => { if (guardando) e.preventDefault(); else setEditando(null) }}>
       <form noValidate onSubmit={(e) => void guardar(e)}>
         <h2 id="limits-title">Configurar límites</h2>
-        <p>{editando.codigo} · {editando.nombre} ({formatearUnidad(editando.unidad)})</p>
+        <p>{editando.codigo} · {editando.nombre} ({formatearUnidad(editando)})</p>
         {error && <p id="limits-error" className="stock-limits__error" role="alert">{error}</p>}
         <fieldset disabled={guardando}>
           <label>Stock mínimo<input autoFocus type="number" min="0" max="999999999.999" step="0.001" required value={minimo}

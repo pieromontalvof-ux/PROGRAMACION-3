@@ -4,6 +4,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 ENV VITE_API_URL=/api
+ARG VITE_CORPORATE_EMAIL_DOMAIN=barbarian.pe
 RUN npm run build
 
 FROM python:3.12-slim-bookworm

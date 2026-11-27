@@ -7,6 +7,8 @@ from uuid import uuid4
 import logging
 from flask import g, request
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
+
 
 class RuntimeMetrics:
     """Ventana acotada por proceso; no conserva datos de clientes ni solicitudes."""
@@ -51,7 +53,7 @@ def register_http_telemetry(app):
     @app.get('/api/diagnostico')
     @requiere_permiso(id_opcion_menu=26, accion='consultar')
     def runtime_diagnostics():
-        if str(get_jwt().get('id_perfil')) != '1':
+        if not perfil_tiene_capacidad(get_jwt().get('id_perfil'), 'administrar_globalmente'):
             return jsonify(mensaje='Solo el administrador puede consultar el diagnóstico'), 403
         return jsonify(metrics.snapshot())
 

@@ -2,6 +2,7 @@
 import re
 from decimal import Decimal, InvalidOperation
 
+from app.core.profile_capabilities import perfil_tiene_capacidad
 from app.multiagente.agents import activity
 from app.multiagente.api import configuration, inventory, tools
 from app.multiagente.api.provider import AssistantError
@@ -13,7 +14,7 @@ def active(row):
 
 def catalog_only(session):
     """Administrators define global recipes; stores handle local supply."""
-    return (session.get('perfil_activo') or {}).get('id_perfil') == 1
+    return perfil_tiene_capacidad((session.get('perfil_activo') or {}).get('id_perfil'), 'administrar_globalmente')
 
 
 def authorize(session, agent_id, resource):

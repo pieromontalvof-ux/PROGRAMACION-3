@@ -32,7 +32,7 @@ def proteger_conteos_anteriores():
 
 @inventarios_bp.get("/resumen")
 @requiere_permiso(
-    id_opcion_menu=16,
+    id_opcion_menu='inventario',
     accion="consultar",
 )
 def consultar_resumen_inventario():
@@ -43,7 +43,7 @@ def consultar_resumen_inventario():
 
 @inventarios_bp.get("/stock")
 @requiere_permiso(
-    id_opcion_menu=15,
+    id_opcion_menu='stock_actual',
     accion="consultar",
 )
 def consultar_stock():
@@ -54,7 +54,7 @@ def consultar_stock():
 
 @inventarios_bp.get("/actual")
 @requiere_permiso(
-    id_opcion_menu=17,
+    id_opcion_menu='realizar_inventario',
     accion="consultar",
 )
 def consultar_inventario_actual():
@@ -65,7 +65,7 @@ def consultar_inventario_actual():
 
 @inventarios_bp.post("/actual/iniciar")
 @requiere_permiso(
-    id_opcion_menu=17,
+    id_opcion_menu='realizar_inventario',
     accion="crear",
 )
 def iniciar_inventario():
@@ -82,7 +82,7 @@ def iniciar_inventario():
 
 @inventarios_bp.put("/actual/guardar")
 @requiere_permiso(
-    id_opcion_menu=17,
+    id_opcion_menu='realizar_inventario',
     accion="editar",
 )
 def guardar_inventario():
@@ -99,7 +99,7 @@ def guardar_inventario():
 
 @inventarios_bp.post("/actual/cerrar")
 @requiere_permiso(
-    id_opcion_menu=17,
+    id_opcion_menu='realizar_inventario',
     accion="editar",
 )
 def cerrar_inventario():
@@ -116,7 +116,7 @@ def cerrar_inventario():
 
 @inventarios_bp.get("/revisiones")
 @requiere_permiso(
-    id_opcion_menu=18,
+    id_opcion_menu='revisar_inventarios',
     accion="consultar",
 )
 def consultar_inventarios_para_revision():
@@ -131,7 +131,7 @@ def consultar_inventarios_para_revision():
     "/revisiones/<int:id_inventario>"
 )
 @requiere_permiso(
-    id_opcion_menu=18,
+    id_opcion_menu='revisar_inventarios',
     accion="consultar",
 )
 def consultar_detalle_revision(id_inventario):
@@ -146,7 +146,7 @@ def consultar_detalle_revision(id_inventario):
     "/revisiones/<int:id_inventario>"
 )
 @requiere_permiso(
-    id_opcion_menu=18,
+    id_opcion_menu='revisar_inventarios',
     accion="revisar",
 )
 def revisar_inventario_cerrado(id_inventario):
@@ -166,7 +166,7 @@ def revisar_inventario_cerrado(id_inventario):
     "/revisiones/<int:id_inventario>/corregir"
 )
 @requiere_permiso(
-    id_opcion_menu=18,
+    id_opcion_menu='revisar_inventarios',
     accion="editar",
 )
 def corregir_inventario(id_inventario):
@@ -186,7 +186,7 @@ def corregir_inventario(id_inventario):
     "/revisiones/<int:id_inventario>/correcciones"
 )
 @requiere_permiso(
-    id_opcion_menu=18,
+    id_opcion_menu='revisar_inventarios',
     accion="consultar",
 )
 def consultar_correcciones_inventario(id_inventario):

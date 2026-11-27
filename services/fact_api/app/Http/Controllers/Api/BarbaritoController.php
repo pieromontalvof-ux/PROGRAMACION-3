@@ -52,7 +52,7 @@ class BarbaritoController extends Controller {
         }
         return DB::transaction(function () use($id,$payload,$hash) {
             // Company-wide lock serializes series allocation, retries and first-time setup.
-            DB::select("SELECT pg_advisory_xact_lock(hashtext('barbarito-demo-documents'))");
+            DB::table('barbarito_bloqueos')->insert(['clave'=>'barbarito-demo-documents']);
             $existing=DB::table('barbarito_documents')->find($id);
             if($existing) {
                 abort_unless(hash_equals($existing->payload_hash,$hash),409,'Identificador usado con otros datos.');
@@ -73,7 +73,6 @@ class BarbaritoController extends Controller {
                 $payload['origen']==='COMPRA'?'barbarito_supplier':'barbarito_customer'=>true]);
             $native=null;$nativeType=null;
             if($payload['origen']==='VENTA') {
-                $class=$payload['tipo']==='01'?Invoice::class:Boleta::class;
                 $nativeType=$payload['tipo']==='01'?'invoice':'boleta';
                 $details=array_map(fn($l)=>['cod_producto'=>$l['codigo'],'descripcion'=>$l['nombre'],
                     'unidad'=>$l['unidad'],'cantidad'=>$l['cantidad'],'mto_valor_unitario'=>(float)$l['subtotal']/(float)$l['cantidad'],
@@ -82,8 +81,9 @@ class BarbaritoController extends Controller {
                     'mto_total_linea'=>$l['total']],$payload['lineas']);
                 // Continue any documents created before adopting the native allocator.
                 // Company/series numbering is shared across branches in the native schema.
-                $latest=(int)$class::where('company_id',$company->id)->where('serie',$payload['serie'])
-                    ->selectRaw('COALESCE(MAX(CAST(correlativo AS BIGINT)),0) AS last')->value('last');
+                $latest=(int)DB::table('barbarito_correlativos_documentos')
+                    ->where('company_id',$company->id)->where('serie',$payload['serie'])
+                    ->where('tipo',$nativeType)->max('correlativo');
                 $counter=$branch->correlatives()->firstOrCreate(['tipo_documento'=>$payload['tipo'],'serie'=>$payload['serie']],
                     ['correlativo_actual'=>$latest]);
                 if($counter->correlativo_actual<$latest)$counter->update(['correlativo_actual'=>$latest]);
@@ -125,7 +125,7 @@ class BarbaritoController extends Controller {
         $format=$request->query('format','A4');
         abort_unless(in_array($format,['A4','80mm'],true),422);
         return DB::transaction(function () use ($id,$format) {
-        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))',['barbarito-pdf:'.$id.':'.$format]);
+        DB::table('barbarito_bloqueos')->insert(['clave'=>'barbarito-pdf:'.$id.':'.$format]);
         $row=DB::table('barbarito_documents')->find($id);abort_unless($row,404);
         $path='barbarito/'.$row->company_id.'/'.$row->branch_id.'/'.$row->origin.'/'.$id.'/'.
             ($row->origin==='VENTA'?self::PDF_TEMPLATE_VERSION.'/':'').$format.'.pdf';

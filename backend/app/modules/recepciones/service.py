@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 import re
 
+from sqlalchemy import func, select
+
 from app.core.extensions import db
 from app.modules.auditoria.service import registrar_actividad
 from app.modules.recepciones.repository import (
@@ -26,14 +28,8 @@ from app.modules.recepciones.repository import (
 )
 
 
-MOTIVOS_CORRECCION = {
-    "ERROR_DIGITACION",
-    "MAL_CONTADO",
-    "PRODUCTO_DANADO",
-    "PRODUCTO_RECHAZADO",
-    "ERROR_FACTURA",
-    "OTRO",
-}
+def motivos_correccion():
+    return [dict(fila) for fila in db.session.execute(select(func.public.catalogo_motivos_recepcion().table_valued('codigo', 'etiqueta'))).mappings()]
 
 
 def _numero(valor):
@@ -511,6 +507,7 @@ def obtener_detalle_recepcion(
 
     financiera, entregas = invoice_storage.obtener(id_factura)
     return {
+        "motivos_correccion": motivos_correccion(),
         "recepcion": {
             "factura": financiera,
             "entregas": entregas,
@@ -622,7 +619,7 @@ def corregir_recepcion(
             "mensaje": "Ingresa una fecha válida"
         }, 400
 
-    if motivo not in MOTIVOS_CORRECCION:
+    if not any(opcion["codigo"] == motivo for opcion in motivos_correccion()):
         return {
             "mensaje": (
                 "Selecciona un motivo de corrección"

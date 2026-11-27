@@ -1,8 +1,9 @@
+import { API_BASE_URL } from '../config'
 import { scheduleEffect } from '../utils/scheduleEffect'
 import {useEffect,useState} from 'react'
 import { useAuth } from '../context/authState'
 import {SalonMap,type DistribucionSalon,type ElementoSalon} from '../components/SalonMap'
-const api=import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+const api=API_BASE_URL
 export function SalonLayoutPage(){
  const {token}=useAuth()
  return <SalonLayoutEditor key={token??''}/>

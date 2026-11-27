@@ -1,10 +1,11 @@
+import { API_BASE_URL } from '../../config'
 import { scheduleEffect } from '../../utils/scheduleEffect'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { blankWorkspace, type WorkspaceState } from './workspaceState'
 
 type Status = 'loading' | 'ready' | 'saving' | 'error' | 'conflict' | 'unavailable'
 type Reply = { workspace: WorkspaceState | null; revision: number; mensaje?: string }
-const api = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+const api = API_BASE_URL
 // The authoritative trace stays on the server; recovery saves its reference.
 function serialize(value: unknown) {
   return JSON.stringify(value, (key, item) => {

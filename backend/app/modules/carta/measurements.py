@@ -4,31 +4,71 @@ US/Imperial fluid ounces are distinct from weight ounces (NIST SP 811, B.9).
 """
 from decimal import Decimal, InvalidOperation
 
-FACTORS={'MLT':Decimal(1),'LTR':Decimal(1000),
-         'FLOZ_US':Decimal('29.5735295625'),'FLOZ_UK':Decimal('28.4130625')}
+from flask import g, has_request_context
+from sqlalchemy import func, select
+
+from app.core.extensions import db
+
+
+def _leer_unidades_capacidad():
+    return [dict(fila) for fila in db.session.execute(select(func.public.catalogo_capacidad_menaje().table_valued('codigo', 'nombre', 'factor', 'visible', 'alias'))).mappings()]
+
+
+def unidades_capacidad():
+    if not has_request_context():
+        return _leer_unidades_capacidad()
+    if "unidades_capacidad" not in g:
+        g.unidades_capacidad = _leer_unidades_capacidad()
+    return g.unidades_capacidad
+
+
+def unidad_capacidad(unit):
+    key = str(unit).upper()
+    return next((row for row in unidades_capacidad() if key in (row['codigo'], row['alias'])), None)
+
+
 FIELDS=('capacidad','unidad_capacidad','diametro_cm','altura_cm','largo_cm','ancho_cm')
-SELECT_SQL='''SELECT m.*,d.capacidad,d.unidad_capacidad,d.diametro_cm,d.altura_cm,d.largo_cm,d.ancho_cm,d.origen_medidas
-    FROM menaje m LEFT JOIN menaje_medida d USING(id_menaje)'''
+def listar_medidas_menaje(id_menaje=None):
+    filas = func.public.carta_medidas_menaje(id_menaje).table_valued(
+        'id_menaje', 'nombre', 'activo', 'capacidad', 'unidad_capacidad',
+        'diametro_cm', 'altura_cm', 'largo_cm', 'ancho_cm', 'origen_medidas',
+    )
+    return [dict(fila) for fila in db.session.execute(select(filas).order_by(filas.c.nombre)).mappings()]
 
 
-def number(value,label):
-    if isinstance(value,bool):
-        raise ValueError(f'{label}: indica un número positivo.')
+def obtener_menaje_con_bloqueo(id_menaje, edicion=False):
+    bloqueado = db.session.execute(select(func.public.carta_bloquear_menaje(id_menaje, edicion))).scalar()
+    return listar_medidas_menaje(id_menaje) if bloqueado else []
+
+
+def _reglas_medidas():
+    filas = func.public.carta_reglas_medidas_menaje().table_valued(
+        'campo', 'etiqueta', 'maximo', 'decimales',
+    )
+    return {fila['campo']: fila for fila in db.session.execute(select(filas)).mappings()}
+
+
+def number(value, regla):
+    etiqueta = regla['etiqueta']
+    decimales = regla['decimales']
     try:
-        result=Decimal(str(value))
-        if not result.is_finite() or result<=0 or result>Decimal('1000000') or result!=result.quantize(Decimal('.001')):
+        result = Decimal(str(value))
+        if (not result.is_finite() or result <= 0 or result > regla['maximo']
+                or result != result.quantize(Decimal(1).scaleb(-decimales))):
             raise InvalidOperation
         return result
-    except (InvalidOperation,ValueError,TypeError):
-        raise ValueError(f'{label}: usa un valor positivo de hasta tres decimales.') from None
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError(
+            f'{etiqueta}: indica un valor positivo de hasta {regla["maximo"]} '
+            f'y {decimales} decimales.'
+        ) from None
 
 
-def milliliters(value,unit):
-    key=str(unit).upper()
-    key={'ML':'MLT','L':'LTR'}.get(key,key)
-    if key not in FACTORS:
-        raise ValueError('Elige mL, L, onzas líquidas estadounidenses o imperiales; oz de peso no mide capacidad.')
-    return number(value,'Capacidad')*FACTORS[key]
+def milliliters(value, unit):
+    medida = unidad_capacidad(unit)
+    if medida is None:
+        raise ValueError('Selecciona una unidad de capacidad válida.')
+    return Decimal(str(value)) * medida['factor']
 
 
 def validated(data,previous=None):
@@ -39,15 +79,23 @@ def validated(data,previous=None):
     if (capacity is None)!=(unit is None):
         raise ValueError('Indica la capacidad y su unidad, o deja ambas sin registrar.')
     if capacity is not None:
-        if unit not in FACTORS:
+        medida = unidad_capacidad(unit)
+        if medida is None:
             raise ValueError('Selecciona una unidad de capacidad válida; distingue onzas líquidas de peso.')
-        result['capacidad']=number(capacity,'Capacidad')
-    for key in ('diametro_cm','altura_cm','largo_cm','ancho_cm'):
-        if result[key] is not None:
-            label={'diametro_cm':'Diámetro','altura_cm':'Altura','largo_cm':'Largo','ancho_cm':'Ancho'}[key]
-            result[key]=number(result[key],label)
-            if result[key]>10000:
-                raise ValueError('Revisa las dimensiones en centímetros.')
+        result['unidad_capacidad'] = medida['codigo']
+    anterior = previous or {}
+    pendientes = [
+        campo for campo in FIELDS
+        if campo != 'unidad_capacidad' and result[campo] is not None
+        and (result[campo] != anterior.get(campo)
+             or (campo == 'capacidad' and result['unidad_capacidad'] != anterior.get('unidad_capacidad')))
+    ]
+    if pendientes:
+        reglas = _reglas_medidas()
+        for campo in pendientes:
+            if campo not in reglas:
+                raise ValueError(f'No hay una regla de medida configurada para {campo}.')
+            result[campo] = number(result[campo], reglas[campo])
     return result
 
 
@@ -61,7 +109,7 @@ def serialize(row):
 
 
 def ensure_fits(ware,content,unit):
-    if str(unit).upper() not in ('MLT','ML','LTR','L') or ware.get('capacidad') is None:
+    if ware.get('capacidad') is None or unidad_capacidad(unit) is None:
         return
     if milliliters(content,unit)>milliliters(ware['capacidad'],ware.get('unidad_capacidad')):
         raise ValueError('El contenido supera la capacidad registrada del menaje. Ajusta la medida o elige un recipiente mayor.')

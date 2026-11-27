@@ -2,7 +2,7 @@
 import hashlib
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file
-from sqlalchemy import text
+from sqlalchemy import Uuid, bindparam, cast, func, select
 from werkzeug.exceptions import BadRequest, Conflict, NotFound
 from app.core.extensions import db
 from app.modules.clientes.routes import acceso
@@ -23,18 +23,17 @@ def validate_origin(origin):
 def status(local,origin,source):
     validate_origin(origin)
     if not installed():return jsonify(disponible=False,operaciones=[])
-    rows=db.session.execute(text('''SELECT o.id_operacion,o.version,o.estado,o.intentos,o.ultimo_error,o.obsoleto,
-        o.creado_en,o.actualizado_en,d.id_documento,d.numero,d.estado AS estado_documento,
-        COALESCE((SELECT jsonb_agg(jsonb_build_object('id',a.id_archivo,'formato',a.formato))
-            FROM fact_api_archivo a WHERE a.id_documento=d.id_documento),'[]'::jsonb) AS archivos
-        FROM fact_api_operacion o LEFT JOIN fact_api_documento d USING(id_operacion)
-        WHERE o.id_local=:local AND o.origen=:origin AND o.id_origen=:source ORDER BY o.version DESC'''),
+    rows=db.session.execute(select(func.public.facturacion_estado_fuente(bindparam('local'), bindparam('origin'), bindparam('source')).table_valued(
+        'id_operacion', 'version', 'estado', 'intentos', 'ultimo_error', 'obsoleto',
+        'creado_en', 'actualizado_en', 'id_documento', 'numero', 'estado_documento', 'archivos'
+    )),
         {'local':local,'origin':origin,'source':source}).mappings().all()
-    configured=db.session.execute(text('SELECT activo FROM fact_api_config WHERE id_local=:local'),{'local':local}).scalar()
+    configured=db.session.execute(select(func.public.facturacion_local_configurado(bindparam('local'))),{'local':local}).scalar()
     attachments=[]
     if origin=='COMPRA':
-        attachments=[dict(r) for r in db.session.execute(text('''SELECT id_adjunto,formato,creado_en FROM fact_api_adjunto
-            WHERE id_local=:local AND id_factura_recepcion=:source ORDER BY creado_en'''),{'local':local,'source':source}).mappings()]
+        attachments=[dict(r) for r in db.session.execute(select(func.public.facturacion_originales_compra(bindparam('local'), bindparam('source')).table_valued(
+        'id_adjunto', 'formato', 'creado_en'
+    )),{'local':local,'source':source}).mappings()]
     return jsonify(disponible=bool(configured),modo='DEMO',operaciones=[dict(r) for r in rows],originales=attachments)
 
 
@@ -43,8 +42,7 @@ def status(local,origin,source):
 def upload_original(local,source):
     request.max_content_length=6*1024*1024
     from .attachments import save_original
-    available=db.session.execute(text('''SELECT 1 FROM factura_recepcion f JOIN orden_compra o USING(id_orden_compra)
-        WHERE f.id_factura_recepcion=:id AND o.id_local=:local'''),{'id':source,'local':local}).scalar()
+    available=db.session.execute(select(func.public.facturacion_compra_disponible(bindparam('id'), bindparam('local'))),{'id':source,'local':local}).scalar()
     if not available:raise NotFound('Factura no encontrada en este local.')
     file=request.files.get('archivo')
     kind=request.form.get('formato','')
@@ -62,7 +60,10 @@ def upload_original(local,source):
 @fact_api_bp.get('/originales/<uuid:identity>')
 @acceso
 def download_original(local,identity):
-    row=db.session.execute(text('SELECT * FROM fact_api_adjunto WHERE id_adjunto=:id AND id_local=:local'),
+    row=db.session.execute(select(func.public.facturacion_original_por_local(cast(bindparam('id'), Uuid), bindparam('local')).table_valued(
+        'id_adjunto', 'id_local', 'id_factura_recepcion', 'formato', 'ruta', 'sha256', 'bytes',
+        'creado_en'
+    )),
                            {'id':str(identity),'local':local}).mappings().first()
     if not row:raise NotFound('Original no encontrado en este local.')
     path=(storage_root()/row['ruta']).resolve()
@@ -90,14 +91,10 @@ def enqueue(local,origin,source):
 @fact_api_bp.post('/operaciones/<uuid:identity>/reintentar')
 @acceso
 def retry(local,identity):
-    row=db.session.execute(text('''UPDATE fact_api_operacion SET estado='PENDIENTE',max_intentos=intentos+6,
-        disponible_en=now(),lease_token=NULL,lease_hasta=NULL,actualizado_en=now()
-        WHERE id_operacion=:id AND id_local=:local AND NOT obsoleto AND estado IN ('REVISION','BLOQUEADO','REINTENTO','RECHAZADO')
-        RETURNING id_operacion'''),{'id':str(identity),'local':local}).scalar()
+    row=db.session.execute(select(func.public.facturacion_reencolar(cast(bindparam('id'), Uuid), bindparam('local'))),{'id':str(identity),'local':local}).scalar()
     # Keep monotonic attempt numbers; never delete historical attempts.
     if row:
-        db.session.execute(text('''UPDATE fact_api_operacion SET intentos=(SELECT COALESCE(max(numero),0)
-            FROM fact_api_intento WHERE id_operacion=:id) WHERE id_operacion=:id'''),{'id':str(identity)})
+        db.session.execute(select(func.public.facturacion_actualizar_intentos(cast(bindparam('id'), Uuid))),{'id':str(identity)})
     db.session.commit()
     if not row:raise Conflict('Operación no disponible para reintentar en este local.')
     return jsonify(id_operacion=str(row)),202
@@ -106,8 +103,9 @@ def retry(local,identity):
 @fact_api_bp.get('/archivos/<uuid:identity>')
 @acceso
 def download(local,identity):
-    row=db.session.execute(text('''SELECT a.* FROM fact_api_archivo a JOIN fact_api_documento d USING(id_documento)
-        WHERE a.id_archivo=:id AND d.id_local=:local'''),{'id':str(identity),'local':local}).mappings().first()
+    row=db.session.execute(select(func.public.facturacion_archivo_por_local(cast(bindparam('id'), Uuid), bindparam('local')).table_valued(
+        'id_archivo', 'id_documento', 'formato', 'ruta', 'sha256', 'bytes', 'creado_en'
+    )),{'id':str(identity),'local':local}).mappings().first()
     if not row:raise NotFound('Archivo no encontrado en este local.')
     path=(storage_root()/row['ruta']).resolve()
     if not path.is_relative_to(storage_root()) or not path.is_file():raise NotFound('Archivo no disponible.')
@@ -122,29 +120,27 @@ def download(local,identity):
 @fact_api_bp.get('/metricas')
 @acceso
 def metrics(local):
-    row=db.session.execute(text('''SELECT count(*) AS operaciones,
-        count(*) FILTER(WHERE estado='COMPLETADO') AS completadas,
-        count(*) FILTER(WHERE estado IN ('PENDIENTE','PROCESANDO','REINTENTO')) AS pendientes,
-        count(*) FILTER(WHERE estado IN ('REVISION','BLOQUEADO','RECHAZADO')) AS requieren_revision,
-        extract(epoch FROM now()-min(creado_en) FILTER(WHERE estado IN ('PENDIENTE','REINTENTO'))) AS espera_max_segundos
-        FROM fact_api_operacion WHERE id_local=:local'''),{'local':local}).mappings().one()
-    attempts=db.session.execute(text('''SELECT count(*) AS intentos,
-        count(*) FILTER(WHERE http_status>=400) AS errores,
-        percentile_cont(.95) WITHIN GROUP(ORDER BY duracion_ms) AS p95_ms
-        FROM fact_api_intento i JOIN fact_api_operacion o USING(id_operacion)
-        WHERE o.id_local=:local AND i.inicio>now()-interval '24 hours' '''),{'local':local}).mappings().one()
+    row=db.session.execute(select(func.public.facturacion_metricas_local(bindparam('local')).table_valued(
+        'operaciones', 'completadas', 'pendientes', 'requieren_revision', 'espera_max_segundos'
+    )),{'local':local}).mappings().one()
+    attempts=db.session.execute(select(func.public.facturacion_metricas_intentos(bindparam('local')).table_valued(
+        'intentos', 'errores', 'p95_ms'
+    )),{'local':local}).mappings().one()
     from flask_jwt_extended import get_jwt
     scaling=None
-    if get_jwt().get('id_perfil')==1 and db.session.execute(text("SELECT to_regclass('public.fact_api_escalado') IS NOT NULL")).scalar() is True:
-        state=db.session.execute(text('SELECT * FROM fact_api_escalado WHERE id=1')).mappings().first()
+    if db.session.execute(select(func.public.facturacion_perfil_ve_escalado(get_jwt().get('id_perfil')))).scalar() and db.session.execute(select(func.public.facturacion_escalado_instalado())).scalar() is True:
+        state=db.session.execute(select(func.public.facturacion_obtener_escalado().table_valued(
+        'id', 'supervisor', 'pid', 'minimo', 'maximo', 'activos', 'objetivo', 'listos',
+        'ocupados', 'espera_segundos', 'pausado', 'workers', 'actualizado_en'
+    ))).mappings().first()
         scaling=dict(state) if state else None
     return jsonify(**dict(row),ultimas_24_horas=dict(attempts),escalado=scaling)
 
 
-for rule,func,methods in [('/<origin>/<int:source>',status,['GET']),('/<origin>/<int:source>',enqueue,['POST']),
+for rule,handler,methods in [('/<origin>/<int:source>',status,['GET']),('/<origin>/<int:source>',enqueue,['POST']),
     ('/archivos/<uuid:identity>',download,['GET']),('/metricas',metrics,['GET']),
     ('/operaciones/<uuid:identity>/reintentar',retry,['POST'])]:
-    salon_fact_api_bp.add_url_rule('/fact-api'+rule,view_func=func,methods=methods)
+    salon_fact_api_bp.add_url_rule('/fact-api'+rule,view_func=handler,methods=methods)
 
 
 @fact_api_bp.after_request

@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app import create_app
 from app.core.extensions import db
 from app.core.units import (
-    catalogo_unidades, convertir_cantidad, describir_medidas,
+    Unidad, catalogo_unidades, convertir_cantidad, describir_medidas,
     normalizar_medida, obtener_unidad, registrar_medidas_api,
 )
 from app.modules.catalogos import service as catalogos
@@ -19,7 +19,41 @@ from app.modules.produccion.subproduct_editor import guardar_subproducto
 from app.modules.carta.presentation_editor import guardar_presentacion
 
 
+def mock_unit_catalog(test):
+    unidades = (
+        Unidad("KGM", "KGM", "Kilogramo", "kg", "MASA", "KGM", "KGM"),
+        Unidad("GRM", "GRM", "Gramo", "g", "MASA", "GRM", "KGM", Decimal("0.001")),
+        Unidad("LTR", "LTR", "Litro", "L", "VOLUMEN", "LTR", "LTR"),
+        Unidad("MLT", "MLT", "Mililitro", "mL", "VOLUMEN", "MLT", "LTR", Decimal("0.001")),
+        Unidad("C62", "C62", "Unidad", "unidad", "CONTEO", "C62", "C62"),
+        Unidad("PORCION", "PORCION", "Porcion", "porción", "CONTEO", None, "PORCION"),
+    )
+    por_codigo = {u.codigo: u for u in unidades}
+    alias = {nombre: u for u in unidades for nombre in (u.codigo, u.simbolo)}
+    alias.update(Kg=por_codigo["KGM"], UNI=por_codigo["C62"])
+    alias["PORCIÓN"] = por_codigo["PORCION"]
+    contextos = {
+        "producto": {"KGM", "LTR", "C62"},
+        "subproducto": {"KGM", "LTR", "PORCION"},
+        "presentacion": {"KGM", "LTR", "C62", "PORCION"},
+    }
+    loader = patch("app.core.units._leer_catalogo", return_value=(unidades, alias, contextos))
+    loader.start()
+    test.addCleanup(loader.stop)
+
+
 class UnitCatalogTests(unittest.TestCase):
+    def setUp(self):
+        mock_unit_catalog(self)
+
+    def test_catalog_uses_new_units_and_context_rules_from_storage(self):
+        custom = Unidad("DYN", "DYN", "Dynamic", "dyn", "CONTEO", None, "DYN")
+        with patch("app.core.units._leer_catalogo", return_value=(
+            (custom,), {"permitted": custom, "DYN": custom}, {"producto": {"DYN"}},
+        )):
+            self.assertEqual(obtener_unidad("permitted"), custom)
+            self.assertEqual([u["codigo"] for u in catalogo_unidades("producto", True)], ["DYN"])
+
     def test_international_codes_and_legacy_aliases(self):
         for alias, codigo, simbolo in (("Kg", "KGM", "kg"), ("kg", "KGM", "kg"),
                 ("KGM", "KGM", "kg"), ("L", "LTR", "L"), ("UNI", "C62", "unidad"),
@@ -35,7 +69,7 @@ class UnitCatalogTests(unittest.TestCase):
         self.assertEqual(convertir_cantidad("750", "MLT", "LTR"), Decimal("0.750"))
         self.assertEqual(convertir_cantidad("60", "GRM", "KGM"), Decimal("0.060"))
         self.assertEqual(convertir_cantidad("0.060", "kg", "g"), Decimal("60"))
-        self.assertEqual(normalizar_medida("2500", "g", "subproducto"), (Decimal("2.500"), "Kg"))
+        self.assertEqual(normalizar_medida("2500", "g", "subproducto"), (Decimal("2.500"), "KGM"))
 
     def test_no_density_or_packaging_assumptions(self):
         for origen, destino in (("kg", "L"), ("UNI", "PORCIÓN"), ("caja", "UNI"), ("mL", "Kg")):
@@ -127,7 +161,7 @@ class UnitDatabaseTests(unittest.TestCase):
             INSERT INTO categoria_carta(id_categoria_carta,nombre,prefijo) VALUES(9301,'Medidas prueba','UM');
             INSERT INTO menaje(id_menaje,nombre) VALUES(9301,'Envase prueba unidades');
             INSERT INTO producto(id_producto,codigo,nombre,id_categoria,id_proveedor,unidad,presentacion,stock_minimo)
-            VALUES(9301,'UM-9301','Ingrediente masa prueba',1,1,'Kg',1,0);
+            VALUES(9301,'UM-9301','Ingrediente masa prueba',1,1,'KGM',1,0);
         """))
         db.session.commit()
         self.subproductos = []
@@ -160,14 +194,14 @@ class UnitDatabaseTests(unittest.TestCase):
         self.assertEqual(estado, 201, resultado)
         identidad = resultado["id_presentacion_venta"]
         fila = db.session.execute(text("SELECT contenido,unidad FROM presentacion_venta WHERE id_presentacion_venta=:id"), {"id": identidad}).mappings().one()
-        self.assertEqual((fila["contenido"], fila["unidad"]), (Decimal("0.750"), "L"))
+        self.assertEqual((fila["contenido"], fila["unidad"]), (Decimal("0.750"), "LTR"))
         resultado, estado = guardar_receta(1, {
             "id_presentacion_venta": identidad, "instrucciones": "Mezclar ingredientes",
             "componentes": [{"id": 9301, "tipo_componente": "PRODUCTO", "cantidad": "60", "unidad_cantidad": "GRM"}],
         })
         self.assertEqual(estado, 201, resultado)
         fila = db.session.execute(text("SELECT cantidad,unidad FROM receta_detalle WHERE id_receta=:id"), {"id": resultado["id_receta"]}).mappings().one()
-        self.assertEqual((fila["cantidad"], fila["unidad"]), (Decimal("0.060"), "Kg"))
+        self.assertEqual((fila["cantidad"], fila["unidad"]), (Decimal("0.060"), "KGM"))
 
     def test_subproduct_normalizes_yield_and_ingredient(self):
         resultado, estado = guardar_subproducto(1, {
@@ -178,9 +212,9 @@ class UnitDatabaseTests(unittest.TestCase):
         identidad = resultado["id_subproducto"]
         self.subproductos.append(identidad)
         fila = db.session.execute(text("SELECT rendimiento,unidad FROM subproducto WHERE id_subproducto=:id"), {"id": identidad}).mappings().one()
-        self.assertEqual((fila["rendimiento"], fila["unidad"]), (Decimal("2.500"), "Kg"))
+        self.assertEqual((fila["rendimiento"], fila["unidad"]), (Decimal("2.500"), "KGM"))
         fila = db.session.execute(text("SELECT cantidad,unidad FROM subproducto_detalle WHERE id_subproducto=:id"), {"id": identidad}).mappings().one()
-        self.assertEqual((fila["cantidad"], fila["unidad"]), (Decimal("0.060"), "Kg"))
+        self.assertEqual((fila["cantidad"], fila["unidad"]), (Decimal("0.060"), "KGM"))
 
     def test_unit_api_permissions_and_metadata_from_actual_database(self):
         cliente = self.app.test_client()

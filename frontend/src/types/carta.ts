@@ -55,7 +55,8 @@ export interface RespuestaPresentacionesVenta {
   resumen: ResumenPresentacionesVenta
 }
 
-export type UnidadCapacidad = 'MLT' | 'LTR' | 'FLOZ_US' | 'FLOZ_UK'
+export type UnidadCapacidad = string
+export type OpcionCapacidad = { codigo: string; nombre: string; factor: number; visible: boolean }
 
 export interface MedidasMenaje {
   capacidad: number | null
@@ -87,6 +88,7 @@ export interface ResumenMenajes {
 }
 
 export interface RespuestaMenajes {
+  unidades_capacidad: OpcionCapacidad[]
   menajes: MenajeDetalle[]
   resumen: ResumenMenajes
 }

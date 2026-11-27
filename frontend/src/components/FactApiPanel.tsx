@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config'
 import {useCallback,useEffect,useRef,useState} from 'react'
 import {createPortal} from 'react-dom'
 import {FactApiPdfPreview} from './FactApiPdfPreview'
@@ -30,7 +31,7 @@ export function FactApiPanel({origin,source,token,salon=false,showAvailability=f
     else dialog.setAttribute('open','')
   },[])
   const auth=token??sessionStorage.getItem('salon_token')??''
-  const base=(import.meta.env.VITE_API_URL??'http://127.0.0.1:5000/api')+(salon?'/salon/fact-api':'/v1/fact-api')
+  const base=(API_BASE_URL)+(salon?'/salon/fact-api':'/v1/fact-api')
   const scope=`${auth}:${base}:${origin}:${source}`
   useEffect(()=>{
     if(!auth)return

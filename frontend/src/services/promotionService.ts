@@ -1,10 +1,10 @@
+import { API_BASE_URL } from '../config'
 import type {
   RespuestaPromociones,
 } from '../types/promotion'
 
 const API_URL =
-  import.meta.env.VITE_API_URL ??
-  'http://127.0.0.1:5000/api'
+  API_BASE_URL
 
 export interface PresentacionPromocion {
   id_presentacion_venta: number; codigo: string; nombre: string; contenido: number; unidad: string; menaje: string; activo: boolean;

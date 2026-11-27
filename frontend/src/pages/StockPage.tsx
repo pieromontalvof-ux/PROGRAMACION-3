@@ -369,7 +369,7 @@ function StockPage() {
                         <td>
                           <div className="stock-product">
                             <strong>{producto.nombre}</strong>
-                            <span>{formatearUnidad(producto.unidad)}</span>
+                            <span>{formatearUnidad(producto)}</span>
                           </div>
                         </td>
 
@@ -388,14 +388,14 @@ function StockPage() {
                             )}
                           </strong>{' '}
                           {producto.stock_actual !== null &&
-                            formatearUnidad(producto.unidad)}
+                            formatearUnidad(producto)}
                         </td>
 
                         <td>
                           {formatearCantidad(
                             producto.stock_minimo
                           )}{' '}
-                          {formatearUnidad(producto.unidad)}
+                          {formatearUnidad(producto)}
                         </td>
 
                         <td>{producto.stock_maximo == null ? 'Sin definir' : formatearCantidad(producto.stock_maximo)}</td>
@@ -500,7 +500,7 @@ function StockPage() {
                                     producto.stock_actual
                                   )}{' '}
                                   {producto.stock_actual !==
-                                    null && formatearUnidad(producto.unidad)}
+                                    null && formatearUnidad(producto)}
                                 </strong>
                               </div>
                             </div>

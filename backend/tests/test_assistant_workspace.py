@@ -89,6 +89,12 @@ class AssistantWorkspaceTests(unittest.TestCase):
         auth = patch.object(routes, 'obtener_sesion_actual', return_value=({'menu': []}, 200))
         auth.start()
         self.addCleanup(auth.stop)
+        for modulo in ('api.routes', 'api.tools', 'api.demand', 'api.global_demand', 'agents.supply'):
+            capacidad = patch(f'app.multiagente.{modulo}.perfil_tiene_capacidad', side_effect=(
+                lambda perfil, permiso: perfil in (2, 3) if permiso == 'gestionar_inventario' else perfil == 1
+            ))
+            capacidad.start()
+            self.addCleanup(capacidad.stop)
         self.client = self.app.test_client()
         self.headers = self.token()
         routes._attempts.clear()

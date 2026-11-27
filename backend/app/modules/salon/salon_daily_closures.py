@@ -1,20 +1,15 @@
-from sqlalchemy import text
+from sqlalchemy import bindparam, func, select
 
 from app.core.extensions import db
 
 
 def listar_cierres_diarios(id_local, desde, fin_exclusivo):
-    if not db.session.execute(text(
-        "SELECT to_regclass('public.salon_cierre_diario') IS NOT NULL"
-    )).scalar():
+    if not db.session.execute(select(func.public.salon_cierres_instalados())).scalar():
         return []
 
-    filas = db.session.execute(text("""
-        SELECT fecha, simulacion, cantidad, efectivo, tarjeta
-        FROM public.salon_cierre_diario
-        WHERE id_local = :local AND fecha >= :desde AND fecha < :fin
-        ORDER BY fecha DESC
-    """), {'local': id_local, 'desde': desde, 'fin': fin_exclusivo}).mappings()
+    filas = db.session.execute(select(func.public.salon_cierres_diarios(bindparam('local'), bindparam('desde'), bindparam('fin')).table_valued(
+        'fecha', 'simulacion', 'cantidad', 'efectivo', 'tarjeta',
+    )), {'local': id_local, 'desde': desde, 'fin': fin_exclusivo}).mappings()
     return [
         {
             'fecha': fila['fecha'].isoformat(),

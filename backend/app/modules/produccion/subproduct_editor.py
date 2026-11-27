@@ -1,5 +1,5 @@
 """Creacion y edicion transaccional de preparaciones internas compartidas."""
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.extensions import db
@@ -8,12 +8,10 @@ from app.core.units import catalogo_unidades, valores_unidades, normalizar_medid
 from app.modules.recetas.editor_service import DatosInvalidos, cantidad, validar_componentes
 
 
-def ejecutar(sql, params=None):
-    return db.session.execute(text(sql), params or {})
-
-
 def formulario_subproducto():
-    productos = ejecutar('SELECT id_producto AS id,codigo,nombre,unidad,activo FROM producto ORDER BY nombre').mappings().all()
+    productos = db.session.execute(select(func.public.produccion_productos_formulario().table_valued(
+        'id', 'codigo', 'nombre', 'unidad', 'activo',
+    ))).mappings().all()
     return {'unidades': valores_unidades('subproducto'),
             'unidades_medida': catalogo_unidades(),
             'productos': [dict(p) for p in productos]}, 200
@@ -24,19 +22,22 @@ def guardar_subproducto(id_usuario, datos, id_subproducto=None):
         return {'mensaje': 'Envia los datos del subproducto'}, 400
     try:
         # Serializa codigo y nombres para evitar duplicados concurrentes.
-        ejecutar("SELECT pg_advisory_xact_lock(hashtext('subproducto_catalogo'))")
+        db.session.execute(select(func.public.produccion_bloquear_catalogo()))
         anterior = None
         anteriores = []
         if id_subproducto is not None:
-            fila = ejecutar('SELECT * FROM subproducto WHERE id_subproducto=:id FOR UPDATE',
-                            {'id': id_subproducto}).mappings().first()
+            subproducto = func.public.produccion_subproducto_bloqueado(id_subproducto).table_valued(
+                'codigo', 'unidad', 'activo', 'nombre', 'rendimiento', 'instruccion', 'id_subproducto',
+            )
+            fila = db.session.execute(select(subproducto)).mappings().first()
             if fila is None:
                 db.session.rollback()
                 return {'mensaje': 'El subproducto no existe'}, 404
             anterior = dict(fila)
-            anteriores = [dict(d) for d in ejecutar(
-                'SELECT id_producto,cantidad,unidad FROM subproducto_detalle WHERE id_subproducto=:id',
-                {'id': id_subproducto}).mappings()]
+            detalle = func.public.produccion_ingredientes(id_subproducto).table_valued(
+                'id_producto', 'cantidad', 'unidad',
+            )
+            anteriores = [dict(d) for d in db.session.execute(select(detalle)).mappings()]
             anterior['ingredientes'] = anteriores
         nombre = datos.get('nombre')
         if not isinstance(nombre, str) or not 1 <= len(nombre.strip()) <= 150:
@@ -56,15 +57,9 @@ def guardar_subproducto(id_usuario, datos, id_subproducto=None):
         activo = datos.get('activo', anterior['activo'] if anterior else True)
         if type(activo) is not bool:
             raise DatosInvalidos('Selecciona un estado valido')
-        if anterior and not activo and ejecutar('''
-            SELECT EXISTS(SELECT 1 FROM receta_detalle d JOIN receta r USING(id_receta)
-            WHERE d.id_subproducto=:id AND r.activo)
-        ''', {'id': id_subproducto}).scalar():
+        if anterior and not activo and db.session.execute(select(func.public.produccion_en_recetas_activas(id_subproducto))).scalar():
             raise DatosInvalidos('Este subproducto esta usado en recetas activas; retiralo de ellas antes de desactivarlo')
-        if ejecutar('''SELECT EXISTS(SELECT 1 FROM subproducto
-            WHERE lower(btrim(nombre))=lower(:nombre)
-              AND (:id IS NULL OR id_subproducto<>:id))''',
-            {'nombre': nombre, 'id': id_subproducto}).scalar():
+        if db.session.execute(select(func.public.produccion_nombre_existe(nombre, id_subproducto))).scalar():
             raise DatosInvalidos('Ya existe un subproducto con ese nombre')
         ingredientes = validar_componentes(datos.get('ingredientes'),
             {('PRODUCTO', d['id_producto']) for d in anteriores}, solo_productos=True)
@@ -72,24 +67,22 @@ def guardar_subproducto(id_usuario, datos, id_subproducto=None):
                   'instruccion': instrucciones.strip(), 'activo': activo, 'id': id_subproducto}
         if anterior:
             codigo = anterior['codigo']
-            ejecutar('''UPDATE subproducto SET nombre=:nombre,rendimiento=:rendimiento,
-                instruccion=:instruccion,activo=:activo WHERE id_subproducto=:id''', params)
+            db.session.execute(select(func.public.produccion_actualizar_subproducto(
+                nombre, rendimiento, params['instruccion'], activo, id_subproducto,
+            )))
         else:
-            numero = ejecutar("""SELECT coalesce(max(substring(codigo FROM 4)::bigint),0)+1
-                FROM subproducto WHERE codigo ~ '^SP-[0-9]+$'""").scalar_one()
-            codigo = f'SP-{numero:03d}'
+            codigo = db.session.execute(select(func.public.produccion_siguiente_codigo())).scalar_one()
             if len(codigo) > 10:
                 raise DatosInvalidos('Se alcanzo el limite de codigos de subproductos')
             params['codigo'] = codigo
-            id_subproducto = ejecutar('''INSERT INTO subproducto(codigo,nombre,rendimiento,unidad,instruccion,activo)
-                VALUES(:codigo,:nombre,:rendimiento,:unidad,:instruccion,:activo)
-                RETURNING id_subproducto''', params).scalar_one()
-        ejecutar('DELETE FROM subproducto_detalle WHERE id_subproducto=:id', {'id': id_subproducto})
+            id_subproducto = db.session.execute(select(func.public.produccion_crear_subproducto(
+                codigo, nombre, rendimiento, unidad, params['instruccion'], activo,
+            ))).scalar_one()
+        db.session.execute(select(func.public.produccion_eliminar_ingredientes(id_subproducto)))
         for ingrediente in ingredientes:
-            ejecutar('''INSERT INTO subproducto_detalle(id_subproducto,id_producto,cantidad,unidad)
-                VALUES(:subproducto,:producto,:cantidad,:unidad)''',
-                {'subproducto': id_subproducto, 'producto': ingrediente['id'],
-                 'cantidad': ingrediente['cantidad'], 'unidad': ingrediente['unidad']})
+            db.session.execute(select(func.public.produccion_crear_ingrediente(
+                id_subproducto, ingrediente['id'], ingrediente['cantidad'], ingrediente['unidad'],
+            )))
         nuevo = {**params, 'id': id_subproducto, 'codigo': codigo, 'ingredientes': ingredientes}
         accion = 'EDITAR' if anterior else 'CREAR'
         registrar_cambio(id_usuario, 'SUBPRODUCTOS', accion, 'subproducto', id_subproducto, anterior, nuevo)

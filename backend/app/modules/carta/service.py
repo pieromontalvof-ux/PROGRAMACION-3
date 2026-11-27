@@ -127,7 +127,7 @@ def obtener_presentaciones_venta():
 
 
 def obtener_menajes():
-    from .measurements import serialize
+    from .measurements import serialize, unidades_capacidad
     menajes = [serialize(row) for row in listar_menajes_detallados()]
 
     activos = sum(
@@ -143,6 +143,7 @@ def obtener_menajes():
 
     respuesta = {
         "menajes": menajes,
+        "unidades_capacidad": [{**unidad, "factor": float(unidad["factor"])} for unidad in unidades_capacidad()],
         "resumen": {
             "total_menajes": len(menajes),
             "menajes_activos": activos,

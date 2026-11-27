@@ -2,17 +2,15 @@ import re
 from datetime import time
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from app.core.extensions import db
-from app.modules.recetas import editor_repository as repo
+from app.modules.promociones.repository import filas
 from app.modules.auditoria.service import registrar_cambio, registrar_actividad
 
 
 def formulario_promocion():
-    opciones = repo.filas('''SELECT pv.id_presentacion_venta, ic.codigo, ic.nombre,
-        pv.contenido, pv.unidad, m.nombre AS menaje, (pv.activo AND ic.activo) AS activo
-        FROM presentacion_venta pv JOIN item_carta ic USING(id_item_carta)
-        JOIN menaje m USING(id_menaje) ORDER BY ic.nombre,pv.contenido''')
+    opciones = filas(func.public.promo_formulario().table_valued('id_presentacion_venta', 'codigo', 'nombre', 'contenido', 'unidad', 'menaje', 'activo'))
     for opcion in opciones:
         opcion['contenido'] = float(opcion['contenido'])
     return {'presentaciones': opciones}, 200
@@ -22,25 +20,25 @@ def guardar_promocion(usuario, datos, identidad=None):
     if not isinstance(datos, dict):
         return {'mensaje': 'Datos invalidos'}, 400
     try:
-        repo.ejecutar('LOCK TABLE promocion IN SHARE ROW EXCLUSIVE MODE')
+        db.session.execute(select(func.public.promo_bloquear_catalogo()))
         anterior = None
         grupos_previos = []
         opciones_previas = []
         reposiciones_previas = []
         if identidad is not None:
-            encontrados = repo.filas('SELECT * FROM promocion WHERE id_promocion=:id FOR UPDATE', {'id': identidad})
+            encontrados = filas(func.public.promo_bloquear_promocion(identidad).table_valued('id_promocion', 'codigo', 'nombre', 'precio', 'hora_inicio', 'hora_fin', 'activo'))
             if not encontrados:
                 db.session.rollback()
                 return {'mensaje': 'La promocion no existe'}, 404
             anterior = encontrados[0]
-            grupos_previos = repo.filas('SELECT * FROM promocion_grupo WHERE id_promocion=:id', {'id': identidad})
-            opciones_previas = repo.filas('SELECT o.* FROM promocion_opcion o JOIN promocion_grupo g USING(id_promocion_grupo) WHERE g.id_promocion=:id', {'id': identidad})
-            reposiciones_previas = repo.filas('SELECT * FROM promocion_reposicion WHERE id_promocion=:id', {'id': identidad})
+            grupos_previos = filas(func.public.promo_grupos_previos(identidad).table_valued('id_promocion_grupo', 'id_promocion', 'cantidad_elegir', 'permite_repetir'))
+            opciones_previas = filas(func.public.promo_opciones_previas(identidad).table_valued('id_promocion_opcion', 'id_promocion_grupo', 'id_presentacion_venta'))
+            reposiciones_previas = filas(func.public.promo_reposiciones_previas(identidad).table_valued('id_promocion', 'id_presentacion_venta'))
         nombre = datos.get('nombre')
         if not isinstance(nombre, str) or not 1 <= len(nombre.strip()) <= 150:
             raise ValueError('Ingresa un nombre de hasta 150 caracteres')
         nombre = nombre.strip()
-        if repo.ejecutar('SELECT EXISTS(SELECT 1 FROM promocion WHERE lower(trim(nombre))=lower(:nombre) AND id_promocion<>:id)', {'nombre': nombre, 'id': identidad or 0}).scalar():
+        if db.session.execute(select(func.public.promo_nombre_existe(nombre, identidad or 0))).scalar():
             raise ValueError('Ya existe una promocion con ese nombre')
         try:
             precio = Decimal(str(datos.get('precio')))
@@ -82,8 +80,8 @@ def guardar_promocion(usuario, datos, identidad=None):
                 raise ValueError('Sin repetir, la cantidad a elegir no puede superar las opciones disponibles')
             anteriores = {o['id_presentacion_venta'] for o in opciones_previas if o['id_promocion_grupo'] == gid}
             for pid in sorted(opciones):
-                filas = repo.filas('SELECT pv.activo AND ic.activo AS activo FROM presentacion_venta pv JOIN item_carta ic USING(id_item_carta) WHERE pv.id_presentacion_venta=:id FOR SHARE OF pv,ic', {'id': pid})
-                if not filas or (not filas[0]['activo'] and pid not in anteriores):
+                presentaciones = filas(func.public.promo_bloquear_presentacion(pid).table_valued('activo'))
+                if not presentaciones or (not presentaciones[0]['activo'] and pid not in anteriores):
                     raise ValueError('Selecciona presentaciones activas de la carta')
             validos.append({'id': gid, 'elegir': elegir, 'repetir': repetir, 'opciones': opciones})
         reposiciones = datos.get('reposiciones', [r['id_presentacion_venta'] for r in reposiciones_previas])
@@ -92,31 +90,28 @@ def guardar_promocion(usuario, datos, identidad=None):
             raise ValueError('Selecciona presentaciones validas para reposicion')
         if len(set(reposiciones)) != len(reposiciones) or not set(reposiciones).issubset(opciones_promocion):
             raise ValueError('Solo puedes habilitar reposicion para opciones incluidas en la promocion')
-        valores = {'nombre': nombre, 'precio': precio, 'inicio': inicio, 'fin': fin, 'activo': activo}
         if anterior:
-            repo.ejecutar('UPDATE promocion SET nombre=:nombre,precio=:precio,hora_inicio=:inicio,hora_fin=:fin,activo=:activo WHERE id_promocion=:id', {**valores, 'id': identidad})
+            db.session.execute(select(func.public.promo_actualizar(nombre, precio, inicio, fin, activo, identidad)))
         else:
-            numero = repo.ejecutar("SELECT coalesce(max(substring(codigo from 3)::bigint),0)+1 FROM promocion WHERE codigo ~ '^P-[0-9]+$'").scalar_one()
-            codigo = f'P-{numero:03d}'
+            codigo = db.session.execute(select(func.public.promo_siguiente_codigo())).scalar_one()
             if len(codigo) > 10:
                 raise ValueError('No hay codigos disponibles')
-            identidad = repo.ejecutar('INSERT INTO promocion(codigo,nombre,precio,hora_inicio,hora_fin,activo) VALUES (:codigo,:nombre,:precio,:inicio,:fin,:activo) RETURNING id_promocion', {**valores, 'codigo': codigo}).scalar_one()
+            identidad = db.session.execute(select(func.public.promo_crear(codigo, nombre, precio, inicio, fin, activo))).scalar_one()
         for eliminado in ids_previos - vistos:
-            repo.ejecutar('DELETE FROM promocion_opcion WHERE id_promocion_grupo=:id', {'id': eliminado})
-            repo.ejecutar('DELETE FROM promocion_grupo WHERE id_promocion_grupo=:id', {'id': eliminado})
+            db.session.execute(select(func.public.promo_eliminar_opciones(eliminado)))
+            db.session.execute(select(func.public.promo_eliminar_grupo(eliminado)))
         for g in validos:
             if g['id'] is None:
-                g['id'] = repo.ejecutar('INSERT INTO promocion_grupo(id_promocion,cantidad_elegir,permite_repetir) VALUES (:promo,:elegir,:repetir) RETURNING id_promocion_grupo', {**g, 'promo': identidad}).scalar_one()
+                g['id'] = db.session.execute(select(func.public.promo_crear_grupo(identidad, g['elegir'], g['repetir']))).scalar_one()
             else:
-                repo.ejecutar('UPDATE promocion_grupo SET cantidad_elegir=:elegir,permite_repetir=:repetir WHERE id_promocion_grupo=:id', g)
-            repo.ejecutar('DELETE FROM promocion_opcion WHERE id_promocion_grupo=:id AND NOT (id_presentacion_venta=ANY(:opciones))', g)
+                db.session.execute(select(func.public.promo_actualizar_grupo(g['elegir'], g['repetir'], g['id'])))
+            db.session.execute(select(func.public.promo_quitar_opciones(g['id'], g['opciones'])))
             for pid in g['opciones']:
-                repo.ejecutar('INSERT INTO promocion_opcion(id_promocion_grupo,id_presentacion_venta) VALUES (:grupo,:pid) ON CONFLICT (id_promocion_grupo,id_presentacion_venta) DO NOTHING', {'grupo': g['id'], 'pid': pid})
-        repo.ejecutar('DELETE FROM promocion_reposicion WHERE id_promocion=:id', {'id': identidad})
+                db.session.execute(select(func.public.promo_crear_opcion(g['id'], pid)))
+        db.session.execute(select(func.public.promo_eliminar_reposiciones(identidad)))
         for pid in reposiciones:
-            repo.ejecutar('INSERT INTO promocion_reposicion(id_promocion,id_presentacion_venta) VALUES (:promo,:pid)',
-                          {'promo': identidad, 'pid': pid})
-        nuevo = repo.filas('SELECT * FROM promocion WHERE id_promocion=:id', {'id': identidad})[0]
+            db.session.execute(select(func.public.promo_crear_reposicion(identidad, pid)))
+        nuevo = filas(func.public.promo_buscar(identidad).table_valued('id_promocion', 'codigo', 'nombre', 'precio', 'hora_inicio', 'hora_fin', 'activo'))[0]
         accion = 'EDITAR' if anterior else 'CREAR'
         registrar_cambio(usuario, 'PROMOCIONES', accion, 'promocion', identidad,
                          {'promocion': anterior, 'grupos': grupos_previos, 'opciones': opciones_previas,

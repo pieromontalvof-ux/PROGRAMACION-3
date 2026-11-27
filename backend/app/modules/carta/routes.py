@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity
 from app.modules.carta.category_admin import modificar_categoria
+from app.modules.carta.repository import perfil_administra_catalogos_carta
 from app.modules.carta.presentation_editor import formulario_presentacion, guardar_presentacion
 from app.modules.carta.tableware_admin import guardar_menaje
 
@@ -18,9 +19,9 @@ carta_bp = Blueprint(
 
 
 @carta_bp.post('/menajes')
-@requiere_permiso(10, 'crear')
+@requiere_permiso('menajes', 'crear')
 def crear_menaje():
-    if int(get_jwt()['id_perfil']) != 1:
+    if not perfil_administra_catalogos_carta(int(get_jwt()['id_perfil'])):
         return jsonify({'mensaje': 'Solo el administrador puede gestionar menajes'}), 403
     respuesta, estado = guardar_menaje(int(get_jwt_identity()), 'crear', request.get_json(silent=True))
     return jsonify(respuesta), estado
@@ -31,9 +32,9 @@ def administrar_menaje(id_menaje, accion):
     if accion not in ('editar', 'desactivar', 'reactivar', 'eliminar'):
         return jsonify({'mensaje': 'Accion invalida'}), 404
 
-    @requiere_permiso(10, accion)
+    @requiere_permiso('menajes', accion)
     def autorizado():
-        if int(get_jwt()['id_perfil']) != 1:
+        if not perfil_administra_catalogos_carta(int(get_jwt()['id_perfil'])):
             return jsonify({'mensaje': 'Solo el administrador puede gestionar menajes'}), 403
         respuesta, estado = guardar_menaje(int(get_jwt_identity()), accion, request.get_json(silent=True), id_menaje)
         return jsonify(respuesta), estado
@@ -41,21 +42,21 @@ def administrar_menaje(id_menaje, accion):
 
 
 @carta_bp.get('/presentaciones/formulario')
-@requiere_permiso(9, 'consultar')
+@requiere_permiso('presentaciones_venta', 'consultar')
 def formulario_carta():
     respuesta, estado = formulario_presentacion()
     return jsonify(respuesta), estado
 
 
 @carta_bp.post('/presentaciones')
-@requiere_permiso(9, 'crear')
+@requiere_permiso('presentaciones_venta', 'crear')
 def crear_presentacion():
     respuesta, estado = guardar_presentacion(int(get_jwt_identity()), request.get_json(silent=True))
     return jsonify(respuesta), estado
 
 
 @carta_bp.put('/presentaciones/<int:id_presentacion>')
-@requiere_permiso(9, 'editar')
+@requiere_permiso('presentaciones_venta', 'editar')
 def editar_presentacion(id_presentacion):
     respuesta, estado = guardar_presentacion(int(get_jwt_identity()), request.get_json(silent=True), id_presentacion)
     return jsonify(respuesta), estado
@@ -66,9 +67,9 @@ def administrar_categoria(id_categoria, accion):
     if accion not in ('editar', 'reasignar', 'desactivar', 'reactivar'):
         return jsonify({'mensaje': 'Accion invalida'}), 404
 
-    @requiere_permiso(8, 'editar' if accion == 'reasignar' else accion)
+    @requiere_permiso('categorias_carta', 'editar' if accion == 'reasignar' else accion)
     def autorizado():
-        if int(get_jwt()['id_perfil']) != 1:
+        if not perfil_administra_catalogos_carta(int(get_jwt()['id_perfil'])):
             return jsonify({'mensaje': 'Solo el administrador puede gestionar categorias de carta'}), 403
         respuesta, estado = modificar_categoria(id_categoria, int(get_jwt_identity()), accion,
                                                 request.get_json(silent=True))
@@ -77,9 +78,9 @@ def administrar_categoria(id_categoria, accion):
 
 
 @carta_bp.post('/categorias')
-@requiere_permiso(8, 'crear')
+@requiere_permiso('categorias_carta', 'crear')
 def crear_categoria_carta():
-    if int(get_jwt()['id_perfil']) != 1:
+    if not perfil_administra_catalogos_carta(int(get_jwt()['id_perfil'])):
         return jsonify({'mensaje': 'Solo el administrador puede gestionar categorias de carta'}), 403
     respuesta, estado = modificar_categoria(0, int(get_jwt_identity()), 'crear', request.get_json(silent=True))
     return jsonify(respuesta), estado
@@ -87,7 +88,7 @@ def crear_categoria_carta():
 
 @carta_bp.get("/categorias")
 @requiere_permiso(
-    id_opcion_menu=8,
+    id_opcion_menu='categorias_carta',
     accion="consultar",
 )
 def consultar_categorias_carta():
@@ -97,7 +98,7 @@ def consultar_categorias_carta():
 
 @carta_bp.get("/presentaciones")
 @requiere_permiso(
-    id_opcion_menu=9,
+    id_opcion_menu='presentaciones_venta',
     accion="consultar",
 )
 def consultar_presentaciones_venta():
@@ -108,7 +109,7 @@ def consultar_presentaciones_venta():
 
 @carta_bp.get("/menajes")
 @requiere_permiso(
-    id_opcion_menu=10,
+    id_opcion_menu='menajes',
     accion="consultar",
 )
 def consultar_menajes():

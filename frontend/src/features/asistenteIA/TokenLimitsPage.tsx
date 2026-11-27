@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../../config'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/authState'
@@ -11,7 +12,7 @@ type Report = { configuracion: Policy; usuarios: User[]; dia: string; mes: strin
 const format = (n: number) => Number(n).toLocaleString('es-PE')
 
 async function api<T>(token: string, path = '', data?: unknown, signal?: AbortSignal, remove = false): Promise<T> {
-  const base = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  const base = API_BASE_URL
   const response = await fetch(`${base}/asistente-ia/limites${path}`, {
     method: remove ? 'DELETE' : data === undefined ? 'GET' : 'PUT', signal,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

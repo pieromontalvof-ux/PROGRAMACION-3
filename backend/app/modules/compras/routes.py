@@ -17,21 +17,21 @@ compras_bp = Blueprint("compras", __name__)
 
 
 @compras_bp.get("/formulario")
-@requiere_permiso(id_opcion_menu=22, accion="consultar")
+@requiere_permiso(id_opcion_menu='crear_orden_compra', accion="consultar")
 def consultar_formulario():
     respuesta, estado = obtener_formulario_orden()
     return jsonify(respuesta), estado
 
 
 @compras_bp.get("/pedido-sugerido")
-@requiere_permiso(id_opcion_menu=22, accion="consultar")
+@requiere_permiso(id_opcion_menu='crear_orden_compra', accion="consultar")
 def consultar_pedido_sugerido():
     respuesta, estado = obtener_pedido_sugerido(request.args.get("porcentaje", "0"),request.args.get('horizonte'),request.args.get('dias', '7'))
     return jsonify(respuesta), estado
 
 
 @compras_bp.post("")
-@requiere_permiso(id_opcion_menu=22, accion="crear")
+@requiere_permiso(id_opcion_menu='crear_orden_compra', accion="crear")
 def crear_orden():
     respuesta, estado = registrar_orden(
         int(get_jwt_identity()),
@@ -40,7 +40,7 @@ def crear_orden():
     return jsonify(respuesta), estado
 
 @compras_bp.get("/historial")
-@requiere_permiso(id_opcion_menu=31, accion="consultar")
+@requiere_permiso(id_opcion_menu='historial_ordenes', accion="consultar")
 def consultar_historial_ordenes():
     respuesta, estado = obtener_historial_ordenes(
         request.args.get("fecha_desde"),
@@ -51,21 +51,21 @@ def consultar_historial_ordenes():
 
 
 @compras_bp.get("/<int:id_orden>")
-@requiere_permiso(id_opcion_menu=31, accion="consultar")
+@requiere_permiso(id_opcion_menu='historial_ordenes', accion="consultar")
 def consultar_detalle_orden(id_orden):
     respuesta, estado = obtener_detalle_orden(id_orden)
     return jsonify(respuesta), estado
 
 
 @compras_bp.post('/<int:id_orden>/enviar')
-@requiere_permiso(id_opcion_menu=22,accion='crear')
+@requiere_permiso(id_opcion_menu='crear_orden_compra',accion='crear')
 def enviar_orden_existente(id_orden):
     respuesta,estado=enviar_borrador(id_orden,int(get_jwt_identity()))
     return jsonify(respuesta),estado
 
 
 @compras_bp.patch("/<int:id_orden>/estado")
-@requiere_permiso(id_opcion_menu=31, accion="cerrar")
+@requiere_permiso(id_opcion_menu='historial_ordenes', accion="cerrar")
 def modificar_estado_orden(id_orden):
     respuesta, estado = cambiar_estado_orden(
         id_orden,

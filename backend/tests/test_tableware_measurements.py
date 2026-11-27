@@ -1,8 +1,43 @@
 import unittest
+from unittest.mock import patch
 from decimal import Decimal
 
 
+def mock_capacity_catalog(self):
+    rows = [
+        dict(codigo='MLT', alias='ML', factor=Decimal(1)),
+        dict(codigo='LTR', alias='L', factor=Decimal(1000)),
+        dict(codigo='FLOZ_US', alias=None, factor=Decimal('29.5735295625')),
+        dict(codigo='FLOZ_UK', alias=None, factor=Decimal('28.4130625')),
+    ]
+    loader = patch('app.modules.carta.measurements._leer_unidades_capacidad', return_value=rows)
+    loader.start()
+    self.addCleanup(loader.stop)
+
+
 class TablewareMeasurementTests(unittest.TestCase):
+    def setUp(self):
+        mock_capacity_catalog(self)
+        self.reglas = {
+            campo: dict(etiqueta=campo, maximo=Decimal(1000000 if campo == 'capacidad' else 10000), decimales=3)
+            for campo in ('capacidad', 'diametro_cm', 'altura_cm', 'largo_cm', 'ancho_cm')
+        }
+        reglas = patch('app.modules.carta.measurements._reglas_medidas', return_value=self.reglas)
+        reglas.start()
+        self.addCleanup(reglas.stop)
+
+    def test_limits_and_precision_follow_configured_rules(self):
+        from app.modules.carta.measurements import validated
+
+        self.reglas['altura_cm'].update(maximo=Decimal('20'), decimales=4)
+        self.assertEqual(validated({'altura_cm': '19.1234'})['altura_cm'], Decimal('19.1234'))
+        with self.assertRaises(ValueError):
+            validated({'altura_cm': '21'})
+        with self.assertRaises(ValueError):
+            validated({'altura_cm': '19.12345'})
+        self.assertEqual(validated({'nombre': 'Existing'}, {'altura_cm': Decimal(30)})['altura_cm'], Decimal(30))
+
+
     def test_rectangular_dimensions_and_demo_label(self):
         from app.modules.carta.measurements import validated, serialize
         dimensions=validated({'largo_cm':40,'ancho_cm':30,'altura_cm':3})

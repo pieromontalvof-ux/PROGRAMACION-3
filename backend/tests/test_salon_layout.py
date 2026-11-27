@@ -12,9 +12,10 @@ class LayoutValidation(unittest.TestCase):
  def test_invalid_layout(self):
   for valor in (None,{}, {'version':0,'elementos':[]}, {'version':0,'elementos':[{'codigo':'M01'}]}):
    with self.assertRaises(BadRequest):validar(valor)
-  d=predeterminado();d['elementos'][0]['ancho']=101
+  mesa=dict(codigo='M01',tipo='mesa',x=8,y=8,ancho=14,alto=14)
+  d={'version':0,'elementos':[dict(mesa, ancho=101)]}
   with self.assertRaises(BadRequest):validar(d)
-  d=predeterminado();d['elementos'].append(d['elementos'][1])
+  d={'version':0,'elementos':[mesa, dict(mesa)]}
   with self.assertRaises(BadRequest):validar(d)
 
 @unittest.skipUnless(os.environ.get('LOCAL_SCOPE_TEST_DB')=='1','PostgreSQL temporal')

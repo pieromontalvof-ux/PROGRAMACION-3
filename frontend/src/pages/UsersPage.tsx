@@ -1,3 +1,4 @@
+import { CORPORATE_EMAIL_DOMAIN } from '../config'
 import { useScopedCatalog } from '../hooks/useScopedCatalog'
 import { StatusFilters } from '../components/catalogs/StatusFilters'
 import {
@@ -31,7 +32,7 @@ import './UsersPage.css'
 
 const ID_PERFIL_ADMINISTRADOR = 1
 const ID_PERFIL_MIEMBRO_EQUIPO = 4
-const DOMINIO_CORPORATIVO = '@barbarian.pe'
+const DOMINIO_CORPORATIVO = `@${CORPORATE_EMAIL_DOMAIN}`
 
 function obtenerNombreCorreo(correo: string): string {
   return correo

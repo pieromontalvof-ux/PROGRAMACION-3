@@ -1,10 +1,11 @@
+import { API_BASE_URL } from '../config'
 import type {
   DatosUsuario,
   RespuestaUsuarios,
 } from '../types/user'
 
 const API_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000/api'
+  API_BASE_URL
 
 async function procesar<T>(respuesta: Response): Promise<T> {
   const datos = (await respuesta.json().catch(() => ({}))) as T & {

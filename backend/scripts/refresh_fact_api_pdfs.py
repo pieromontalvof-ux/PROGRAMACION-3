@@ -10,7 +10,7 @@ from uuid import uuid4
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app import create_app
 from app.core.extensions import db
-from sqlalchemy import text
+from sqlalchemy import Uuid, bindparam, cast, func, select
 from app.modules.facturacion.transport import call
 from app.modules.facturacion.worker import persist_pdf
 
@@ -20,10 +20,7 @@ def main():
     parser.add_argument('--apply',action='store_true')
     args=parser.parse_args()
     with create_app().app_context():
-        jobs=[dict(r) for r in db.session.execute(text("""SELECT o.* FROM fact_api_operacion o
-            JOIN fact_api_documento d USING(id_operacion)
-            WHERE o.origen='VENTA' AND o.estado='COMPLETADO' AND NOT o.obsoleto
-            ORDER BY o.creado_en""")).mappings()]
+        jobs=[dict(r) for r in db.session.execute(select(func.public.facturacion_ventas_completadas_pdf().table_valued('id_operacion', 'id_local', 'origen', 'id_origen', 'version', 'payload', 'payload_hash', 'estado', 'intentos', 'max_intentos', 'obsoleto', 'disponible_en', 'lease_hasta', 'lease_token', 'ultimo_http', 'ultimo_error', 'creado_en', 'actualizado_en'))).mappings()]
         db.session.commit()
         print('Ventas con PDF disponibles:',len(jobs),flush=True)
         if not args.apply:return
@@ -34,13 +31,11 @@ def main():
             job['lease_token']=str(uuid4())
             files=[persist_pdf(job,fmt,call(f'documents/{identity}/pdf?format={fmt}',binary=True))
                    for fmt in ('A4','80mm')]
-            eligible=db.session.execute(text("""SELECT id_operacion FROM fact_api_operacion
-                WHERE id_operacion=:id AND estado='COMPLETADO' AND NOT obsoleto FOR UPDATE"""),{'id':identity}).scalar()
+            eligible=db.session.execute(select(func.public.facturacion_bloquear_pdf_actualizable(cast(bindparam('id'), Uuid))),{'id':identity}).scalar()
             if not eligible:
                 db.session.rollback();continue
             for file in files:
-                db.session.execute(text("""UPDATE fact_api_archivo SET ruta=:path,sha256=:hash,bytes=:size
-                    WHERE id_documento=:id AND formato=:format"""),{'id':identity,**file})
+                db.session.execute(select(func.public.facturacion_actualizar_pdf(bindparam('path'), bindparam('hash'), bindparam('size'), cast(bindparam('id'), Uuid), bindparam('format'))),{'id':identity,**file})
             db.session.commit()
             print('Actualizada representación:',identity,flush=True)
 

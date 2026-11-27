@@ -35,6 +35,9 @@ def main():
         conn.exec_driver_sql(migration.replace('BEGIN;','').replace('COMMIT;',''))
         scaling=(ROOT/'database/migrations/20261121_fact_api_autoscale.sql').read_text(encoding='utf-8')
         conn.exec_driver_sql(scaling.replace('BEGIN;','').replace('COMMIT;',''))
+        funciones = (ROOT/'database/migrations/20261127_funciones_facturacion.sql').read_text(encoding='utf-8')
+        conn.exec_driver_sql(funciones.replace('BEGIN;', '').replace('COMMIT;', ''),
+                             execution_options={'no_parameters': True})
         conn.execute(text('''INSERT INTO fact_api_config
             (id_local,activo,empresa,serie_factura,serie_boleta,tasa_igv)
             SELECT id_local,true,CAST(:empresa AS jsonb),'F'||lpad(id_local::text,3,'0'),

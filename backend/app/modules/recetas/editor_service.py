@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import bindparam, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.extensions import db
@@ -94,15 +95,11 @@ def guardar_receta(id_usuario, datos, id_receta=None):
             presentacion = anterior
         else:
             id_presentacion = identidad(datos.get("id_presentacion_venta"))
-            encontrados = repo.filas("""
-                SELECT pv.*, ic.tipo FROM presentacion_venta pv
-                JOIN item_carta ic USING(id_item_carta)
-                WHERE pv.id_presentacion_venta=:id FOR UPDATE OF ic, pv
-            """, {"id": id_presentacion})
+            encontrados = repo.filas(select(func.public.receta_presentacion_bloqueada(bindparam("id")).table_valued('id_presentacion_venta', 'id_item_carta', 'id_menaje', 'contenido', 'unidad', 'precio', 'activo', 'tipo')), {"id": id_presentacion})
             if not encontrados:
                 raise DatosInvalidos("Crea primero la presentacion en Carta")
             presentacion = encontrados[0]
-            if repo.ejecutar("SELECT EXISTS(SELECT 1 FROM receta WHERE id_presentacion_venta=:id)", {"id": id_presentacion}).scalar():
+            if repo.ejecutar(select(func.public.receta_presentacion_ocupada(bindparam("id"))), {"id": id_presentacion}).scalar():
                 raise DatosInvalidos("Esta presentacion ya tiene receta, incluso si esta inactiva; utiliza Editar")
         id_presentacion = presentacion["id_presentacion_venta"]
         id_item = presentacion["id_item_carta"]
@@ -131,13 +128,10 @@ def guardar_receta(id_usuario, datos, id_receta=None):
         opciones_existentes = {('PRODUCTO', o['id_producto']) for o in (prev_grupo or {}).get('opciones', [])}
         grupo = validar_grupo(datos.get("grupo_salsa"), opciones_existentes)
         if anterior:
-            repo.ejecutar("UPDATE receta SET instrucciones=:instrucciones,activo=:activo WHERE id_receta=:id",
+            repo.ejecutar(select(func.public.receta_actualizar(bindparam("instrucciones"), bindparam("activo"), bindparam("id"))),
                           {"id": id_receta, "instrucciones": instrucciones, "activo": activo})
         else:
-            id_receta = repo.ejecutar("""
-                INSERT INTO receta(id_presentacion_venta,instrucciones,activo)
-                VALUES (:presentacion,:instrucciones,:activo) RETURNING id_receta
-            """, {"presentacion": id_presentacion, "instrucciones": instrucciones, "activo": activo}).scalar_one()
+            id_receta = repo.ejecutar(select(func.public.receta_crear(bindparam("presentacion"), bindparam("instrucciones"), bindparam("activo"))), {"presentacion": id_presentacion, "instrucciones": instrucciones, "activo": activo}).scalar_one()
         repo.reemplazar_detalles(id_receta, componentes)
         repo.guardar_grupo(id_presentacion, grupo)
         previo = {"receta": anterior, "componentes": prev_detalles, "grupo_salsa": prev_grupo} if anterior else None

@@ -33,7 +33,8 @@ class RuntimeMetricsTest(unittest.TestCase):
         with app.app_context():
             admin = create_access_token(identity='1', additional_claims={'tipo_token': 'operativo', 'id_perfil': 1})
             manager = create_access_token(identity='1', additional_claims={'tipo_token': 'operativo', 'id_perfil': 2})
-        with patch('app.core.permissions.db') as database:
+        with patch('app.core.permissions.db') as database, \
+             patch('app.core.telemetry.perfil_tiene_capacidad', side_effect=lambda perfil, capacidad: perfil == 1):
             database.session.execute.return_value.scalar.return_value = True
             self.assertEqual(client.get('/api/diagnostico', headers={'Authorization': f'Bearer {manager}'}).status_code, 403)
             self.assertEqual(client.get('/api/diagnostico', headers={'Authorization': f'Bearer {admin}'}).status_code, 200)
