@@ -81,7 +81,25 @@
 .integration-change-table td { overflow-wrap: anywhere; }
 
 .integration-history-detail { display: grid; gap: .75rem; background: #f2f7f4; padding: .8rem; border-radius: .5rem; }
-.integration-history-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .65rem; }
-.integration-history-groups details { background: #fff; border: 1px solid #dce7e2; border-radius: .4rem; padding: .65rem; min-width: 0; }
-.integration-history-groups ul { margin-bottom: 0; padding-left: 1.25rem; overflow-wrap: anywhere; }
-.integration-history-groups small { display: block; color: #465f55; }
+
+.integration-history-records {
+  display: grid; gap: .75rem; min-width: 0;
+  padding: .8rem; border: 1px solid #d1dfd7; border-radius: .6rem; background: #fff;
+}
+.integration-history-filters { display: flex; flex-wrap: wrap; gap: .4rem; }
+.integration-history-filters button {
+  display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #c1d5cb;
+  border-radius: .4rem; background: #fff; color: #104d3e;
+}
+.integration-history-filters button[aria-pressed="true"] { background: #08664e; border-color: #08664e; color: #fff; }
+.integration-history-filters span { border-radius: 1rem; padding: .05rem .35rem; background: #e5f2ea; color: #104d3e; }
+.integration-history-search input { font-weight: 400; }
+.integration-history-table { max-height: 23rem; overflow: auto; border: 1px solid #d1dfd7; border-radius: .45rem; }
+.integration-history-table table { min-width: 32rem; border-collapse: separate; border-spacing: 0; }
+.integration-history-table thead th { position: sticky; top: 0; background: #104d3e; color: #fff; }
+.integration-history-table tbody tr:hover { background: #f2f7f4; }
+.integration-history-table td { overflow-wrap: anywhere; }
+.integration-history-table td:nth-child(1), .integration-history-table td:nth-child(4) { white-space: nowrap; }
+.integration-history-table small { display: block; margin-top: .2rem; color: #465f55; }
+.integration-history-table .integration-history-empty { text-align: center; padding: 1rem; color: #465f55; }
+.integration-request-status[data-status="ACTUALIZADO"] { background: #e2f3e9; color: #07553b; }

@@ -34,11 +34,12 @@ type ClaveAPI = {
 type Conteo = { recibidos: number; nuevos: number; repetidos: number; invalidos: number; cambios?: number; duplicados_respuesta?: number }
 type DetalleConsulta = { registros: Solicitud[]; respuesta: Record<string, unknown> }
 const gruposHistorial = [
-  { etiqueta: 'Aceptados', estados: ['AGREGADO', 'ACTUALIZADO'] },
-  { etiqueta: 'Descartados', estados: ['DESCARTADO'] },
-  { etiqueta: 'Ya registrados', estados: ['YA_REGISTRADO'] },
-  { etiqueta: 'Por revisar', estados: ['PENDIENTE', 'ERROR'] },
-]
+  { id: 'todos', etiqueta: 'Todos', estados: [] },
+  { id: 'aceptados', etiqueta: 'Aceptados', estados: ['AGREGADO', 'ACTUALIZADO'] },
+  { id: 'descartados', etiqueta: 'Descartados', estados: ['DESCARTADO'] },
+  { id: 'registrados', etiqueta: 'Ya registrados', estados: ['YA_REGISTRADO'] },
+  { id: 'pendientes', etiqueta: 'Por revisar', estados: ['PENDIENTE', 'ERROR'] },
+] as const
 const estadosConsulta = {
   EN_COLA: 'En cola o procesando', REINTENTO: 'Reintento programado',
   RESPONDIO: 'Respondida', FALLIDA: 'Fallida',
@@ -79,6 +80,58 @@ const estados = {
 
 const filtrosRevision = { POR_REVISAR: 'Por revisar', PENDIENTE: 'Pendientes', ERROR: 'Con errores' }
 const tiposPersona = { NATURAL: 'Persona natural', JURIDICA: 'Persona jurídica', SIN_CLASIFICAR: 'Sin clasificar' }
+
+function TablaHistorial({ registros }: { registros: Solicitud[] }) {
+  const [filtro, setFiltro] = useState<(typeof gruposHistorial)[number]['id']>('todos')
+  const [busqueda, setBusqueda] = useState('')
+  const grupos = gruposHistorial.map(grupo => ({
+    ...grupo,
+    filas: grupo.id === 'todos' ? registros : registros.filter(fila =>
+      (grupo.estados as readonly string[]).includes(fila.estado)),
+  }))
+  const termino = busqueda.trim().toLocaleLowerCase('es-PE')
+  const filas = (grupos.find(grupo => grupo.id === filtro)?.filas ?? []).map(fila => {
+    const comercial = fila.datos.datos_comerciales as Record<string, unknown> | undefined
+    return {
+      fila,
+      nombre: String(fila.datos.nombre ?? comercial?.razon_social ?? 'Sin nombre'),
+      documento: String(fila.datos.numero_documento ?? comercial?.ruc ?? ''),
+      correo: String(fila.datos.email ?? comercial?.email ?? ''),
+    }
+  }).filter(({ nombre, documento, correo }) =>
+    [nombre, documento, correo].some(valor => valor.toLocaleLowerCase('es-PE').includes(termino)))
+
+  return <div className="integration-history-records">
+    <div className="integration-history-filters" role="group" aria-label="Estado de los registros">
+      {grupos.map(grupo => <button key={grupo.id} type="button" aria-pressed={filtro === grupo.id}
+        onClick={() => setFiltro(grupo.id)}>{grupo.etiqueta} <span>{grupo.filas.length}</span></button>)}
+    </div>
+    <label className="integration-history-search">
+      <input type="search" aria-label="Buscar entre los registros de la consulta"
+        placeholder="Buscar por nombre, documento o correo" value={busqueda}
+        onChange={evento => setBusqueda(evento.target.value)} />
+    </label>
+    <div className="integration-history-table" tabIndex={0} role="region" aria-label="Registros de la consulta">
+      <table aria-label="Resultados de la consulta">
+        <thead><tr>
+          <th scope="col">Documento</th><th scope="col">Nombre</th><th scope="col">Correo</th>
+          <th scope="col">Tipo</th><th scope="col">Estado</th>
+        </tr></thead>
+        <tbody>
+          {filas.length === 0 && <tr><td colSpan={5} className="integration-history-empty">No hay registros con estos filtros.</td></tr>}
+          {filas.map(({ fila, nombre, documento, correo }) => <tr key={fila.id}>
+            <td>{documento || 'Sin documento'}</td><th scope="row">{nombre}</th>
+            <td>{correo || '—'}</td><td>{fila.tipo === 'clientes' ? 'Cliente' : 'Proveedor'}</td>
+            <td>
+              <span className="integration-request-status" data-status={fila.estado}>{estados[fila.estado]}</span>
+              {fila.mensaje && <small>{fila.mensaje}</small>}
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+  </div>
+}
 
 export function IntegrationsPage() {
   const { token, localActivo } = useAuth()
@@ -502,21 +555,7 @@ export function IntegrationsPage() {
               {detalleHistorial?.id !== item.id && <p role="status">Cargando detalle...</p>}
               {detalleHistorial?.id === item.id && detalleHistorial.error && <p role="alert">{detalleHistorial.error}</p>}
               {detalleHistorial?.id === item.id && detalleHistorial.datos && <>
-                <div className="integration-history-groups">
-                  {gruposHistorial.map(grupo => {
-                    const filas = detalleHistorial.datos?.registros.filter(fila => grupo.estados.includes(fila.estado)) ?? []
-                    return <details key={grupo.etiqueta}>
-                      <summary>{grupo.etiqueta} ({filas.length})</summary>
-                      {filas.length === 0 ? <p>No hay registros.</p> : <ul>{filas.map(fila => {
-                        const documento = fila.datos.numero_documento ?? (fila.datos.datos_comerciales as Record<string, unknown> | undefined)?.ruc
-                        return <li key={fila.id}><strong>{String(fila.datos.nombre ?? 'Sin nombre')}</strong>
-                          {documento ? ` · ${String(documento)}` : ''} &middot; {estados[fila.estado]}
-                          {fila.mensaje && <small>{fila.mensaje}</small>}
-                        </li>
-                      })}</ul>}
-                    </details>
-                  })}
-                </div>
+                <TablaHistorial key={item.id} registros={detalleHistorial.datos.registros} />
                 <details><summary>Ver JSON de los datos recibidos</summary>
                   <p>Campos reconocidos por Barbarito y errores de validación.</p>
                   <pre>{JSON.stringify(detalleHistorial.datos.respuesta, null, 2)}</pre>
